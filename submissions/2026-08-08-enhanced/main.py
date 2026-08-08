@@ -32,12 +32,16 @@ LIQUIDATE_DAY = 28          # unsold inventory scores nothing
 # The measured-best structural shape. Melon is capped near the point where the
 # market stops absorbing it: its pool is ~158 units and no shop demands it, so
 # production past that is worth $1 a unit.
+# One quadrant, filled. Measured head-to-head, a two-quadrant version of this
+# same agent left 32 of 50 tiles idle while the one-quadrant field leader used 18
+# of 25 -- the extra land does not add production, it spreads the same hands over
+# more walking. 18 animal pens plus 7 melon tiles is exactly one quadrant.
 PLAN = {
-    "land": 2,                                   # homestead/smallhold tied best
+    "land": 1,
     "hands": 11,
     "hire_frac": 0.06,
     "animals": {"COW": 10, "SHEEP": 8, "GOOSE": 0},
-    "crops": [("MELON", 12)],
+    "crops": [("MELON", 7)],
     "last_plant": LAST_PLANT_DAY,
 }
 

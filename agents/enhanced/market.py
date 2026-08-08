@@ -93,7 +93,12 @@ def feed_solvent(shed, n_animals):
     two had starved by day 2 and the farm then idled for eight days with empty
     pens. Affordability is not possession -- the wheat has to be there.
     """
-    return shed.get("WHEAT", 0) >= (n_animals + 1) * FEED_DAYS_REQUIRED
+    # Capped by the same ceiling the reserve uses. Without that cap the two
+    # disagree above nine animals -- (9+1)*3 = 30 exceeds WHEAT_RESERVE_CAP = 28,
+    # so the shed can never hold enough and the herd deadlocks at nine. Measured:
+    # 9 animals and 32 idle tiles, against 15 for the same shape without the bug.
+    need = min(WHEAT_RESERVE_CAP, (n_animals + 1) * FEED_DAYS_REQUIRED)
+    return shed.get("WHEAT", 0) >= need
 
 
 def build_orders(ctx):

@@ -24,14 +24,13 @@ agents/enhanced/
 | Choice | Value | Why |
 |---|---|---|
 | labour | 11 hands, ≤6% of cash/day | `crew` won 55%, `swarm` (30 hands, uncapped) won **10%** — worse than never hiring, because the n-th hire costs `fib(n)` |
-| land | at most 2 quadrants | 1–2 quadrants beat 3–4 by ~10 points at `crew`; extra tiles dilute a fixed labour pool across cheap work |
-| production | melon ×12, 10 cows, 8 sheep | `orchardherd` won **96.5%** in a balanced slice; adding strawberry and wheat (`mixedfarm`) lost 26 points |
+| land | **one quadrant, filled** | 1–2 beat 3–4 by ~10 points in the library; head-to-head, a two-quadrant version of *this* agent left 32 of 50 tiles idle against the leader's 18 of 25 |
+| production | melon ×7, 10 cows, 8 sheep | `orchardherd` won **96.5%** in a balanced slice; adding strawberry and wheat (`mixedfarm`) lost 26 points. 18 pens + 7 melon is exactly one quadrant |
 | fertilizer | always collected, sold on sight | a herd that never collects it ends on **$79** — bankrupt buying feed before day-8 milk. It is bridge financing, not a bonus |
 | geese | none | `henhouse` measured 28.8%; the tiles are worth more as melon |
 | feed | bought, never grown | growing 4 wheat costs ~6 actions; buying it costs ~$30 and zero actions, and actions are the binding constraint |
 
-Melon is capped at 12 tiles rather than filling the board because its pool is
-finite: **no shop demands melon**, only the town centre's 1/day, so roughly 158
+Melon is capped rather than filling the board because its pool is finite: **no shop demands melon**, only the town centre's 1/day, so roughly 158
 units take the price from $250 to the $1 floor and both players draw from the
 same pool.
 
@@ -160,8 +159,27 @@ worst turn 142 ms against the 1,000 ms budget. The most informative cell:
 Barnyard lost 73% of its score when melon was worthless. The enhanced baseline
 loses 30%, because the herd and the opponent-aware sell sizing carry it.
 
-Head-to-head against the full local field is run #5 in `data/arena.sqlite`;
-results and the ranking are in `docs/LEADERBOARD.md` and `docs/RUNS.md`.
+Head-to-head, 192 seeds x 2 seats = **384 episodes** each:
+
+| opponent | win rate | 95% CI | margin |
+|---|---|---|---|
+| `barnyard` (the previous submission) | **100.0%** | [99.0%, 100%] | +25,753 |
+| `homestead-crew-orchardherd-flood-blind-muck` (field leader) | **75.8%** | [71.3%, 79.8%] | +3,016 |
+
+Getting there took one round of diagnosis. The first cut ranked **8th of 36** —
+ahead of `barnyard` but behind every `orchardherd` variant — because of two
+independent defects that only showed up in the digests:
+
+* **The herd deadlocked at nine animals.** `feed_solvent` demanded
+  `shed_wheat >= (n+1) * FEED_DAYS_REQUIRED`, but the reserve it checks is capped
+  at `WHEAT_RESERVE_CAP = 28`. At nine animals that is 30 — unreachable. Two
+  constants that had to agree, and did not. This is the third instance in this
+  project of the same failure mode: one quantity, two formulas.
+* **Two quadrants were worse than one.** 18 pens plus 12 melon tiles against 50
+  tiles left **32 idle** while the hands walked further; the leader used 18 of
+  25. Land does not add production, it spreads the same labour.
+
+`docs/RUNS.md` has the full comparison.
 
 ---
 
