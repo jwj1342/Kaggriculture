@@ -1,0 +1,352 @@
+# How to evaluate an agent
+
+The hardest part of this competition is not writing a policy. It is knowing
+whether the policy you just wrote is better than the one before it.
+
+Early sweeps in this repo, at 3–4 seeds, produced **contradictory orderings on
+repeat runs**. Every number they produced was noise. This document is the
+correction: what the environment's randomness actually looks like, what the
+tools measure, and how many games it takes to be allowed an opinion.
+
+---
+
+## 1. What the ladder actually scores
+
+Only **win / loss / tie**. The coin margin never enters the rating. The final
+leaderboard is a single **Bradley-Terry** fit over the last two weeks of
+episodes ([host confirmation](https://www.kaggle.com/discussions/kaggriculture/731587)).
+
+Three consequences for local evaluation:
+
+1. **Mean money is the wrong headline metric.** An agent that reliably banks 80k
+   beats one averaging 100k that occasionally collapses. Optimise win rate;
+   report money only as a diagnostic.
+2. **Variance is a cost, not just an error bar.** Consistency is what the rating
+   rewards.
+3. **Rank locally with the same estimator the prize uses.** `tools/league.py`
+   fits Bradley-Terry by maximum likelihood over a local round robin, so local
+   rankings are comparable in kind to the real leaderboard rather than to a
+   sandbox mean.
+
+---
+
+## 2. Measured facts about this environment's randomness
+
+All verified against the installed 1.32.6 engine.
+
+### 2.1 Episodes are deterministic given `(seed, both agents)`
+
+Re-running the same pair on the same seed reproduces the episode exactly. So
+**repeat runs of an identical configuration add no information** — all variance
+lives across seeds. A harness that runs the same config twice on the same seed is
+burning CPU.
+
+Useful corollary: the league correctly scored `barnyard`,
+`barnyard__TARGET_COWS_10` and `barnyard__HAND_CAP_14` as *bit-identical*
+(same BT strength, same median, same win rate) because those overrides happen to
+equal the defaults. That is a free self-test of the whole pipeline.
+
+### 2.2 Common random numbers do **not** control the environment
+
+This one is easy to get wrong. In `_end_of_day` a single RNG, seeded from
+`(seed, day)`, is used for **both** weed spawning and the shop unlock — and weed
+spawning consumes one draw per empty tile, on **both** farms:
+
+```python
+rng = random.Random((seed * 1_000_003) ^ day)
+for player_id, farm in enumerate(obs0.farms):
+    ...
+    _spawn_weeds(farm, board_size, weed_chance, rng)   # draws ∝ empty tiles
+...
+town["unlocked_shops"].append(rng.choice(sorted(SHOPS)))
+```
+
+So **how you play changes which shops unlock**, and so does how your *opponent*
+plays. Measured on one fixed seed (42), four agent pairings produced four
+completely different shop sequences:
+
+| Pairing | Shops unlocked |
+|---|---|
+| `pass` vs `pass` | FARMERS_MARKET, PET_CAFE, YARN_STORE, YARN_STORE, … |
+| `starter` vs `starter` | ICE_CREAM_SHOP ×3, YARN_STORE, BAKERY, … |
+| `barnyard` vs `starter` | ICE_CREAM_SHOP, PET_CAFE, FARMERS_MARKET, BAKERY, … |
+| `barnyard` vs itself | BRUNCH_SPOT ×3, BAKERY, SMOOTHIE_SHOP, … |
+
+Implications:
+
+- Pairing on seed reduces variance but **does not cancel it**. You cannot treat
+  the shop draw as an exogenous control variable.
+- A config change can win a seed for a reason unrelated to its merit — it nudged
+  the weed count and drew a better shop.
+- **Results against a weak opponent do not transfer.** Changing the opponent
+  changes your own economy, not just the comparison.
+
+### 2.3 Scores compress by roughly half against a real opponent
+
+| Matchup | `barnyard` median |
+|---|---|
+| vs `starter` | ~67,000 |
+| vs itself, and in a mixed league | ~30,000–40,000 |
+
+Both players drain one shared market. Any number measured against a passive
+opponent is inflated; always report the contested number too.
+
+### 2.4 Seats are symmetric by construction — but verify anyway
+
+All four quadrants are geometrically identical about the shed, each owning one
+shed-access tile, and market orders quote both players against the same
+pre-commit inventory. There is no structural seat advantage. Every harness here
+still plays both seats and reports the split, because that assumption is cheap to
+check and expensive to be wrong about.
+
+---
+
+## 3. The tools
+
+| Tool | Question it answers |
+|---|---|
+| `tools/arena.py` | quick sanity: does A beat B at all? |
+| `tools/trace.py` | *why* — day-by-day farm, shed, prices for one episode |
+| `tools/eval.py` | is A better than B, with a confidence interval? |
+| `tools/league.py` | how do N agents rank, by Bradley-Terry? |
+| `tools/stress.py` | does the agent ever crash, stall, or time out? |
+| `tools/sweep.py` | coordinate sweep over module-level tunables |
+| `tools/make_probes.py` | regenerate the single-strategy probe agents |
+
+### `eval.py` — A/B with an interval
+
+```bash
+python tools/eval.py h2h agents/v2.py agents/barnyard.py --seeds 96 -j 32
+python tools/eval.py pool agents/v2.py agents/barnyard.py \
+    --vs starter --vs agents/barnyard.py --seeds 48 -j 32
+```
+
+Plays both seats, reports a Wilson interval on the win rate and a paired
+bootstrap on the money margin, and — when the result is not resolved — prints how
+many episodes it would take. `pool` mode is closer to the ladder: both candidates
+face the same opponents on the same seeds.
+
+### `league.py` — round robin with Bradley-Terry
+
+```bash
+sbatch slurm/league.sh starter agents/barnyard.py \
+    --variants agents/barnyard.py:HAND_CAP=8,11,14 --seeds 24
+```
+
+Emits a win matrix, BT strengths on an Elo-like scale, and per-agent money
+distributions. `--variants` stamps out tunable variants automatically so a
+parameter study is one command.
+
+Reading the output: **a high win rate with a low median money is a red flag**.
+It means the agent wins by denying the shared market rather than by earning —
+which does score on the ladder, but is fragile against opponents who do not feed
+it.
+
+### `stress.py` — 28 pathological configurations
+
+Zero money, a 4×4 board, a shed that holds one item, one turn per day, free farm
+hands, a market where everything crashes. Real episodes always use the defaults,
+so this is not about realism: it is about finding hardcoded assumptions before
+the leaderboard does. A crash forfeits the whole episode.
+
+`barnyard` currently passes 28/28 with a worst turn of 145 ms against a
+1,000 ms budget.
+
+---
+
+## 4. The probe agents
+
+`agents/probes/` holds 19 deliberately bad agents, each committing to a single
+mechanic and abandoning everything else. They exist to price a lever in
+isolation, and as fixed yardsticks that do not move when the baseline changes.
+
+| Group | Probes | Question |
+|---|---|---|
+| Monoculture crops | `mono_wheat` `mono_carrot` `mono_tomato` `mono_strawberry` `mono_melon` | what is each crop worth alone? |
+| Monoculture animals | `mono_cow` `mono_sheep` `mono_goose` | which animal carries the engine? |
+| Animal decomposition | `fert_only` `product_only` | how much of animal income is the free fertilizer? |
+| Land | `one_quadrant` `two_quadrant` `four_quadrant` | what is a quadrant worth? |
+| Labour | `no_hire` `few_hands` `hire_max` | what is a farm hand worth, and where does `fib(n)` bite? |
+| Market | `dump_all` `hoarder` | does metered selling actually pay? |
+| Reference | `mixed_ref` | the probe's own balanced default |
+
+All 19 are generated by `tools/make_probes.py` from the single parameterised
+`agents/probe.py`, so there is exactly one source of truth. Regenerate after
+editing:
+
+```bash
+python tools/make_probes.py
+```
+
+They double as a regression suite: if a refactor changes what `mono_melon`
+scores on a fixed seed, something moved that should not have.
+
+---
+
+## 5. How many games do you actually need?
+
+For a binary win/loss outcome, resolving a true win rate of `50% + d` at 95%
+confidence needs roughly `n = (1.96² × 0.25) / d²` episodes:
+
+| Effect you want to detect | Episodes | Seeds (both seats) | Wall time on 32 cores |
+|---|---|---|---|
+| 10 points (60% vs 50%) | 96 | 48 | ~8 s |
+| 5 points | 384 | 192 | ~33 s |
+| 3 points | 1,068 | 534 | ~90 s |
+| 1 point | 9,604 | 4,802 | ~14 min |
+
+Throughput: one episode is ~2.7 s on one core, so 32 cores run **~11.8
+episodes/s ≈ 42,000 episodes/hour**.
+
+**There is no excuse for an underpowered experiment here.** A properly powered
+5-point test costs 33 seconds of a compute node. The 3–4 seed sweeps that started
+this project were resolving nothing at all.
+
+Two ways to do better than raw win counting:
+
+- **Use the money margin as the statistic.** In a head-to-head the margin's sign
+  *is* the win, so it carries the same information with far lower variance.
+  `eval.py` bootstraps it alongside the win rate.
+- **Pair on seed.** Both candidates play the same seeds against the same
+  opponents. This helps even though §2.2 means it does not cancel everything.
+
+---
+
+## 6. Recommended workflow
+
+1. **Change one thing.** Prefer a module-level tunable so `sweep.py` and
+   `league.py --variants` can drive it without editing code.
+2. **`stress.py` first.** 28 configurations, under a minute, catches crashes and
+   slow turns before you spend a compute node.
+3. **`league.py` on Slurm** with the change as a variant plus 2–3 probes for
+   context. 24 seeds is enough for a first look; 96+ before believing anything
+   under 10 points.
+4. **Read the win matrix, not just the ranking.** An agent that beats everything
+   except one probe is telling you something specific.
+5. **Check the mirror.** Run the candidate against itself. Scores halve; if they
+   more than halve, the agent depends on a passive opponent.
+6. **`trace.py` any surprise.** Silent no-ops mean bugs look like bad strategy —
+   every five-figure bug in this repo was found by reading a day-by-day trace,
+   not by staring at a final score.
+7. **Only then submit.** Five per day, latest two active.
+
+---
+
+## 7. Results on record
+
+### Tunable study — 8 agents, 24 seeds/pair, both seats (1,344 episodes)
+
+```
+ #  agent                        BT-Elo   winrate   median $
+ 1  barnyard  HAND_CAP=11       +142     79.5%     40,458
+ 2  barnyard (defaults)          +69     72.0%     39,247
+ 3  barnyard  TARGET_COWS=10     +69     72.0%     39,247   (== defaults)
+ 4  barnyard  HAND_CAP=14        +69     72.0%     39,247   (== defaults)
+ 5  barnyard  TARGET_COWS=14    -115     53.0%     36,525
+ 6  barnyard  TARGET_COWS=6     -392     30.1%     31,530
+ 7  barnyard  HAND_CAP=8        -534     21.4%     32,327
+ 8  starter                       -4814      0.0%      3,498
+```
+
+`HAND_CAP=11` beats the current default of 14 — the payroll curve bites earlier
+than the coordinate sweep suggested. `TARGET_COWS=10` is confirmed correct.
+
+
+### Probe league — 21 agents, 16 seeds/pair, both seats (6,720 episodes)
+
+```
+ #  agent              BT-Elo  winrate   median $      sd $
+ 1  one_quadrant         +952    97.2%     54,784    21,285
+ 2  dump_all             +727    90.8%     39,810    13,298
+ 3  barnyard          +619    86.6%     47,880    16,383
+ 4  few_hands            +535    82.8%     36,476     9,853
+ 5  two_quadrant         +471    79.7%     40,890    16,001
+ 6  mixed_ref            +304    70.8%     34,497    14,723
+ 7  four_quadrant        +284    69.7%     31,746    14,449
+ 8  mono_cow             +185    63.9%     25,098    26,032
+ 9  mono_sheep            +76    57.3%     14,138    22,206
+10  mono_goose            +26    54.4%     16,858     3,566
+11  hoarder                +0    52.8%     21,912    13,285
+12  hire_max              -56    49.5%     13,160     6,613
+13  no_hire              -160    43.8%     13,118     4,144
+14  mono_strawberry      -302    36.7%     15,482     4,783
+15  fert_only            -405    32.3%      8,409     5,854
+16  mono_melon           -492    29.1%     10,667     5,111
+17  mono_wheat           -748    21.9%      7,578     2,125
+18  starter             -1269    11.9%      3,492        68
+19  mono_carrot         -1359     9.8%      2,626     1,521
+20  mono_tomato         -1394     9.1%      2,791     1,772
+21  product_only        -4289     0.0%         78         2
+```
+
+Four results worth acting on:
+
+**Land is actively harmful, monotonically.** Within the identical probe family:
+`one_quadrant` +952 > `two_quadrant` +471 > `mixed_ref` (three) +304 >
+`four_quadrant` +284. `one_quadrant` beats `barnyard` **32/32** while earning
+*more* (46,163 vs 35,056). Extra tiles dilute a fixed labour pool across cheap
+work. This contradicts the public meta's three-quadrant farm — but that meta was
+measured before the 1.32.6 rebalance halved late-game town demand.
+
+**Fertilizer is the animal economy, not a side effect.** `product_only` (animals
+harvested for milk but fertilizer never collected) finishes dead last on **$78**,
+having gone broke buying feed before the first milk arrives. `fert_only` at
+$8,409 is far from great, but it survives. Fertilizer is the early cash flow that
+funds the herd.
+
+**Metering is not unconditionally correct.** `dump_all` ranks *above*
+`barnyard` while earning 17% less. See `docs/ADVERSARIAL.md`.
+
+**`mono_sheep` has sd $22,206 on a median of $14,138** — larger spread than
+median. Wool's only demand is a single-product shop consuming at 2x, so the
+result is dominated by whether a Yarn Store happens to spawn. Any strategy
+resting on one product is a coin flip under with-replacement shop draws.
+
+### Powered A/B tests — 192 seeds x 2 seats = 384 episodes each
+
+```
+dump_all      vs barnyard   71.4% win  CI [66.6%, 75.6%]  own median 35,776
+one_quadrant  vs barnyard   93.2% win  CI [90.3%, 95.3%]  own median 47,655
+```
+
+Both seat splits are flat (72/70 and 93/93), so neither is a seat artefact.
+`dump_all` wins 71% of the time while earning ~25% *less* than it would by
+metering — see `docs/ADVERSARIAL.md`. `one_quadrant` wins 93% while earning
+*more*, which makes the three-quadrant plan in `barnyard` the single largest
+known defect.
+
+### Quadrant study — 8 seeds
+
+| Quadrants owned | Median money |
+|---|---|
+| 1 | 49,078 |
+| 2 | 68,738 |
+| 3 | 68,892 |
+| 4 | 68,892 (never actually buys SE) |
+
+### Robustness — 28 pathological configurations
+
+28/28 finish `DONE`. Worst single turn 145 ms. Most fragile dimension: with
+melon's base price set to $1 the agent falls from 66,409 to 18,060.
+
+---
+
+## 8. Throughput reference
+
+| Setup | Episodes/hour | Notes |
+|---|---|---|
+| login node, 1 core | ~1,300 | fine for a smoke test; nothing more |
+| login node, `-j 8` | ~10,600 | acceptable up to a few hundred episodes |
+| `sbatch`, 32 cores | **~42,000** | the default for anything that will be believed |
+
+A 21-agent probe round robin at 16 seeds per pair is 6,720 episodes — about
+10 minutes on one 32-core node. A properly powered 5-point A/B is 33 seconds.
+Use the cluster.
+
+```bash
+sbatch slurm/league.sh <agents...> --seeds 24 -o logs/run.json
+sbatch slurm/eval.sh h2h agents/v2.py agents/barnyard.py --seeds 192
+sbatch slurm/sweep.sh agents/barnyard.py --set HAND_CAP=8,10,12,14
+```
+
+All three are CPU-only. Do not request a GPU.
