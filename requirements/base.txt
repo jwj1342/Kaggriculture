@@ -1,0 +1,19 @@
+# Portable dependencies -- plain PyPI, works on any machine:
+#
+#     pip install -r requirements/base.txt
+#
+# On the Vulcan cluster, tools/bootstrap.sh installs numpy and pandas from the
+# Compute Canada wheelhouse instead (pip install --no-index numpy pandas), which
+# is faster and matches the nodes' CPUs. That is an optimisation, not a
+# requirement -- the PyPI versions work fine.
+#
+# numpy is a hard requirement of kaggle-environments.
+# pandas is used only by analysis scripts, never by an agent.
+# kaggle must be >= 2.0 for KGAT_ API tokens.
+# jupytext converts pulled .ipynb reference notebooks to .py for grepping.
+
+numpy>=2.0
+pandas
+kaggle>=2.0
+kagglehub
+jupytext

@@ -1,0 +1,96 @@
+# Kaggriculture — project rules
+
+Kaggle simulation competition on the Vulcan cluster. `README.md` orients,
+`docs/ONBOARDING.md` is the full first hour. This file is the short list of
+things that are easy to get wrong.
+
+## Environment
+
+`source setup_env.sh` before anything — it resolves its own location, so it works
+from any directory and for any user. If `venv/` is missing, run
+`bash tools/bootstrap.sh` first.
+
+Both scripts work on the cluster **and on a personal machine** — they detect Lmod
+and skip `module load` where it does not exist. Collaborators are not all on
+Vulcan; do not add cluster-only assumptions to anything outside `slurm/`.
+
+Dependencies are in `requirements/`, split by install semantics:
+`base.txt` (normal), `nodeps.txt` (`--no-deps`), `lock.txt` (generated audit
+snapshot, cluster-specific). `kaggle-environments` is `--no-deps` on purpose —
+its 19 declared dependencies include `open_spiel`, which fails to build; only
+three are actually needed. Import errors for *other* environments (`lux_ai_s3`,
+`halite`, `open_spiel_env`) print to stderr and are expected.
+
+## Ground truth
+
+`reference/engine/kaggriculture.py` is a copy of the file the episodes import.
+**Trust it over the competition overview page**, which describes pre-1.32.6
+balance. Re-diff it against the installed package after every upgrade — the
+balance has already changed once mid-competition.
+
+## Naming
+
+**No version numbers.** A strategy is `land-labour-produce-market-intel-muck`;
+the name is the definition. Hand-written agents get a semantic name
+(`barnyard.py`). Submission snapshots are `submissions/<date>-<agent>/`.
+
+Do not hand-write strategy files — add an atom option in `tools/registry.py` and
+regenerate. Keep the axes orthogonal.
+
+## Agent contract
+
+- `main.py` is loaded with `get_last_callable`: the agent function must be the
+  **last callable bound at module level**. No `def`, `class` or
+  `from x import f` after it.
+- 1 second per turn (`actTimeout`); only the excess draws on the 60 s bank.
+- Wrap the policy in `try/except` returning `PASS`. A crash forfeits the episode.
+- `hands` actions are positional — entry `i` maps to `farms[me]["hands"][i]`.
+- Max 10 market orders per turn; extras are dropped silently.
+- **Illegal actions are silent no-ops** — no error, no cost. Bugs look exactly
+  like bad strategy. Use `tools/trace.py`.
+
+## Measurement
+
+`docs/EVALUATION.md` is mandatory reading before producing a number.
+
+- Seed-to-seed spread exceeds most tuning effects; 3–4 seed sweeps here produced
+  contradictory orderings on repeat runs. 96 episodes resolves a 10-point edge,
+  384 a 5-point edge.
+- Episodes are deterministic given `(seed, both agents)` — repeating a pair on a
+  seed adds nothing.
+- Common random numbers do **not** control this environment: weeds and the shop
+  unlock share one RNG, and weed draws scale with both farms' empty tiles.
+- Compare on **balanced subsets**. Unbalanced main effects reversed conclusions
+  here at least once.
+- The strategy space is **non-transitive**. Any ranking is against its field.
+- Always check the mirror match; scores roughly halve against a real opponent.
+
+## Cluster
+
+Never run heavy work on the login node. One episode (~2.7 s) is fine; tournaments
+go through `sbatch slurm/tournament.sh`. Throughput ~9.8 episodes/s on 32 cores.
+CPU-only — **never request a GPU**.
+
+## Structure
+
+`tools/registry.py` (atoms) + `agents/_engine.py` -> `agents/lib/` (594 agents)
+-> `tools/tournament.py` -> `data/arena.sqlite` -> `tools/leaderboard.py` ->
+`docs/LEADERBOARD.md` + `site/leaderboard.html`. README "How it fits together"
+has the diagram.
+
+Generated, never hand-edit: `agents/lib/`, `docs/LEADERBOARD.md`,
+`site/leaderboard.html`, `notebooks/baseline.ipynb`. All of these plus `venv/`,
+`.cache/`, `.kaggle/` and `data/` are git-ignored.
+
+## Data
+
+`data/arena.sqlite` holds every episode ever run and is the one irreplaceable
+file here. Never edit `episodes` rows; they are history. Digests are ~1.6 KB per
+player — full replays (~27 MB each) are deliberately not stored.
+
+## Submissions
+
+5 per day, only the latest 2 active. Snapshot the exact submitted file under
+`submissions/<date>-<name>/` and log it in `docs/RUNS.md` with the local result
+that motivated it. `notebooks/baseline.ipynb` is **generated** by
+`tools/build_notebook.py` — edit the agent, not the notebook.

@@ -1,0 +1,36 @@
+# Git holds source and conclusions. Data and generated artefacts live elsewhere:
+# the D1 mirror, or a compressed snapshot. See docs/CONTRIBUTING.md
+# "The sync contract" and "What goes in git, and what does not".
+
+# --- Environment: rebuild with tools/bootstrap.sh --------------------------
+venv/
+.cache/
+
+# --- Credentials: never commit. Each collaborator supplies their own. ------
+.kaggle/
+*.secret
+.secret*
+
+# --- Generated: rebuild from source, never hand-edit ----------------------
+# 594 strategies from agents/_engine.py + tools/registry.py
+agents/lib/
+# rendered from data/arena.sqlite by tools/leaderboard.py
+site/
+# built from an agent file by tools/build_notebook.py
+notebooks/*.ipynb
+
+# --- Data: the evidence layer, mirrored to D1 -----------------------------
+# 136 MB and growing; `python tools/sync.py export --full` makes a 4.6 MB
+# snapshot, and D1 carries every tier.
+data/
+# compressed snapshots produced by tools/sync.py
+dist/
+
+# --- Run output -----------------------------------------------------------
+# Slurm stdout/stderr, plus the pre-database league dumps (5.2 MB of JSON).
+# Their headline results are transcribed into docs/RUNS.md, which is the part
+# worth versioning.
+logs/
+
+*.pyc
+__pycache__/

@@ -1,0 +1,27 @@
+# Installed WITHOUT its dependency tree, on every platform:
+#
+#     pip install --no-deps -r requirements/nodeps.txt
+#
+# This is the one genuinely unusual line in the setup, so: why.
+#
+# kaggle-environments declares 19 dependencies, because it ships every Kaggle
+# simulation environment in one package. Among them is open_spiel==2.0.1, which
+# has no wheel for many platforms (including this cluster) and fails to build
+# from source. A plain `pip install kaggle-environments` can therefore fail
+# outright, and even where it succeeds it drags in jax, transformers, pygame,
+# litellm and a dozen others we never load.
+#
+# Kaggriculture itself imports only numpy, jsonschema and requests.
+# requirements/base.txt provides numpy; jsonschema and requests arrive with the
+# kaggle CLI. The remaining sixteen are for environments we never touch.
+#
+# Consequence: importing kaggle_environments prints "Loading environment X
+# failed: No module named ..." to stderr for lux_ai_s3, halite, open_spiel_env
+# and friends. That is expected and harmless -- kaggriculture loads fine.
+#
+# Deliberately not pinned: the competition host ships balance changes through
+# this package (1.32.6 halved town demand mid-competition). Track the latest,
+# but re-diff reference/engine/kaggriculture.py against the installed copy after
+# every upgrade. >= 1.32.6 is the post-rebalance floor.
+
+kaggle-environments>=1.32.6
