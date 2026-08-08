@@ -269,9 +269,11 @@ production, in every episode.
 158-unit price floor, but the 90th percentile is 168 and the maximum 368. One
 episode in five keeps selling melon after the price has bottomed at $1.
 
-**Hire orders swamp the market queue.** A `crew` strategy issues ~241 `HIRE`
-orders per episode but can only pay for a fraction. Each rejected order still
-consumes one of the ten market slots that turn, crowding out sells.
+**~~Hire orders swamp the market queue.~~ RETRACTED.** This claimed a `crew`
+strategy issues ~241 `HIRE` orders it cannot pay for, each wasting one of the ten
+market slots. Measured directly, both `barnyard` and the enhanced baseline hire
+at a **100% success rate** (279/279 and 266/266). The claim was lifted from a
+public meta write-up describing *other players* and never checked against ours.
 
 *Digest schema has since been extended with per-day herd and hand counts so the
 starvation question can be answered by query rather than by re-tracing.*

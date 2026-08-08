@@ -88,6 +88,13 @@ Generated, never hand-edit: `agents/lib/`, `docs/LEADERBOARD.md`,
 file here. Never edit `episodes` rows; they are history. Digests are ~1.6 KB per
 player — full replays (~27 MB each) are deliberately not stored.
 
+## Multi-file agents
+
+`tools/package.sh <dir> <name>` builds the tar.gz, with every module at the
+**archive root** — Kaggle unpacks into `/kaggle_simulations/agent/`, so a nested
+directory breaks the imports. It verifies by unpacking, checking
+`get_last_callable` resolves to `agent`, and running a full episode.
+
 ## Submissions
 
 5 per day, only the latest 2 active. Snapshot the exact submitted file under

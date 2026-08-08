@@ -194,6 +194,7 @@ or only in a chat log.
 | [`docs/STRATEGY_LIBRARY.md`](docs/STRATEGY_LIBRARY.md) | the atom taxonomy and the boundary cases |
 | [`docs/ADVERSARIAL.md`](docs/ADVERSARIAL.md) | can you win by suppressing the opponent? (partly, and not how you'd think) |
 | [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md) | backlog, with a measured-and-rejected list |
+| [`docs/ENHANCED_BASELINE.md`](docs/ENHANCED_BASELINE.md) | the current best agent: every choice traced to a measurement, plus one retraction |
 | [`docs/TOOLS.md`](docs/TOOLS.md) | every script: what it does, what it reads and writes, known limitations |
 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | conventions, the sync contract, adding atoms, submitting |
 | [`docs/RUNS.md`](docs/RUNS.md) | provenance: every experiment and the claim it supports |
