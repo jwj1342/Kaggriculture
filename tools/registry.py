@@ -427,12 +427,12 @@ def plan_crop():
     shapes = ("bigberry", "berrymelon", "berryfull", "marketgarden",
               "evengarden", "berrywool", "berrydairy", "bigberrymelon")
     out = []
-    for produce, land, adapt, market in itertools.product(
-            shapes, ("smallhold", "estate"), ("fixed", "shopwise"),
+    for produce, land, muck, market in itertools.product(
+            shapes, ("smallhold", "estate"), ("muck", "compost"),
             ("flood",)):
         out.append({"land": land, "labour": "crew", "produce": produce,
-                    "market": market, "intel": "blind", "muck": "muck",
-                    "adapt": adapt})
+                    "market": market, "intel": "blind", "muck": muck,
+                    "adapt": "shopwise"})
     return out
 
 

@@ -3,8 +3,10 @@
 `agents/_engine.py` is the single execution path behind every generated
 strategy, so a change here moves the whole library at once. That is exactly why
 each one below is an A/B against a fixed set of opponents on the same seeds,
-with the arm size stated. Three landed and four were rejected; two of the
-rejections were ideas that looked obviously right.
+with the arm size stated. **Five landed and four were rejected**, and one of the
+rejections turned out to be a bug in the change rather than a fact about the
+game — `compost` lost twice on good evidence before an interaction was found and
+it became the largest single win here.
 
 The rule this file exists to enforce: **an engine change is a claim about the
 game's rules, and it gets measured before it is believed.** Every entry cites the
@@ -72,7 +74,48 @@ episode, and actions are the binding constraint: only ~15% of them do any work,
 **Worth: 71.1% → 82.2%** over 3,072 episodes an arm against four fixed
 opponents, +$2,300 median. Improved three of four shapes strongly, one neutral.
 
-### 3. Fertilizer price gate
+### 3. Water the tick days, so fertilizer actually lands
+
+This one is a **correction to two earlier conclusions**, and the most valuable
+change of the session.
+
+`compost` -- spending the fertilizer on the crops instead of selling it -- was
+rejected twice. It lost 15 pairings out of 15 in run #7, and still lost 38% to
+62% after the priority was fixed. The arithmetic said it should win easily: with
+realized ladder prices, a fertilized strawberry tile earns **$89 a day against an
+unfertilized $44**, the best rate of anything in the game.
+
+The gap was an interaction with change #2 above. The bonus is evaluated as
+
+```python
+fertilized = was_watered and tile["fertilized_until_day"] >= current_day
+```
+
+against **today's** watering, for a tick that resolves tomorrow. Strawberry ticks
+every two days; alternate-day watering also has period two. In anti-phase, every
+single tick lands on a dry day and the fertilizer buys nothing. Measured: 5.1
+units a planting against a fertilized ceiling of 8.
+
+So `ongoing` crops are now watered when thirsty **or** when tomorrow is a
+production tick, and `FERTILIZE` only targets tiles that are already watered and
+within the three-day cover of a tick.
+
+| | strawberry per planting | strawberry sold |
+|---|---|---|
+| `muck` (sell it) | 3.3 | ~110 |
+| `compost`, before this fix | 5.1 | ~140 |
+| `compost`, after | **4.9-5.3** | **~180** |
+
+**Worth: `compost` goes from losing to winning.** 66.3% against `muck`'s 54.8%
+over 6,144 episodes an arm, all eight shapes improved, median money +$7,931.
+Head to head on the same shape, 77.1% [72.9%, 81.3%] over 384 episodes.
+
+The lesson is not about fertilizer. **Two changes that are each correct can
+cancel**, and an atom rejected on measurement can be wrong-because-of-a-bug
+rather than wrong. `compost` was rejected twice on good evidence and was right
+both times.
+
+### 4. Fertilizer price gate
 
 Nothing consumes fertilizer, so its price only falls — ours closes the season at
 **$8 against a $100 base**. Collecting it costs one action per animal per day
@@ -83,7 +126,7 @@ irrelevant.
 **Worth: 83.3% → 85.0%** over 3,072 episodes an arm; positive on all four shapes,
 so the sign is solid even though the intervals just touch.
 
-### 4. `shopwise` — a seventh axis, and the first about the town
+### 5. `shopwise` — a seventh axis, and the first about the town
 
 Shops are drawn **with replacement**, eight instances, and unlock on a fixed
 schedule of one every three days from day 3. A shop that sells a single product
