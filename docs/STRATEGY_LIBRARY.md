@@ -80,9 +80,22 @@ animal), and four blends.
 | `orchardherd` | melon 14 | 10 cow + 8 sheep |
 | `berryherd` | strawberry 16 | 10 cow + 8 sheep |
 
+Three more are not designed but **reconstructed from real ladder opponents**
+(`docs/LADDER_FIELD.md`), so the field contains the shapes that actually beat us
+rather than only the shapes we thought of:
+
+| Option | Crops | Animals | Read off |
+|---|---|---|---|
+| `berrybaron` | strawberry 24 + melon 10 | 8 cow + 6 sheep | the opponent that finished on $171,062 |
+| `grazier` | wheat 8 + melon 4 | 14 cow | the cow-heavy archetype |
+| `marketgarden` | strawberry 18 + melon 10 | 8 cow + 3 sheep | the balanced one |
+
 Each crop entry also carries the last day it can still be planted and finish —
 melon needs 10 days to ripen, strawberry 16 to fire all four yields — so a plan
-stops planting rather than wasting tiles on crops that cannot mature.
+stops planting rather than wasting tiles on crops that cannot mature. The
+reconstructed atoms replant strawberry until **day 19**, not 13: a plant sown on
+19 still catches one production tick on 29, and stopping at 13 leaves the tile
+idle for the last twelve days.
 
 ### `market` — how sale sizing reacts to price
 
@@ -113,16 +126,29 @@ enters the rating, so a trailing agent has nothing left to protect.
 
 ### `muck` — the free daily fertilizer
 
-| Option | Collect fertilizer | Harvest animal products |
-|---|---|---|
-| `muck` | yes | yes |
-| `nomuck` | no | yes |
-| `dung` | yes | **no** |
+| Option | Collect fertilizer | Harvest animal products | Spend it on crops |
+|---|---|---|---|
+| `muck` | yes | yes | no — sell it |
+| `nomuck` | no | yes | — |
+| `dung` | yes | **no** | no — sell it |
+| `compost` | yes | yes | **yes** |
 
 Every surviving animal produces one fertilizer per day whether fed or not, and
 no shop or the town centre ever consumes fertilizer — its price only falls, so
-holding it is strictly a loss. `nomuck` and `dung` split the animal economy in
-half to price each side.
+*selling* it is a race to the floor. Measured on the ladder, ours closes the
+season at **$8 against a $100 base**. `nomuck` and `dung` split the animal
+economy in half to price each side.
+
+`compost` spends it instead, and on an `ongoing` crop that is the largest
+multiplier in the game. Each production tick adds `2 if (watered and fertilized)
+else 1`, so a fertilized strawberry yields **8 units per planting instead of 4**;
+one `FERTILIZE` covers three days, more than one strawberry tick. On a
+non-ongoing crop it adds no units — the cap is the cap — but each watering counts
+double, so a fertilized melon needs three waterings instead of five.
+
+No strategy in this library issued a `FERTILIZE` before run #7, which is why
+every strawberry and tomato plan here had been measured at exactly half its
+ceiling. See `docs/LADDER_FIELD.md`.
 
 ---
 

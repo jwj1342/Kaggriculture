@@ -1,5 +1,19 @@
 # What each atom is worth
 
+> **Superseded — read `docs/LADDER_FIELD.md` first.** Every number on this page
+> comes from runs #1 and #2, which ran on an engine with two defects that hurt
+> crop plans far more than herd plans: livestock was bought against an empty
+> shed and starved, and the feed reserve was computed differently by the buyer
+> and the seller, so wheat bought for the herd was sold straight back. Fixing
+> them moved `berryherd` from **8% to 100%** against `barnyard` on the same 12
+> seeds. The library also could not issue `FERTILIZE`, which doubles every
+> `ongoing` crop, so all strawberry and tomato figures here are half-ceiling.
+>
+> The conclusions that survive are the ones about labour (`fib(n)` is brutal)
+> and about non-transitivity. **The produce ordering does not survive** — it was
+> substantially a ranking of how badly each plan was hurt by those bugs. Run #7
+> re-measures it.
+
 Measured on the 594-strategy library. Screening run **#1**: every strategy against
 a six-anchor panel, 8 seeds per pairing, both seats — **56,944 episodes**. All
 figures below are win rate against that panel unless stated; median $ is the

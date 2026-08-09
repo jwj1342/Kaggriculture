@@ -85,7 +85,47 @@ per player: final composition, per-product buy/sell totals, hire order counts,
 and money/herd/hand curves at days 5/10/15/20/25/29. Full replays (~27 MB each)
 are deliberately not stored.
 
-Throughput ~9.8 episodes/s on 32 cores.
+Throughput ~9.8 episodes/s on 32 cores, or ~12.3 with `KG_FAST_ENV=1`.
+
+#### Where the time actually goes
+
+An episode is ~3.2 s on one core, and **the strategy under test is only ~13% of
+it**. Profiled: 42% is `deepcopy` of the whole game state (twice per step, once
+per agent), ~12% is `jsonschema.validate` on every action, and the rest is
+`structify`. It is the same thing that makes a stored replay 19 MB — the
+framework re-materialises the entire board constantly.
+
+`KG_FAST_ENV=1` drops the schema validation, which is the only part that is not
+load-bearing: illegal actions are silent no-ops by design, so the interpreter
+already ignores anything malformed. Measured over three seeds: **3.13 s → 2.61 s,
+17% faster, byte-identical results.** The deepcopy is left alone — agents must
+not share mutable state.
+
+#### Sharding across a job array
+
+```bash
+sbatch --array=0-47 --cpus-per-task=32 --mem=40G --time=00:30:00 \
+    slurm/tournament_array.sh panel --lib agents/factorial \
+    --panel <anchors> --seeds 12 --label factorial-screen-960
+python tools/tournament.py ingest --shards data/shards/factorial-screen-960
+```
+
+Each task runs `jobs[k::N]` — a **stride**, not a block, so no task collects all
+the slow matchups — and writes one append-only JSONL file, renamed into place
+only once complete. `ingest` is the single process that touches SQLite; it
+deduplicates on `(left, right, seed)` so a requeued array task is harmless, and
+warns loudly if the episode count is short.
+
+**Array tasks must never open the database.** Forty-eight of them registering the
+same manifest concurrently corrupted `data/arena.sqlite` on 2026-08-09 (recovered
+in full; see `docs/RUNS.md`). `--shard` with `--from-run` is now a hard error for
+that reason.
+
+Scheduling, on this cluster: **short tasks start; long ones queue.** The same
+work at `--time=03:00:00` and 64 cores per task sat behind a 78-minute priority
+wait; at `--time=00:30:00` and 32 cores it started immediately across sixteen
+nodes. 48 tasks × 32 cores = 1,536 cores turns a 47-minute tournament into
+about 2 minutes.
 
 ### `tools/trace.py`
 Day-by-day table for one episode: money, hands, land, tile composition, shed,
@@ -119,6 +159,31 @@ needed when a result is not resolved.
 python tools/eval.py h2h agents/v2.py agents/barnyard.py --seeds 96 -j 32
 python tools/eval.py pool agents/v2.py agents/barnyard.py --vs starter --seeds 48
 ```
+
+### `tools/ladder.py`
+Pulls the episodes we played **on the ladder**, against real opponents, and keeps
+only the digest. This is the only measurement in the project whose opponents were
+not written by us; `docs/LADDER_FIELD.md` is what it found.
+
+```bash
+python tools/ladder.py pull                    # all submissions
+python tools/ladder.py pull --submission 55358912 --limit 40
+python tools/ladder.py stats                   # what the real field builds
+```
+
+Each replay is **19 MB** and all of it is `steps`: the complete 10×10 board is
+re-serialised for both players in every one of the 720 steps, 5.7 MB of tiles
+alone, while the actions — the only part carrying information — come to 0.3 MB.
+So every replay is downloaded, reduced to ~1.4 KB, written to `ladder_episodes`
+in `data/arena.sqlite`, and deleted in a `finally` block. Measured over 94
+episodes: **1.9 GB down to 125 KB**, a factor of 14,530.
+
+Which seat was ours is *determined, not guessed*: `kaggle competitions logs <ep>
+0` returns 403 for the opponent's agent, so one extra call per episode settles
+it. Guessing would mirror every opponent statistic in the dataset.
+
+Known limit: the `episodes` listing is truncated at roughly 37 rows per
+submission, so a pull reaches the most recent episodes, not the full history.
 
 ### `tools/arena.py`, `tools/sweep.py`, `tools/league.py`
 Earlier single-purpose harnesses, superseded by `tournament.py` and `eval.py` but

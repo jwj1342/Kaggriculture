@@ -20,7 +20,11 @@ import os
 import sqlite3
 import sys
 
-DB_PATH = "data/arena.sqlite"
+# `KG_DB` redirects every writer in the project at once. It exists so a test can
+# be run against a scratch database without editing anything: a test that meant
+# to write elsewhere and wrote here instead is what duplicated runs #1 and #2
+# into 170,128 episodes (docs/RUNS.md, data integrity incidents).
+DB_PATH = os.environ.get("KG_DB") or "data/arena.sqlite"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;

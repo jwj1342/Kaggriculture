@@ -83,7 +83,7 @@ land - labour - produce - market - intel - muck
 estate-crew-mixedfarm-metered-blind-muck
 ```
 
-9,216 strategies are expressible; 594 are materialised and have been played.
+9,216 strategies are expressible; 637 are materialised and have been played.
 There are **no version numbers anywhere in this repo**.
 
 Everything is measured locally before it goes near the ladder. `tools/tournament.py`
@@ -112,7 +112,9 @@ Four layers. Each one only depends on the layer above it, and everything below
                           │
                           │  registry.py gen --plan all
                           ▼
-  STRATEGIES      agents/lib/*.py            594 standalone, submittable agents
+  STRATEGIES      agents/lib/*.py            637 standalone, submittable agents
+                  agents/spar/*.py           opponents reconstructed from real
+                                             ladder replays -- keep in every field
                   agents/lib/manifest.json   name, atoms, source hash
                           │
                           │  sbatch slurm/tournament.sh
@@ -147,7 +149,8 @@ survive abuse), `tools/eval.py` (is A better than B, with an interval).
 ```
 agents/
   _engine.py       the single execution path; its CONFIG block is generated
-  lib/             594 generated strategies + manifest.json  (git-ignored)
+  lib/             637 generated strategies + manifest.json  (git-ignored)
+  spar/            sparring field rebuilt from ladder replays  (git-ignored)
   barnyard.py      hand-tuned original; the agent on the ladder
   legacy/          superseded ad-hoc agents, kept because docs cite them
 tools/
@@ -175,7 +178,7 @@ site/              generated leaderboard page
 logs/              Slurm output and pre-database league JSON
 ```
 
-**Generated, never hand-edited:** `agents/lib/`, `docs/LEADERBOARD.md`,
+**Generated, never hand-edited:** `agents/lib/`, `agents/spar/`, `docs/LEADERBOARD.md`,
 `site/leaderboard.html`, `notebooks/baseline.ipynb`. **Git-ignored:** those plus
 `venv/`, `.cache/`, `.kaggle/`, `data/`. A fresh checkout is ~6 MB; see
 `docs/ONBOARDING.md` §1 for restoring the library and the database.
@@ -190,7 +193,8 @@ or only in a chat log.
 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | **start here** — setup, first tournament, the five things that will bite you |
 | [`docs/GAME_ECONOMICS.md`](docs/GAME_ECONOMICS.md) | what the engine actually rewards; the three places the official page is wrong |
 | [`docs/EVALUATION.md`](docs/EVALUATION.md) | **read before trusting any number you produce** |
-| [`docs/ATOM_EFFECTS.md`](docs/ATOM_EFFECTS.md) | what each atom measured to be worth, over 85,064 episodes |
+| [`docs/LADDER_FIELD.md`](docs/LADDER_FIELD.md) | **what real opponents do, and why local rank did not predict it** |
+| [`docs/ATOM_EFFECTS.md`](docs/ATOM_EFFECTS.md) | what each atom measured to be worth — superseded in part, see the notice at the top |
 | [`docs/STRATEGY_LIBRARY.md`](docs/STRATEGY_LIBRARY.md) | the atom taxonomy and the boundary cases |
 | [`docs/ADVERSARIAL.md`](docs/ADVERSARIAL.md) | can you win by suppressing the opponent? (partly, and not how you'd think) |
 | [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md) | backlog, with a measured-and-rejected list |
@@ -204,7 +208,18 @@ or only in a chat log.
 
 ## What we know so far
 
-Short version; the evidence is in `docs/ATOM_EFFECTS.md`.
+Short version; the evidence is in `docs/ATOM_EFFECTS.md` and, for anything about
+the real field, `docs/LADDER_FIELD.md`.
+
+**Local rank did not predict ladder rank, and we know why.** `enhanced` beats
+`barnyard` 384 out of 384 locally and is level with it against real opponents
+(49% and 47% over 94 pulled ladder episodes). Three causes, all now fixed:
+melon is the *smallest* market in the game — no shop buys it, so its whole
+season is worth $7,500 against strawberry's $90,000; the library could not issue
+`FERTILIZE`, which doubles every `ongoing` crop; and the engine bought livestock
+it could not feed, which penalised crop plans hardest because crops and animals
+compete for the same opening cash. `agents/spar/` now puts real opponent shapes
+in the field.
 
 **The engine was rebalanced on 2026-08-06/07** (`kaggle-environments` 1.32.6):
 town-centre demand halved and shops now draw **with replacement**. Every public

@@ -64,21 +64,55 @@ regenerate. Keep the axes orthogonal.
   here at least once.
 - The strategy space is **non-transitive**. Any ranking is against its field.
 - Always check the mirror match; scores roughly halve against a real opponent.
+- **A ranking against a field we wrote is not evidence about the ladder.**
+  `enhanced` beat `barnyard` 384/384 locally and is level with it on the ladder
+  (49% vs 47%). Include `agents/spar/` and cross-check with
+  `python tools/ladder.py stats`.
+- **Watch rank against money.** When a strategy ranks below one it out-earns,
+  the ranking has stopped tracking what the competition scores — that was the
+  first visible symptom of the engine bugs run #7 fixed.
+- **Submit at most once per half-day.** Only the latest two submissions are
+  active and the ladder plays ~10 episodes/hour, so a burst of submissions
+  leaves every agent with 4–12 games: too few to rank, and too few to diagnose.
+  `docs/RUNS.md` has the numbers.
+- **Engine changes get an A/B, not an argument.** Four of seven derived from the
+  rules correctly and still lost. `docs/ENGINE_CHANGES.md` records all seven with
+  arm sizes; three of the losers assumed the farm was alone on the board.
 
 ## Cluster
 
 Never run heavy work on the login node. One episode (~2.7 s) is fine; tournaments
-go through `sbatch slurm/tournament.sh`. Throughput ~9.8 episodes/s on 32 cores.
-CPU-only — **never request a GPU**.
+go through Slurm. CPU-only — **never request a GPU**; the workload is
+single-threaded Python and 42% of it is `deepcopy` inside the framework.
+
+Shard anything big: `sbatch --array=0-47 --cpus-per-task=32 --mem=40G
+--time=00:30:00 slurm/tournament_array.sh ...` then
+`python tools/tournament.py ingest --shards data/shards/<label>`. 1,536 cores
+turns a 47-minute tournament into two minutes. Set `KG_FAST_ENV=1` — it skips
+jsonschema validation for a verified-identical 17%.
+
+**Short tasks start; long ones queue.** The same work at `--time=03:00:00` with
+64 cores a task waited 78 minutes on priority; at `--time=00:30:00` with 32 it
+started immediately across sixteen nodes.
+
+**Array tasks must never open `data/arena.sqlite`.** Forty-eight of them
+registering a manifest concurrently corrupted it (recovered in full — see
+`docs/RUNS.md`). Shards write JSONL; one `ingest` process does all the writing.
+`KG_DB` redirects every writer at once, for tests.
 
 ## Structure
 
-`tools/registry.py` (atoms) + `agents/_engine.py` -> `agents/lib/` (594 agents)
+`tools/registry.py` (atoms) + `agents/_engine.py` -> `agents/lib/` (generated)
 -> `tools/tournament.py` -> `data/arena.sqlite` -> `tools/leaderboard.py` ->
 `docs/LEADERBOARD.md` + `site/leaderboard.html`. README "How it fits together"
 has the diagram.
 
-Generated, never hand-edit: `agents/lib/`, `docs/LEADERBOARD.md`,
+`agents/spar/` is the same generator on the `ladder` plan: opponents
+reconstructed from real ladder replays. Keep it in every field — before it
+existed, every measurement here was against strategies we wrote ourselves, and
+`docs/LADDER_FIELD.md` is what that cost.
+
+Generated, never hand-edit: `agents/lib/`, `agents/spar/`, `docs/LEADERBOARD.md`,
 `site/leaderboard.html`, `notebooks/baseline.ipynb`. All of these plus `venv/`,
 `.cache/`, `.kaggle/` and `data/` are git-ignored.
 

@@ -12,7 +12,8 @@ A strategy is an assignment of one option to each **atom** (orthogonal axis):
     produce    the crop plan and herd targets
     market     how sale sizing responds to price
     intel      whether and how the opponent's board changes our behaviour
-    muck       whether the free daily fertilizer is collected
+    muck       what happens to the free daily fertilizer: collected, sold, or
+               spent on the crops
 
 Module-level state persists for a whole episode (the framework execs the file
 once and calls the function 720 times), which the `adaptive` market atom relies
@@ -35,6 +36,7 @@ CONFIG = {
     "intel": "blind",
     "muck": True,
     "harvest_product": True,
+    "fertilise": False,
 }
 # === END CONFIG ===
 
@@ -85,6 +87,12 @@ for _c, _d in CROPS.items():
 # Per-seat episode memory. Reset when we see step 0 again.
 _MEM = [None, None]
 
+# How many units it takes to drive each product from base to the $1 floor.
+# Computed once, because the whole `paced` market atom turns on it: the depths
+# differ by sixty times across the nine products and the right selling rate
+# differs with them.
+_TO_FLOOR = {}
+
 
 def _shape(f, x):
     x = max(0.0, x)
@@ -109,6 +117,14 @@ def market_price(item, inv):
         return max(1, int(round(base + amp * _shape(p["below_func"], i0 - inv))))
     amp = p["above_target"] * base / _shape(p["above_func"], t)
     return max(1, int(round(base - amp * _shape(p["above_func"], inv - i0))))
+
+
+for _p in PRODUCTS:
+    _i0 = MARKET_PARAMS[_p]["I0"]
+    _n = 0
+    while _n < 4000 and market_price(_p, _i0 + _n) > 1:
+        _n += 1
+    _TO_FLOOR[_p] = _n
 
 
 def _fib(n):
@@ -220,7 +236,8 @@ def _plan(obs):
     seat = 1 if player == 1 else 0
     mem = _MEM[seat]
     if mem is None or step <= mem.get("last_step", -1):
-        mem = {"last_step": step, "prev_inv": None, "pending": {}, "opp_sold": {p: 0 for p in PRODUCTS}}
+        mem = {"last_step": step, "prev_inv": None, "pending": {},
+               "opp_sold": {p: 0 for p in PRODUCTS}}
         _MEM[seat] = mem
     if mem["prev_inv"] is not None:
         drain = _town_drain(shops, step - 1)
@@ -238,6 +255,15 @@ def _plan(obs):
     opp_ready, opp_imminent, opp_capacity = _opponent_board(opp, day)
     behind = float(opp.get("money", 0) or 0) > money * 1.15
 
+    # Units the town removes over a whole day at the current shop draw. Summed
+    # rather than assumed: shops are sampled **with replacement**, so three Yarn
+    # Stores and no Bakery is a real draw. Measured across 101 real ladder
+    # episodes, wool demand spans 1 to 49 a day, milk 1 to 37, carrot 1 to 55.
+    day_drain = {p: 0 for p in PRODUCTS}
+    for _s in range(24):
+        for _p, _v in _town_drain(shops, _s).items():
+            day_drain[_p] += _v
+
     # ---- resolve atoms into this turn's behaviour --------------------------
     market_mode = cfg["market"]
     intel = cfg["intel"]
@@ -254,6 +280,38 @@ def _plan(obs):
         crop_plan.sort(key=lambda c: opp_capacity.get(c[0], 0))
         animal_plan = {a: v for a, v in sorted(
             animal_plan.items(), key=lambda kv: opp_capacity.get(PRODUCT_OF[kv[0]], 0))}
+
+    if cfg.get("shopwise") and animal_plan:
+        # A fixed herd is a bet that the shop draw comes out average. It does
+        # not: wool demand ranges 49x across real episodes and milk 37x, so the
+        # same four sheep are worth $294,000 of season capacity in one town and
+        # almost nothing in the next. Re-weight the herd by what this town
+        # actually buys, keeping the head count -- and so the tile budget --
+        # exactly as planned. Shops unlock through the season and animals are
+        # bought until day 23, so the split keeps adjusting as the town reveals
+        # itself.
+        val = {}
+        for a in animal_plan:
+            pr = PRODUCT_OF[a]
+            val[a] = max(0.5, day_drain.get(pr, 0)) * MARKET_PARAMS[pr]["base"]
+        total_head = sum(animal_plan.values())
+        vsum = sum(val.values())
+        if vsum > 0 and total_head:
+            share = {a: total_head * val[a] / vsum for a in animal_plan}
+            plan2 = {a: max(1, int(share[a])) for a in animal_plan}
+            # Hand the rounding remainder to the best-paying species first.
+            order = sorted(animal_plan, key=lambda a: -(share[a] - int(share[a])))
+            i = 0
+            while sum(plan2.values()) < total_head and order:
+                plan2[order[i % len(order)]] += 1
+                i += 1
+            while sum(plan2.values()) > total_head:
+                worst = min((a for a in plan2 if plan2[a] > 1), key=lambda a: val[a],
+                            default=None)
+                if worst is None:
+                    break
+                plan2[worst] -= 1
+            animal_plan = plan2
 
     target_animals = sum(animal_plan.values())
 
@@ -296,6 +354,28 @@ def _plan(obs):
     waiting = {a: carried[a] + in_shed[a] for a in ANIMALS}
     n_waiting = sum(waiting.values())
 
+    # The feed reserve, computed once. Three call sites need it: the buyer, to
+    # decide whether to top up; the gate on livestock, to decide whether the
+    # next mouth is already covered; and the seller, to decide what is surplus.
+    # Computing it separately in each place is what makes wheat bought for the
+    # herd get sold straight back -- 944 units churned through the market in a
+    # single measured episode, with the herd stuck at six of a planned fourteen.
+    _committed = n_animals + n_waiting
+    if day <= 23 and _committed < target_animals:
+        _committed = min(target_animals, _committed + 2)
+    feed_reserve = min(28, _committed * 2)
+    carried_wheat_all = sum(iv.get("WHEAT", 0) for iv in invs[:n_units])
+
+    def feed_solvent():
+        """Is the next mouth's feed already in hand -- shed or carried?
+
+        Counting only the shed deadlocks the herd: hands hold eight wheat at a
+        time, so a farm actively feeding can have most of its stock in transit
+        and look insolvent while it is not.
+        """
+        need = min(28, (n_animals + 1) * 3)
+        return shed.get("WHEAT", 0) + carried_wheat_all >= need
+
     def shed_dist(x, y):
         return min(_dist(x, y, sx, sy) for sx, sy in st)
 
@@ -316,8 +396,22 @@ def _plan(obs):
             cap = ANIMALS[t["animal"]]["max_held"]
             if cfg["harvest_product"] and held >= cap:
                 tasks.append((1, x, y, ["HARVEST"], None))
-            if cfg["muck"] and t.get("fertilizer_available"):
+            # Collecting fertilizer costs an action, and nothing consumes
+            # fertilizer, so its price only falls -- ours closes the season at
+            # $8 against a $100 base. Below $30 the action is worth more spent
+            # elsewhere. Measured across four shapes, every one improved:
+            # 83.3% -> 85.0% over 3,072 episodes an arm. When the fertilizer is
+            # being spent on the crops rather than sold, price is irrelevant and
+            # collection always happens.
+            if (cfg["muck"] and t.get("fertilizer_available")
+                    and (cfg.get("fertilise")
+                         or market_price("FERTILIZER",
+                                         m_inv.get("FERTILIZER", 10000)) >= 30)):
                 tasks.append((4, x, y, ["COLLECT_FERTILIZER"], None))
+            # MEASURED AND REJECTED: promoting CARE from 7 to 3. Care roughly
+            # triples steady-state animal output, so it looks underweighted --
+            # but it is not what the actions are short of. 72.2% against 83.3%
+            # over the same 3,072 episodes an arm, worse on all four shapes.
             if not t.get("cared_today"):
                 tasks.append((7, x, y, ["CARE"], None))
             if cfg["harvest_product"] and 0 < held >= cap - 2:
@@ -330,7 +424,17 @@ def _plan(obs):
             yu = t.get("yield_units", 0)
             thirsty = t.get("consecutive_unwatered", 0) >= 1
             if cd["ongoing"]:
-                if not watered:
+                # An ongoing crop's production tick does **not** depend on being
+                # watered that day. The end-of-day rule adds its unit whatever
+                # happened; watering only stops `consecutive_unwatered` reaching
+                # 2, which turns the tile into a weed, and (when fertilising)
+                # doubles the tick, because the bonus is gated on `was_watered`.
+                #
+                # So water on alternate days: wait until the tile is actually
+                # thirsty. On 28 strawberry tiles that halves ~420 watering
+                # actions an episode, and actions are the binding constraint --
+                # only about 15% of them do any work at all.
+                if not watered and (thirsty or cfg.get("fertilise")):
                     tasks.append((2 if thirsty else 8, x, y, ["WATER"], None))
                 if age >= cd["first_yield_day"] and yu >= 2:
                     tasks.append((3, x, y, ["HARVEST"], None))
@@ -344,6 +448,53 @@ def _plan(obs):
                         tasks.append((2, x, y, ["WATER"], None))
                     elif w0 <= age <= cd["max_yield_day"] and yu < tgt:
                         tasks.append((3 if t["crop"] == "MELON" else 8, x, y, ["WATER"], None))
+
+        # Fertilizer spent on the crops rather than sold.
+        #
+        # For an `ongoing` crop this is the single largest multiplier in the
+        # game and nothing in the library used it. Production ticks every
+        # `interval` days from `first_yield_day`, and the end-of-day rule adds
+        # `2 if (watered and fertilized) else 1` units -- so a tile that is
+        # fertilized on its production days yields 8 units over its life
+        # instead of 4. One FERTILIZE sets `fertilized_until_day = day + 2`,
+        # covering three days, which is more than one strawberry tick.
+        #
+        # For a non-ongoing crop the cap is the cap, so fertilizer adds no
+        # units. It still pays: each WATER inside the ripening window counts
+        # double, so a fertilized melon needs three waterings instead of five.
+        # Only ever fertilize a tile that is **already watered today**, and only
+        # after every watering task has been placed.
+        #
+        # The end-of-day rule is `fertilized = was_watered and
+        # fertilized_until_day >= current_day`: fertilizer on a tile that never
+        # gets watered does nothing at all. The first version of this ranked
+        # FERTILIZE at priority 3 and watering at 8, so it competed with the
+        # very action it depends on -- measured in run #7, `compost` lost to
+        # `muck` in 15 pairings out of 15 while yielding only 2.7 strawberry per
+        # planting against a fertilized ceiling of 8.
+        fert_targets = 0
+        if cfg.get("fertilise"):
+            for (x, y, t) in plants:
+                cd = CROPS[t["crop"]]
+                age = day - t["planted_day"]
+                if not t.get("watered_today"):
+                    continue
+                if t.get("fertilized_until_day", -1) >= day + 1:
+                    continue
+                if cd["ongoing"]:
+                    if age >= cd["first_yield_day"] - 1:
+                        tasks.append((9, x, y, ["FERTILIZE"], "FERTILIZER"))
+                        fert_targets += 1
+                else:
+                    w0 = (cd["max_yield_day"] + 1) // 2
+                    if w0 - 1 <= age <= cd["max_yield_day"]:
+                        tasks.append((10, x, y, ["FERTILIZE"], "FERTILIZER"))
+                        fert_targets += 1
+            carried_f = sum(iv.get("FERTILIZER", 0) for iv in invs[:n_units])
+            gap_f = fert_targets - carried_f
+            if gap_f > 0 and shed.get("FERTILIZER", 0) > 0:
+                for _ in range(min(n_units, -(-gap_f // 6))):
+                    tasks.append((4, None, None, ["PICKUP_FERT"], None))
 
         carried_wheat = sum(iv.get("WHEAT", 0) for iv in invs[:n_units])
         gap = unfed - carried_wheat
@@ -403,7 +554,32 @@ def _plan(obs):
     busy = [False] * n_units
     claimed = set()
     wheat_left = shed.get("WHEAT", 0)
+    fert_left = shed.get("FERTILIZER", 0)
     shed_animals = dict(in_shed)
+
+    # MEASURED AND REJECTED: sticky targets, and idle units pre-positioning.
+    #
+    # 44% of all actions in an episode are movement and 17% are PASS, so only
+    # about 15% do any work, and the obvious reading is that units oscillate --
+    # "nearest free unit" is recomputed every turn, so a unit three steps into a
+    # five-step walk can be pulled onto a nearer task and those steps wasted.
+    #
+    # Both fixes were tried and both are worse. Over 2,048 episodes per arm
+    # against a fixed set of four opponents, on four different production
+    # shapes, every cell moved the same way:
+    #
+    #     as-is                 63.1% win, $53,825 median
+    #     + sticky targets      44.4% win, $48,700
+    #     + sticky + reposition  45.0% win, $47,731
+    #
+    # The greedy recomputation is not thrashing, it is *adapting*: which unit is
+    # best for a task changes as the board changes, and holding a unit to a
+    # target it chose several turns ago sends it to work that has already been
+    # done or stopped mattering. Pre-positioning idle units is worse still --
+    # they walk toward plants and are then reassigned from there.
+    #
+    # The walking is real but it is the cost of a 50-tile board with 12 units,
+    # not a scheduling defect. Do not "fix" it again without an A/B this size.
 
     for (prio, tx, ty, act, need) in tasks:
         op = act[0]
@@ -413,6 +589,8 @@ def _plan(obs):
                 if busy[k]:
                     continue
                 if op == "PICKUP_WHEAT" and invs[idx].get("WHEAT", 0) >= 4:
+                    continue
+                if op == "PICKUP_FERT" and invs[idx].get("FERTILIZER", 0) >= 3:
                     continue
                 if op == "PICKUP_ANIMAL" and any(invs[idx].get(a, 0) for a in ANIMALS):
                     continue
@@ -430,6 +608,12 @@ def _plan(obs):
                         continue
                     wheat_left -= take
                     actions[best] = ["PICKUP", "WHEAT", take]
+                elif op == "PICKUP_FERT":
+                    take = min(6, fert_left)
+                    if take <= 0:
+                        continue
+                    fert_left -= take
+                    actions[best] = ["PICKUP", "FERTILIZER", take]
                 else:
                     open_kinds = {e[2] for e in empty_structs}
                     pick = next((a for a in ("COW", "SHEEP", "GOOSE")
@@ -467,7 +651,13 @@ def _plan(obs):
         if busy[k]:
             continue
         inv = invs[idx]
-        produce = sum(v for it, v in inv.items() if it in PRODUCTS and it != "WHEAT")
+        # A small carried stock of fertilizer is field stock, not produce -- it
+        # must not trigger a trip to the shed, or it gets dropped and sold.
+        keep_f = (inv.get("FERTILIZER", 0)
+                  if cfg.get("fertilise") and not endgame
+                  and inv.get("FERTILIZER", 0) <= 3 else 0)
+        produce = sum(v for it, v in inv.items()
+                      if it in PRODUCTS and it != "WHEAT") - keep_f
         if (ux, uy) in st_set:
             if produce > 0 and shed_total < SHED_CAPACITY:
                 actions[k] = ["DROP"]
@@ -515,6 +705,26 @@ def _plan(obs):
                 orders.append(["BUY_LAND"])
                 spend += price
 
+        # --- feed first, then the mouth -------------------------------------
+        # An animal eats one wheat a day, returns nothing for four to eight
+        # days, and escapes after two unfed ones. Buying it against an empty
+        # shed loses it: being able to afford the wheat is not the same as
+        # having it. This is the defect the enhanced baseline was built to fix
+        # -- three to five animals lost per episode, measured -- and it was
+        # still in the library engine, so every strategy here has been quietly
+        # starving its herd whenever the opening was tight.
+        need_w = feed_reserve
+        if n_animals == 0 and day <= 23 and target_animals:
+            need_w = max(need_w, 6)
+        if (len(orders) < MAX_ORDERS and need_w
+                and shed.get("WHEAT", 0) < need_w
+                and shed_total < SHED_CAPACITY - 10):
+            wpx = market_price("WHEAT", m_inv.get("WHEAT", 10000) - 1)
+            k = min(10, need_w - shed.get("WHEAT", 0))
+            if afford(wpx * k + 150):
+                orders.append(["BUY_PRODUCT", "WHEAT", k])
+                spend += wpx * k
+
         housing = len(empty_structs) + max(0, target_animals - n_animals - len(empty_structs))
         if (len(orders) < MAX_ORDERS and day <= 23 and n_waiting < 2
                 and housing > n_waiting and shed_total < SHED_CAPACITY - 8):
@@ -523,7 +733,7 @@ def _plan(obs):
                            if owned_of[a] < animal_plan.get(a, 0)), None)
             if want_a:
                 c = ANIMALS[want_a]["cost"]
-                if afford(c + (100 if day < 12 else 400)):
+                if feed_solvent() and afford(c + (100 if day < 12 else 400)):
                     orders.append(["BUY_ANIMAL", want_a, 1])
                     spend += c
 
@@ -535,27 +745,44 @@ def _plan(obs):
                 continue
             cost1 = CROPS[c]["seed"]
             k = min(4, tgt - have, crop_room)
-            if k > 0 and afford(cost1 * k + 100):
+            # Seeds must not eat the herd. A flat $100 floor is fine for a $10
+            # wheat seed and ruinous for a $100 strawberry seed: the ladder's
+            # strongest shape, reconstructed, spent $4,000 on 44 seeds in the
+            # first two days and then sat on $72 with three hands and no animals
+            # until day 10, while the real opponent held ~$1,800 through the
+            # same window and had eight animals by day 10. Reserve the next few
+            # animals, and their first feed, before buying anything to plant.
+            pending_herd = max(0, target_animals - n_animals - n_waiting)
+            floor_cash = 100 + min(4, pending_herd) * 420
+            if k > 0 and afford(cost1 * k + floor_cash):
                 orders.append(["BUY_SEED", c, k])
                 spend += cost1 * k
                 crop_room -= k
 
-        need_w = min(28, n_animals * 2)
-        if (len(orders) < MAX_ORDERS and n_animals
-                and shed.get("WHEAT", 0) < need_w and shed_total < SHED_CAPACITY - 10):
-            wpx = market_price("WHEAT", m_inv.get("WHEAT", 10000) - 1)
-            k = min(10, need_w - shed.get("WHEAT", 0))
-            if afford(wpx * k + 150):
-                orders.append(["BUY_PRODUCT", "WHEAT", k])
-                spend += wpx * k
+    # Fertilizer held back for the field. Sized off the ongoing tiles, which are
+    # the only ones it multiplies: each needs roughly one application every
+    # three days, and the shed is a day behind the field.
+    # Nothing consumes fertilizer, so its price only falls and holding a large
+    # stock is a pure loss -- run #7 measured `muck` (dump it all) beating
+    # `compost` in every one of fifteen pairings, partly because dumping first
+    # takes the whole pool and leaves the opponent selling at $8. Keep only what
+    # the standing ongoing tiles can actually absorb in the next couple of days.
+    fert_reserve = 0
+    if cfg.get("fertilise") and not endgame:
+        ongoing_tiles = sum(crop_counts.get(c, 0) for c in CROPS if CROPS[c]["ongoing"])
+        fert_reserve = min(12, ongoing_tiles)
 
     sellable = []
     for item in PRODUCTS:
         held = shed.get(item, 0)
         if held <= 0:
             continue
-        if item == "WHEAT" and not endgame and n_animals:
-            held = max(0, held - min(28, n_animals * 2))
+        if item == "WHEAT" and not endgame and feed_reserve:
+            held = max(0, held - feed_reserve)
+            if held <= 0:
+                continue
+        if item == "FERTILIZER" and fert_reserve:
+            held = max(0, held - fert_reserve)
             if held <= 0:
                 continue
         inv0 = m_inv.get(item, 10000)
@@ -572,6 +799,33 @@ def _plan(obs):
             qty = min(held, 40)
         elif market_mode == "vault":
             qty = min(held, 8) if pressure else 0
+        elif market_mode == "paced":
+            # Depth and refill differ by sixty times across the nine products,
+            # and the right selling rate differs with them.
+            #
+            #   strawberry  62 units to the floor, town takes 25 a day
+            #   wool        59                              13
+            #   milk        76                              19
+            #   melon      158                               1
+            #   wheat     4000                              31
+            #
+            # For the first three the town refills a quarter to a half of the
+            # entire depth every day, so selling at about the drain rate holds
+            # the price near base all season while one dump crashes it and
+            # forfeits every later refill. Melon is the opposite -- shallow and
+            # never refilled -- so it is a pure race and holding is a loss. The
+            # rest are deep enough that sizing does not matter.
+            depth = _TO_FLOOR.get(item, 4000)
+            refill = day_drain.get(item, 0)
+            if refill * 6 >= depth:
+                qty = min(held, max(1, int(refill / 6)))
+                base = MARKET_PARAMS[item]["base"]
+                while qty > 1 and market_price(item, inv0 + qty - 1) < base * 0.80:
+                    qty -= 1
+            else:
+                qty = min(held, 40)
+            if pressure:
+                qty = max(qty, min(held, 8))
         else:
             base = MARKET_PARAMS[item]["base"]
             frac = 0.0 if item == "FERTILIZER" else 0.55

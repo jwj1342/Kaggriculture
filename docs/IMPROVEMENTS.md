@@ -13,9 +13,57 @@ configurations, worst turn 145 ms against a 1,000 ms budget.
 
 ---
 
+## Tier 0 — found on the ladder, not yet in the submitted agent
+
+These come from 94 real episodes (`docs/LADDER_FIELD.md`). They are ahead of
+everything below because they are the difference between 49% and the field, and
+because they are already implemented in the *library* engine — the submitted
+`agents/enhanced/` still has none of them.
+
+### 0a. Spend the fertilizer on the crops instead of selling it
+
+**Evidence.** Each production tick of an `ongoing` crop adds `2 if (watered and
+fertilized) else 1`, so a fertilized strawberry yields **8 units per planting
+instead of 4**. Nothing consumes fertilizer, so selling it is a race to a floor:
+ours closes the season at **$8 against a $100 base** after we dump 330 units.
+The strongest ladder opponent bought 42 strawberry seeds and sold 320 units —
+7.6 per planting, against our library's 3.9.
+
+**What to do.** Port the `compost` behaviour from `agents/_engine.py` into
+`agents/enhanced/farm.py` and `market.py`: a `FERTILIZE` task on ongoing crops
+whose cover has lapsed, a `PICKUP` of fertilizer from the shed, and a sale
+reserve sized off the standing ongoing tiles.
+
+### 0b. Stop building the plan around melon
+
+**Evidence.** No shop buys melon; the town centre takes one a day. Its entire
+season is worth **$7,500** sustainable plus a 158-unit one-off, against
+strawberry's $90,000 and milk's $91,200. Measured on the ladder, both players
+together sell a median of 184 melon into a pool of 188 — it is drained to the
+floor every episode, and we take 45%. Melon closes at **8% of base**;
+strawberry closes at **225%**.
+
+**What to do.** Re-weight the crop plan toward strawberry and keep melon as the
+early cash bridge it is good at. Run #7 measures which mix.
+
+### 0c. Back-port the two engine fixes
+
+`agents/_engine.py` now buys feed before livestock, gates purchases on feed
+actually being in hand, and computes the feed reserve once for buyer, gate and
+seller. `agents/enhanced/` already had the first and third; it does **not** have
+the seed-budget floor, which is what bankrupted the reconstruction's opening.
+
+---
+
 ## Tier 1 — large, and we have evidence
 
 ### 1. React to which shops actually unlocked
+
+> Update from the ladder pull: **all eight shop slots unlocked in 35 of 35
+> episodes.** The risk this item hedges against — a season with no buyer for
+> your product — did not occur once. What varies is the *mix* (each individual
+> shop appears in 57–74% of episodes), so the item stands, but "melon is safe
+> because no shop is needed for it" was never a real hedge.
 
 **Evidence.** The 1.32.6 rebalance made shops sample **with replacement**, capped
 at 8 instances. One episode can spawn four Yarn Stores and no Bakery. Since town

@@ -1,0 +1,1010 @@
+[
+ {
+  "name": "smallhold-crew-bigberry-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-bigberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "fd277fbc665d8bf3"
+ },
+ {
+  "name": "smallhold-crew-bigberry-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-bigberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8c5fe7f7e5d5371a"
+ },
+ {
+  "name": "estate-crew-bigberry-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-bigberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "f19136a14fd1327a"
+ },
+ {
+  "name": "estate-crew-bigberry-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-bigberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "817d20cfb1ddcf02"
+ },
+ {
+  "name": "latifundium-crew-bigberry-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-bigberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "b5637288934ef30b"
+ },
+ {
+  "name": "latifundium-crew-bigberry-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-bigberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "ccb61a4815b302b2"
+ },
+ {
+  "name": "smallhold-crew-berryfull-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berryfull-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d5cf8d0124c4d074"
+ },
+ {
+  "name": "smallhold-crew-berryfull-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berryfull-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "311370a11eb8413c"
+ },
+ {
+  "name": "estate-crew-berryfull-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berryfull-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "615d8131be68dffe"
+ },
+ {
+  "name": "estate-crew-berryfull-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berryfull-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "6e76168c071c00ba"
+ },
+ {
+  "name": "latifundium-crew-berryfull-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berryfull-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "fbd2ed3f6712df79"
+ },
+ {
+  "name": "latifundium-crew-berryfull-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berryfull-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "f57ac7b18937d983"
+ },
+ {
+  "name": "smallhold-crew-hugeberry-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-hugeberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "4779489a2074a083"
+ },
+ {
+  "name": "smallhold-crew-hugeberry-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-hugeberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "7ef59549b00408e5"
+ },
+ {
+  "name": "estate-crew-hugeberry-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-hugeberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "67c0a4ac321ffcc5"
+ },
+ {
+  "name": "estate-crew-hugeberry-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-hugeberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "248492bd4df28382"
+ },
+ {
+  "name": "latifundium-crew-hugeberry-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-hugeberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "bdde4153b1c35207"
+ },
+ {
+  "name": "latifundium-crew-hugeberry-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-hugeberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "06929874c212cfe7"
+ },
+ {
+  "name": "smallhold-crew-berryonly-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berryonly-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "841af17c9a864058"
+ },
+ {
+  "name": "smallhold-crew-berryonly-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berryonly-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "5fa41b83eff5f4cc"
+ },
+ {
+  "name": "estate-crew-berryonly-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berryonly-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "e89e5d4407ed6fa9"
+ },
+ {
+  "name": "estate-crew-berryonly-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berryonly-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "107a5e66452ace1f"
+ },
+ {
+  "name": "latifundium-crew-berryonly-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berryonly-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "670dae4c50da32ee"
+ },
+ {
+  "name": "latifundium-crew-berryonly-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berryonly-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "113ac36a98adf7a9"
+ },
+ {
+  "name": "smallhold-crew-berrylean-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrylean-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "4d9a11d01d764a17"
+ },
+ {
+  "name": "smallhold-crew-berrylean-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrylean-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "ffc4847f99b5baeb"
+ },
+ {
+  "name": "estate-crew-berrylean-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrylean-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "0e30d3a397664d94"
+ },
+ {
+  "name": "estate-crew-berrylean-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrylean-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "83c536962acd93e2"
+ },
+ {
+  "name": "latifundium-crew-berrylean-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrylean-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "f7926df7ee1f2140"
+ },
+ {
+  "name": "latifundium-crew-berrylean-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrylean-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "08f7157c531dccb6"
+ },
+ {
+  "name": "smallhold-crew-bigberrywool-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-bigberrywool-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d63e9211f13bca38"
+ },
+ {
+  "name": "smallhold-crew-bigberrywool-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-bigberrywool-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "00de19b4635dc0ec"
+ },
+ {
+  "name": "estate-crew-bigberrywool-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-bigberrywool-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d4fd2dd5fdac7495"
+ },
+ {
+  "name": "estate-crew-bigberrywool-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-bigberrywool-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "0db839c14d2e2450"
+ },
+ {
+  "name": "latifundium-crew-bigberrywool-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-bigberrywool-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "81212e5de3570d2e"
+ },
+ {
+  "name": "latifundium-crew-bigberrywool-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-bigberrywool-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "46ac7b546dedab3f"
+ },
+ {
+  "name": "smallhold-crew-bigberrycow-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-bigberrycow-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "91f988acf66b0436"
+ },
+ {
+  "name": "smallhold-crew-bigberrycow-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-bigberrycow-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "2e004aee4813cb4e"
+ },
+ {
+  "name": "estate-crew-bigberrycow-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-bigberrycow-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d2b92b8dd9909311"
+ },
+ {
+  "name": "estate-crew-bigberrycow-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-bigberrycow-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "f530ec452767e2ce"
+ },
+ {
+  "name": "latifundium-crew-bigberrycow-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-bigberrycow-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d20880c4e08a5c5e"
+ },
+ {
+  "name": "latifundium-crew-bigberrycow-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-bigberrycow-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d05f920d71eb9ac9"
+ },
+ {
+  "name": "smallhold-crew-berrymelon-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrymelon-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8fb41ee2b5fe5d9f"
+ },
+ {
+  "name": "smallhold-crew-berrymelon-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrymelon-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "c41e2aadbf905d4f"
+ },
+ {
+  "name": "estate-crew-berrymelon-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrymelon-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "a4080979f3d82d03"
+ },
+ {
+  "name": "estate-crew-berrymelon-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrymelon-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "18ef3831c1e4ead9"
+ },
+ {
+  "name": "latifundium-crew-berrymelon-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrymelon-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d9e6e368a4f531dc"
+ },
+ {
+  "name": "latifundium-crew-berrymelon-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrymelon-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "959a21d819cee3c7"
+ },
+ {
+  "name": "smallhold-crew-marketgarden-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-marketgarden-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "6db0c4add15bce62"
+ },
+ {
+  "name": "smallhold-crew-marketgarden-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-marketgarden-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "723530c44fcf3ca6"
+ },
+ {
+  "name": "estate-crew-marketgarden-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-marketgarden-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "c6278919e98d43fc"
+ },
+ {
+  "name": "estate-crew-marketgarden-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-marketgarden-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "bc3fbf22343449f1"
+ },
+ {
+  "name": "latifundium-crew-marketgarden-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-marketgarden-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "950446c004a5dc22"
+ },
+ {
+  "name": "latifundium-crew-marketgarden-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-marketgarden-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "db954a9c157f18a8"
+ },
+ {
+  "name": "smallhold-crew-berrysea-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrysea-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "5c77ce926382c349"
+ },
+ {
+  "name": "smallhold-crew-berrysea-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrysea-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "da81dd7883f20a90"
+ },
+ {
+  "name": "estate-crew-berrysea-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrysea-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "0e3e1ceda8e075d8"
+ },
+ {
+  "name": "estate-crew-berrysea-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrysea-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "a6eeaf3a1bdda8ce"
+ },
+ {
+  "name": "latifundium-crew-berrysea-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrysea-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "e98ab2e13d9fa36c"
+ },
+ {
+  "name": "latifundium-crew-berrysea-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrysea-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "7d8be54c4cc0daa0"
+ },
+ {
+  "name": "smallhold-crew-berrymax-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrymax-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8b050d9512ac5076"
+ },
+ {
+  "name": "smallhold-crew-berrymax-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berrymax-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "339f5556ebbb85e4"
+ },
+ {
+  "name": "estate-crew-berrymax-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrymax-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "9e361108c95c77cd"
+ },
+ {
+  "name": "estate-crew-berrymax-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berrymax-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "769ead7b4b92a407"
+ },
+ {
+  "name": "latifundium-crew-berrymax-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrymax-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "26fd3a0f490c9f6e"
+ },
+ {
+  "name": "latifundium-crew-berrymax-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berrymax-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "6451a38b426c7430"
+ },
+ {
+  "name": "smallhold-crew-berryherd2-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berryherd2-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d783cc919d3aaf1f"
+ },
+ {
+  "name": "smallhold-crew-berryherd2-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/smallhold-crew-berryherd2-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "1d28b5547084368d"
+ },
+ {
+  "name": "estate-crew-berryherd2-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berryherd2-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "3549d60a3ab8f490"
+ },
+ {
+  "name": "estate-crew-berryherd2-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/estate-crew-berryherd2-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "479b862dfe894b31"
+ },
+ {
+  "name": "latifundium-crew-berryherd2-flood-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berryherd2-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "04929ccf03a042f9"
+ },
+ {
+  "name": "latifundium-crew-berryherd2-metered-blind-muck",
+  "alias": null,
+  "path": "/scratch/jwj/Kaggriculture/agents/crop_fertgate/latifundium-crew-berryherd2-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d7ceb3de99843581"
+ }
+]

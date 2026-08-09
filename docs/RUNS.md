@@ -22,8 +22,45 @@ sqlite3 data/arena.sqlite "SELECT * FROM runs"
 | **#2** | `confirm-38-representative` | round robin, 20 seeds, both seats | 38 | 28,120 | 410822 | 2026-08-07 23:21 | `homestead-crew-orchardherd-flood-*` ranks 1–4; `barnyard` ranks 14th |
 | **#5** | `enhanced-vs-field` | round robin, 20 seeds, both seats | 36 | 25,200 | 420380 | 2026-08-08 | first cut of the enhanced baseline ranks **8th**; diagnosis below |
 | **#6** | `enhanced-fixed-vs-field` | round robin, 20 seeds, both seats | 32 | ~19,800 | 421206 | 2026-08-08 | after the herd-deadlock and land fixes |
+| **#7** | `ladder-field-spar` | round robin, 24 seeds, both seats | 34 | 26,928 | 430667 | 2026-08-09 | first field containing opponents we did not write; `enhanced` ranks **27th of 34** |
+| **#8** | `factorial-screen-960` | panel, 8 anchors, 12 seeds, both seats | 960 | 184,224 | 431224 (48-task array) | 2026-08-09 | fully balanced produce×land×muck×market; the three reconstructed ladder shapes take the top three `produce` places |
+| **#9** | `factorial-confirm-40` | round robin, 48 seeds, both seats | 40 | 74,880 | 431324 (48-task array) | 2026-08-09 | `enhanced` **39th of 40**, `barnyard` 40th; `compost` confirmed good for strawberry, bad for melon |
+| **#11** | `refine-labour-intel` | panel, 8 anchors, 12 seeds | 640 | 122,856 | 431419 | 2026-08-09 | `crew` beats every labour option by 39+ points; **`intel` is worth nothing** — four options within 1.5 points |
+| **#12** | `crop-ladder` | panel, 8 anchors, 24 seeds | 72 | 27,552 | 431566 | 2026-08-09 | the strawberry ladder peaks at **28 tiles**; 32, 36 and 40 are all worse |
+| **#13** | `crop-confirm` | round robin, 64 seeds | 24 | 35,328 | 431626 | 2026-08-09 | `smallhold-crew-bigberry-flood-blind-muck` 1st at 86.1% |
+| **#14** | `labour-recross` | panel, 8 anchors, 24 seeds | 112 | 42,912 | 431759 | 2026-08-09 | `crew` (11 hands, 6%) still optimal on the fixed engine — 57.2% against `crewrich` 51.6%, `gang` 45.6%, `company` 32.7% |
+| **#15** | `crop-ladder-2` | panel, 8 anchors, 24 seeds | 72 | 27,552 | 431936 | 2026-08-09 | 28 strawberry tiles still the peak **after** watering got cheaper — the trade-off is walked out |
+| **#16** | `melon-recross` | panel, 8 anchors, 32 seeds | 48 | 24,448 | 432094 | 2026-08-09 | more melon does not help locally, even though ladder winners out-sell us on it |
+| **#17** | `berryflood-confirm` | round robin, 64 seeds | 27 | 44,928 | 432464 | 2026-08-09 | `berryflood` (50 strawberry tiles, copied from the 113k ladder opponent) does not reach the top 11 locally |
 
-**85,064 episodes total.** Database is 136 MB.
+Run #10 was a duplicate ingest of #11 and was deleted; `PRAGMA integrity_check`
+is clean and the totals below exclude it.
+
+Five further A/B ablations were analysed straight from their shard JSONL and
+deliberately **not** ingested, because each is one change against one control
+rather than a ranking: sticky assignment, alternate-day watering, CARE priority,
+`paced` selling, and `shopwise`. All five are written up with their arm sizes in
+`docs/ENGINE_CHANGES.md`.
+
+Runs #8 and #9 were the first sharded runs: 48 array tasks × 32 cores = 1,536
+cores, `KG_FAST_ENV=1`. Run #8's 184,224 episodes took about six minutes of wall
+clock against the ~9 hours the same work would have taken on one 32-core job.
+
+**747,072 episodes total** across 14 runs, plus 101 real ladder episodes.
+
+Runs #1–#6 ran on an engine with two defects that hurt crop plans much more than
+herd plans, and on a library that could not issue `FERTILIZE`. **Do not compare
+their numbers with #7's.** `docs/LADDER_FIELD.md` §4 has the controlled A/B and
+what each fix was worth.
+
+## Ladder episodes (real opponents)
+
+| Pulled | Submissions | Episodes | Kept | Headline |
+|---|---|---|---|---|
+| 2026-08-09 | `55332339`, `55358912` | 94 | 125 KB of digests, 1.9 GB of replays discarded | 48% overall; `enhanced` 49%, `barnyard` 47% — a 384/384 local gap is worth two points here |
+
+`ladder_episodes` in `data/arena.sqlite`. Re-query with
+`python tools/ladder.py stats`.
 
 Run #1's roster is the whole `all` plan from `tools/registry.py`. Run #2's roster
 is run #1's top 8, the best carrier of every atom option, all eight boundary
@@ -56,16 +93,46 @@ Grand total including these: **~95,000 episodes**.
 
 | Date | Submission | Agent | Snapshot | Local evidence | Ladder |
 |---|---|---|---|---|---|
-| 2026-08-07 | `55332339` | `barnyard` | `submissions/2026-08-07-barnyard/` | ~67k median vs `starter`; 28/28 stress | validation passed; 600 → 634.7 |
-| 2026-08-08 | `55358912` | `enhanced` (tar.gz, 5 modules) | `submissions/2026-08-08-enhanced/` | 100% vs `barnyard` and 75.8% vs the field leader, both over 384 episodes; 28/28 stress | pending at time of writing |
+| 2026-08-07 | `55332339` | `barnyard` | `submissions/2026-08-07-barnyard/` | ~67k median vs `starter`; 28/28 stress | 621.4; **47% over 59 real episodes** |
+| 2026-08-08 | `55358912` | `enhanced` (tar.gz, 5 modules) | `submissions/2026-08-08-enhanced/` | 100% vs `barnyard` and 75.8% vs the field leader, both over 384 episodes | 623.6; **49% over 35 real episodes**, level with `barnyard` |
+| 2026-08-09 | `55385371` | `marketgarden` | `submissions/2026-08-09-marketgarden/` | 34.9% vs `orchardherd` 16.1% over the balanced 960-cell factorial | 700.1 over 12 episodes |
+| 2026-08-09 | `55385995` | `bigberry` | `submissions/2026-08-09-bigberry/` | 1st of 24, 86.1%, over a 35,328-episode round robin | 647–837 over 10 episodes; **71% win rate (5 of 7 pulled)** |
+| 2026-08-09 | `55386385` | `bigberry` + alternate-day watering | `submissions/2026-08-09-bigberry-altwater/` | 82.2% against 71.1%, 3,072 episodes an arm | 780.4 over 10 episodes |
+| 2026-08-09 | `55386857` | + fertilizer price gate | `submissions/2026-08-09-bigberry-fertgate/` | 85.0% against 83.3%, 3,072 an arm | 711.4 over 4 episodes |
+| 2026-08-09 | `55386…` | + `shopwise` herd | `submissions/2026-08-09-bigberry-shopwise/` | 71.9% against 68.4%, 6,144 an arm | pending |
+
+### Submitting too often destroys the measurement
+
+Only the **latest two** submissions stay active, and the ladder plays roughly ten
+episodes an hour per active agent. Six submissions in one afternoon meant every
+one of them was deactivated after 4–12 games:
+
+| submission | episodes completed before deactivation |
+|---|---|
+| `55385371` | 12 |
+| `55385995` | 10 |
+| `55386385` | 10 |
+| `55386857` | 4 |
+
+Ten games cannot separate 700 from 900 — `55385995` read 837 at five games and
+647 at ten, and neither number meant anything. It also starves
+`tools/ladder.py`: the diagnosis that produced most of today's gain came from 94
+replays, and no agent here collected more than twelve.
+
+**Rule: submit at most once per half-day, and only when the local evidence is a
+completed A/B.** The feedback loop here is measured in hours; the local one is
+measured in minutes, and running the slow loop at the fast loop's cadence throws
+the slow loop's data away.
 
 *(A third row, `55348834 rl_models.zip`, appears on the submissions page with
 status ERROR. It was not produced by this repo.)*
 
-**The local-versus-ladder correlation is unmeasured.** Every local opponent is one
-we wrote, so a systematic bias is possible. Adding a second submission chosen by
-local rank — and seeing whether the ladder agrees — is the cheapest way to find
-out whether any of this transfers.
+**The local-versus-ladder correlation is now measured, and it is weak.** Over 94
+real episodes, `enhanced` wins 49% and `barnyard` 47% — the two agents that are
+384/384 apart locally. `docs/LADDER_FIELD.md` is the diagnosis: the field we were
+ranking against could not express the winning strategy, and the engine's bugs
+penalised crop plans far more than herd plans. This is the single most useful
+thing measured in the project so far, and it took 94 episodes.
 
 ---
 
@@ -87,6 +154,52 @@ changed — check `pip show kaggle-environments` against 1.32.6 and re-diff
 ---
 
 ## Data integrity incidents
+
+**2026-08-09 — 48 concurrent array tasks corrupted the database; fully recovered.**
+A sharded tournament was submitted as a 48-task Slurm array. The shard code path
+was written specifically so that array tasks never touch SQLite — but the
+roster/manifest step ran *before* the shard branch, so all 48 tasks opened
+`data/arena.sqlite` and ran `register_agents` at the same instant. SQLite on a
+shared Lustre filesystem does not survive that:
+
+```
+sqlite3.DatabaseError: database disk image is malformed
+Tree 2 page 2 cell 0: 2nd reference to page 57875
+```
+
+Recovery, in order:
+
+1. `cp -a` the damaged file to `data/arena.sqlite.corrupt-20260809` before
+   anything else, so the recovery could be retried.
+2. `sqlite3 <corrupt> .recover | grep -v sqlite_sequence | sqlite3 <new>`.
+   (`.recover` emits a `sqlite_sequence` insert that the fresh database rejects;
+   `.dump` is the wrong tool here because it stops at the first bad page.)
+3. `PRAGMA integrity_check` → **ok**, and every run's row count matched the
+   count logged in its `runs` row exactly: 56,944 / 28,120 / 25,200 / 25,200 /
+   26,928 = **162,392, nothing lost**. `ladder_episodes` intact at 94.
+4. `agents` came back with 603 of its rows; re-registered from the three
+   manifests, which is where that table comes from anyway.
+5. Run #7's `n_episodes` had been in a damaged page; recomputed from `episodes`.
+
+The 160 duplicate `(run_id, seed, left, right)` keys found in run #1 during
+verification are **not** recovery damage — they are byte-identical rows created
+by `plan_panel` when an agent appears in both the roster and the panel, and they
+predate this incident.
+
+Fixes, both in `tools/tournament.py`:
+
+* Shard mode now resolves `con = None` and never opens the database. `--shard`
+  with `--from-run` is a hard error, because that is the one roster source that
+  needs a read; resolve it on the submitting host and pass `--agents`.
+* Verified rather than asserted: the shard path was re-run under a monkeypatched
+  `sqlite3.connect` that raises on any path containing `arena.sqlite`, and the
+  live database's md5 was compared before and after.
+
+This is the third incident in this project caused by SQLite access patterns, and
+the second where a tool reported success while doing the wrong thing. The rule
+that would have prevented all three: **exactly one process writes the database,
+and it is never a Slurm array task.**
+
 
 **2026-08-08 — duplicate runs written by a test, removed.** A test of
 `tools/sync.py merge` intended to write into a scratch database wrote into

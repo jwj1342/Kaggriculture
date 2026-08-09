@@ -96,9 +96,30 @@ def _digest(env, p):
             "money": curve, "herd": herd, "hands": hands}
 
 
+def _fast_env():
+    """Drop the framework overhead that does not change any result.
+
+    Profiled over a full episode: 42% of the wall clock is `deepcopy` of the
+    whole game state (twice per step, once per agent), ~12% is
+    `jsonschema.validate` on every action, and only ~13% is the strategy under
+    test. The deepcopy is load-bearing -- agents must not share mutable state --
+    but the schema validation is not: the interpreter ignores malformed actions
+    anyway, and illegal actions are silent no-ops by design.
+
+    Measured on three seeds: 3.13s -> 2.61s per episode, **17% faster, with
+    byte-identical results**. Verified, not assumed -- see docs/TOOLS.md.
+
+    Local harness only. Nothing here touches a submitted agent.
+    """
+    import jsonschema
+    jsonschema.validate = lambda instance, schema, *a, **k: None
+
+
 def _play(job):
     left, right, seed, steps = job
     from kaggle_environments import make
+    if os.environ.get("KG_FAST_ENV") == "1":
+        _fast_env()
     t0 = time.perf_counter()
     try:
         env = make("kaggriculture", configuration={"episodeSteps": steps, "seed": seed})
@@ -192,7 +213,83 @@ def run_jobs(jobs, workers, progress_every=2000):
     return out
 
 
+def cmd_ingest(args):
+    """Fold shard files into one run. The only process that writes the database.
+
+    Sharded runs deliberately do not touch SQLite from the array tasks. Two of
+    the three data-integrity incidents in docs/RUNS.md came from concurrent or
+    unclosed writers -- a 0-byte database that reported success, and a merge
+    that silently wrote into the wrong file. Shards emit append-only JSONL; one
+    single-threaded ingest reads them and does all the writing.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(root)
+    d = args.shards
+    meta_path = os.path.join(d, "meta.json")
+    if not os.path.exists(meta_path):
+        raise SystemExit(f"no meta.json in {d} -- shards not started here?")
+    with open(meta_path) as f:
+        meta = json.load(f)
+
+    files = sorted(f for f in os.listdir(d) if f.startswith("shard-")
+                   and f.endswith(".jsonl"))
+    results, seen = [], set()
+    for fn in files:
+        with open(os.path.join(d, fn)) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                r = json.loads(line)
+                key = (r["left"], r["right"], r["seed"])
+                if key in seen:          # a requeued array task reran its shard
+                    continue
+                seen.add(key)
+                results.append(r)
+    print(f"{len(files)} shard files, {len(results):,} unique episodes "
+          f"(expected {meta['n_jobs']:,})")
+    missing = meta["n_jobs"] - len(results)
+    if missing:
+        print(f"  !! {missing:,} episodes missing -- some shard did not finish. "
+              f"Ratings below are over what completed.")
+
+    con = DB.connect()
+    manifest_path = os.path.join(meta.get("lib") or "agents/lib", "manifest.json")
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            DB.register_agents(con, json.load(f))
+    run_id = DB.start_run(con, meta["label"], meta["kind"], meta["seeds"],
+                          meta["steps"], meta["n_roster"], meta.get("slurm_job"))
+    bad = [r for r in results if any(s != "DONE" for s in r["status"])]
+    if bad:
+        print(f"  !! {len(bad)} episodes not DONE, e.g. "
+              f"{bad[0].get('error') or bad[0]['status']}")
+    DB.add_episodes(con, run_id, results)
+    DB.finish_run(con, run_id, len(results))
+    rows = _rate(results, meta["names"])
+    DB.save_ratings(con, run_id, rows)
+    _print_table(rows)
+    DB.close(con)
+    print(f"\nrun #{run_id} stored in {DB.DB_PATH}")
+    return 0
+
+
+def _print_table(rows, n=30):
+    print(f"\n{'#':>3}  {'BT-Elo':>8} {'winrate':>8} {'median $':>10}  strategy")
+    for i, r in enumerate(rows[:n], 1):
+        print(f"{i:>3}  {r['bt_elo']:>+8.0f} {r['winrate']:>8.1%} "
+              f"{r['median_money']:>10,.0f}  {r['agent']}")
+    if len(rows) > n:
+        print(f"     ... {len(rows) - n} more (see tools/db.py top)")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "ingest":
+        ap = argparse.ArgumentParser(prog="tournament.py ingest")
+        ap.add_argument("ingest")
+        ap.add_argument("--shards", required=True)
+        return cmd_ingest(ap.parse_args())
+
     ap = argparse.ArgumentParser()
     ap.add_argument("kind", choices=["panel", "roundrobin"])
     ap.add_argument("--lib", default=None, help="directory of generated strategies")
@@ -205,11 +302,27 @@ def main():
     ap.add_argument("-s", "--steps", type=int, default=720)
     ap.add_argument("-j", "--jobs", type=int, default=8)
     ap.add_argument("--label", default=None)
+    ap.add_argument("--shard", default=None, metavar="K/N",
+                    help="run only this slice of the job list and write JSONL "
+                         "instead of the database; fold in with `ingest`")
+    ap.add_argument("--shard-dir", default=None,
+                    help="where shards are written (default data/shards/<label>)")
     args = ap.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(root)
-    con = DB.connect()
+
+    # A shard MUST NOT touch the database. Forty-eight array tasks each opening
+    # data/arena.sqlite to register the same manifest corrupted it -- SQLite on
+    # a shared Lustre filesystem does not survive that, and the file is the one
+    # irreplaceable thing in this project. `--from-run` is the only roster
+    # source that needs a read, so it is refused in shard mode rather than
+    # quietly opened; pass --agents or --lib instead.
+    sharded = bool(args.shard)
+    if sharded and args.from_run:
+        raise SystemExit("--shard cannot use --from-run: resolve the roster on "
+                         "the submitting host and pass --agents explicitly")
+    con = None if sharded else DB.connect()
 
     # ---- roster ----
     if args.from_run:
@@ -230,7 +343,7 @@ def main():
         raise SystemExit("give --lib, --agents or --from-run")
 
     manifest_path = os.path.join(args.lib or "agents/lib", "manifest.json")
-    if os.path.exists(manifest_path):
+    if con is not None and os.path.exists(manifest_path):
         with open(manifest_path) as f:
             DB.register_agents(con, json.load(f))
 
@@ -260,6 +373,37 @@ def main():
         names = sorted({short(a) for a in roster})
         label = args.label or f"roundrobin:{len(roster)}"
 
+    if args.shard:
+        k, n = (int(x) for x in args.shard.split("/"))
+        d = args.shard_dir or os.path.join("data/shards", label.replace(":", "-"))
+        os.makedirs(d, exist_ok=True)
+        # Every task writes meta.json with the same content, so the ingest step
+        # does not depend on which task happens to start first.
+        tmp = os.path.join(d, f".meta.{k}.tmp")
+        with open(tmp, "w") as f:
+            json.dump({"label": label, "kind": args.kind, "seeds": args.seeds,
+                       "steps": args.steps, "n_roster": len(roster),
+                       "n_jobs": len(jobs), "names": names, "lib": args.lib,
+                       "slurm_job": os.environ.get("SLURM_ARRAY_JOB_ID")
+                                    or os.environ.get("SLURM_JOB_ID")}, f)
+        os.replace(tmp, os.path.join(d, "meta.json"))
+
+        # Stride, not block: consecutive jobs are the same pairing on adjacent
+        # seeds, so a block split would give one task all the slow matchups.
+        mine = jobs[k::n]
+        print(f"{args.kind}: shard {k}/{n} -- {len(mine):,} of {len(jobs):,} "
+              f"episodes, {args.jobs} workers")
+        results = run_jobs(mine, args.jobs)
+        out = os.path.join(d, f"shard-{k:03d}.jsonl")
+        part = out + ".part"
+        with open(part, "w") as f:
+            for r in results:
+                f.write(json.dumps(r) + "\n")
+        os.replace(part, out)      # a shard file exists only when it is complete
+        bad = [r for r in results if any(s != "DONE" for s in r["status"])]
+        print(f"wrote {out} ({len(results):,} episodes, {len(bad)} not DONE)")
+        return 0
+
     print(f"{args.kind}: {len(roster)} strategies, {len(jobs):,} episodes, "
           f"{args.jobs} workers")
     run_id = DB.start_run(con, label, args.kind, args.seeds, args.steps,
@@ -275,13 +419,7 @@ def main():
     DB.finish_run(con, run_id, len(results))
     rows = _rate(results, names)
     DB.save_ratings(con, run_id, rows)
-
-    print(f"\n{'#':>3}  {'BT-Elo':>8} {'winrate':>8} {'median $':>10}  strategy")
-    for i, r in enumerate(rows[:30], 1):
-        print(f"{i:>3}  {r['bt_elo']:>+8.0f} {r['winrate']:>8.1%} "
-              f"{r['median_money']:>10,.0f}  {r['agent']}")
-    if len(rows) > 30:
-        print(f"     ... {len(rows) - 30} more (see tools/db.py top)")
+    _print_table(rows)
     DB.close(con)
     print(f"\nrun #{run_id} stored in {DB.DB_PATH}")
     return 0

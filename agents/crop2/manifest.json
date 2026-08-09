@@ -1,0 +1,1010 @@
+[
+ {
+  "name": "smallhold-crew-bigberry-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-bigberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "3f3b3cec45aee3ca"
+ },
+ {
+  "name": "smallhold-crew-bigberry-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-bigberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "434cf56a1d23ab3e"
+ },
+ {
+  "name": "estate-crew-bigberry-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-bigberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "fcdbd1f2f8d1f2b6"
+ },
+ {
+  "name": "estate-crew-bigberry-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-bigberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "b9fa86548dcd4917"
+ },
+ {
+  "name": "latifundium-crew-bigberry-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-bigberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "72e6d038bdb8a2ba"
+ },
+ {
+  "name": "latifundium-crew-bigberry-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-bigberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8cdcafcaba338684"
+ },
+ {
+  "name": "smallhold-crew-berryfull-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berryfull-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "3d2d32666fedee02"
+ },
+ {
+  "name": "smallhold-crew-berryfull-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berryfull-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "c8bf40e260834a02"
+ },
+ {
+  "name": "estate-crew-berryfull-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berryfull-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "b6afdfeaddfe4088"
+ },
+ {
+  "name": "estate-crew-berryfull-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berryfull-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8bd1681a02d6f1bb"
+ },
+ {
+  "name": "latifundium-crew-berryfull-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berryfull-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "e1b3e068da9c3c7c"
+ },
+ {
+  "name": "latifundium-crew-berryfull-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berryfull-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryfull",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "347861356a34572f"
+ },
+ {
+  "name": "smallhold-crew-hugeberry-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-hugeberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "e37b7051108c99cf"
+ },
+ {
+  "name": "smallhold-crew-hugeberry-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-hugeberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "10d8a84f0ec9c2c0"
+ },
+ {
+  "name": "estate-crew-hugeberry-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-hugeberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "c24b3130788183e6"
+ },
+ {
+  "name": "estate-crew-hugeberry-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-hugeberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "7e1102a648636bbf"
+ },
+ {
+  "name": "latifundium-crew-hugeberry-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-hugeberry-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "dd0257cfec229672"
+ },
+ {
+  "name": "latifundium-crew-hugeberry-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-hugeberry-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "hugeberry",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "499847ce4a0e4c1b"
+ },
+ {
+  "name": "smallhold-crew-berryonly-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berryonly-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "488074e5fac8fd14"
+ },
+ {
+  "name": "smallhold-crew-berryonly-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berryonly-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "04e8de0667293413"
+ },
+ {
+  "name": "estate-crew-berryonly-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berryonly-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "33eb82e005fdc65a"
+ },
+ {
+  "name": "estate-crew-berryonly-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berryonly-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "f0079bc51d69e761"
+ },
+ {
+  "name": "latifundium-crew-berryonly-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berryonly-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d4af2aa033f64399"
+ },
+ {
+  "name": "latifundium-crew-berryonly-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berryonly-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryonly",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "1ca814a5db484e3f"
+ },
+ {
+  "name": "smallhold-crew-berrylean-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrylean-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "5140da200a608f9c"
+ },
+ {
+  "name": "smallhold-crew-berrylean-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrylean-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "54a7fdc4b5482ca5"
+ },
+ {
+  "name": "estate-crew-berrylean-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrylean-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "7b05d13e65c34e5c"
+ },
+ {
+  "name": "estate-crew-berrylean-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrylean-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "abdbf17e16161002"
+ },
+ {
+  "name": "latifundium-crew-berrylean-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrylean-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "bd706aadeb4bfeb6"
+ },
+ {
+  "name": "latifundium-crew-berrylean-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrylean-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrylean",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "eeb9a9178dcb908a"
+ },
+ {
+  "name": "smallhold-crew-bigberrywool-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-bigberrywool-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "eafd47830c885778"
+ },
+ {
+  "name": "smallhold-crew-bigberrywool-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-bigberrywool-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "e27d9a4a5edd5f54"
+ },
+ {
+  "name": "estate-crew-bigberrywool-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-bigberrywool-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "3230284818f55cd8"
+ },
+ {
+  "name": "estate-crew-bigberrywool-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-bigberrywool-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "7821accac0c8e861"
+ },
+ {
+  "name": "latifundium-crew-bigberrywool-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-bigberrywool-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "5c0ab43e9cbdaa31"
+ },
+ {
+  "name": "latifundium-crew-bigberrywool-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-bigberrywool-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrywool",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "6a32b18ff91c8684"
+ },
+ {
+  "name": "smallhold-crew-bigberrycow-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-bigberrycow-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d5dfb6bb4716593f"
+ },
+ {
+  "name": "smallhold-crew-bigberrycow-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-bigberrycow-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "906009feb9126174"
+ },
+ {
+  "name": "estate-crew-bigberrycow-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-bigberrycow-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "bb35cd3ed1ffb624"
+ },
+ {
+  "name": "estate-crew-bigberrycow-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-bigberrycow-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8f7f7344e9782af8"
+ },
+ {
+  "name": "latifundium-crew-bigberrycow-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-bigberrycow-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "47110f6f580d8081"
+ },
+ {
+  "name": "latifundium-crew-bigberrycow-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-bigberrycow-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "bigberrycow",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "2b5979d4ccac51b9"
+ },
+ {
+  "name": "smallhold-crew-berrymelon-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrymelon-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "182349f4e1c61c1b"
+ },
+ {
+  "name": "smallhold-crew-berrymelon-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrymelon-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "fab667ff53308a0a"
+ },
+ {
+  "name": "estate-crew-berrymelon-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrymelon-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "ed44ea72f97c1f1f"
+ },
+ {
+  "name": "estate-crew-berrymelon-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrymelon-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "1b283fc31aa86fbd"
+ },
+ {
+  "name": "latifundium-crew-berrymelon-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrymelon-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "91a6d41a873d5384"
+ },
+ {
+  "name": "latifundium-crew-berrymelon-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrymelon-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymelon",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "a117d4d9d4f631c0"
+ },
+ {
+  "name": "smallhold-crew-marketgarden-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-marketgarden-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "0991c9d382f62b83"
+ },
+ {
+  "name": "smallhold-crew-marketgarden-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-marketgarden-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "09b446a88ecbee53"
+ },
+ {
+  "name": "estate-crew-marketgarden-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-marketgarden-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "287849067faf9916"
+ },
+ {
+  "name": "estate-crew-marketgarden-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-marketgarden-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "0da07b144cc177ac"
+ },
+ {
+  "name": "latifundium-crew-marketgarden-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-marketgarden-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "edf9ed127c3da1c1"
+ },
+ {
+  "name": "latifundium-crew-marketgarden-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-marketgarden-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "marketgarden",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "591e03dff2a6f1e3"
+ },
+ {
+  "name": "smallhold-crew-berrysea-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrysea-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "12b149684330854e"
+ },
+ {
+  "name": "smallhold-crew-berrysea-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrysea-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "77e04b5bdbf7f588"
+ },
+ {
+  "name": "estate-crew-berrysea-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrysea-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "d2c48b0c9f1d705b"
+ },
+ {
+  "name": "estate-crew-berrysea-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrysea-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "a954cf8535096218"
+ },
+ {
+  "name": "latifundium-crew-berrysea-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrysea-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "3692d4a64153b5f8"
+ },
+ {
+  "name": "latifundium-crew-berrysea-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrysea-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrysea",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "f57a8e2c58e43c05"
+ },
+ {
+  "name": "smallhold-crew-berrymax-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrymax-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "4df484f3e13d2a28"
+ },
+ {
+  "name": "smallhold-crew-berrymax-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berrymax-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8eb3326ee62e8687"
+ },
+ {
+  "name": "estate-crew-berrymax-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrymax-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "6927a9aea4258ba5"
+ },
+ {
+  "name": "estate-crew-berrymax-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berrymax-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "edddd1f1ccae492a"
+ },
+ {
+  "name": "latifundium-crew-berrymax-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrymax-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "6562e6a0868a3db9"
+ },
+ {
+  "name": "latifundium-crew-berrymax-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berrymax-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berrymax",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "e336e8e70ef22abe"
+ },
+ {
+  "name": "smallhold-crew-berryherd2-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berryherd2-flood-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "dc405f2bd2d0e0e3"
+ },
+ {
+  "name": "smallhold-crew-berryherd2-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/smallhold-crew-berryherd2-metered-blind-muck.py",
+  "atoms": {
+   "land": "smallhold",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "8756f5f3061ea9c7"
+ },
+ {
+  "name": "estate-crew-berryherd2-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berryherd2-flood-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "dea715c0863e07b6"
+ },
+ {
+  "name": "estate-crew-berryherd2-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/estate-crew-berryherd2-metered-blind-muck.py",
+  "atoms": {
+   "land": "estate",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "9d6cb9482d4a8fda"
+ },
+ {
+  "name": "latifundium-crew-berryherd2-flood-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berryherd2-flood-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "flood",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "f1ccda11368c6117"
+ },
+ {
+  "name": "latifundium-crew-berryherd2-metered-blind-muck",
+  "alias": null,
+  "path": "agents/crop2/latifundium-crew-berryherd2-metered-blind-muck.py",
+  "atoms": {
+   "land": "latifundium",
+   "labour": "crew",
+   "produce": "berryherd2",
+   "market": "metered",
+   "intel": "blind",
+   "muck": "muck"
+  },
+  "sha": "a7da3e962f12eee8"
+ }
+]
