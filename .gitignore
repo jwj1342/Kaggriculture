@@ -13,8 +13,11 @@ venv/
 
 # --- Generated: rebuild from source, never hand-edit ----------------------
 # 594 strategies from agents/_engine.py + tools/registry.py
-agents/lib/
-agents/spar/
+# Every agents/<dir> containing generated strategies. `registry.py gen --out`
+# can name any of them, so the rule is: only these three are hand-written.
+agents/*/
+!agents/enhanced/
+!agents/legacy/
 # rendered from data/arena.sqlite by tools/leaderboard.py
 site/
 # built from an agent file by tools/build_notebook.py
