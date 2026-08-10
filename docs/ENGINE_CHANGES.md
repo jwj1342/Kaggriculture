@@ -331,6 +331,37 @@ base — and all three say the same thing. **The `PASS` is not spare capacity.**
 Work added at the edge of the farm costs more in walking than it returns, and the
 21-22% ceiling on productive actions holds whatever is planted.
 
+### Eleven schedulers, and the greedy one wins
+
+`steps per action that does work` is the cleanest statement of the gap: the
+ladder's best opponent runs at **1.02**, we run at **2.36**. At 1.02 a unit is
+walking *through* its work — step, water, step, water — and no assignment rule
+tried here produces that.
+
+| scheduler | steps per work action | work % |
+|---|---|---|
+| **greedy: each task takes the globally nearest free unit** (kept) | **2.36** | **21%** |
+| sticky targets | — | — (63% → 44% win rate) |
+| each unit picks its own task, `prio*W + dist` | 2.4-ish | 21% (77% → 54%) |
+| two passes: urgent global, the rest nearest-first | 2.89 | 18% |
+| the same with the urgency cut at priority 4 | 2.99 | 18% |
+| static zones: each unit owns a band of tiles | 2.86 | 20% |
+
+Every alternative makes the ratio **worse**. Per-unit greedy in index order lets
+neighbouring units take each other's nearby work; static zones make a unit walk
+to its band and then idle in it while another band has three tasks waiting.
+
+Two hypotheses were checked and are not the answer: the geometry is symmetric
+(average distance to the shed is 4.00 whatever you own), and the engine
+deliberately allows movement onto `LOCKED` tiles with shed operations resolving
+before the lock guard, so routing across a locked quadrant is not a hidden cost.
+
+**The greedy scheduler is at a local optimum in scheduler-space as well as in
+parameter-space.** Whatever produces 1.02 is not a variation on assigning tasks
+to units one turn at a time — it is more likely a different action model
+entirely, such as planning a unit's route several turns ahead so that each step
+lands on the next piece of work.
+
 ## The pattern in the rejections
 
 Three of the four rejected changes were derived correctly from the rules and
