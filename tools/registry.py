@@ -472,8 +472,10 @@ def plan_bench():
     `--panel` for screens and as the fixed opponent set for ablations.
     """
     out = []
-    for produce in ("marketgarden", "bigberry", "berrywheat", "berrybaron",
-                    "berrymelon", "orchardgarden", "grazier", "evengarden"):
+    # Regenerated 2026-08-11: the previous field had saturated again at 96%.
+    # A reference must be able to beat the candidate sometimes.
+    for produce in ("mgtightgrain", "mgtightwide", "mgtight", "mgtightgrain2",
+                    "mgtightherd", "marketgarden", "bigberry", "berrymelon"):
         out.append({"land": "smallhold", "labour": "crew", "produce": produce,
                     "market": "flood", "intel": "blind", "muck": "compost",
                     "adapt": "shopwise"})

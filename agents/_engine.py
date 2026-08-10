@@ -618,6 +618,7 @@ def _plan(obs):
     # both walk there. This pass runs first and gives every unit whatever work
     # is under its feet, which costs nothing and is never wrong.
     here = {}
+    held_tiles = set()
     for (prio, tx, ty, act, need) in tasks:
         if tx is None:
             continue
@@ -633,6 +634,15 @@ def _plan(obs):
             actions[k] = act
             busy[k] = True
             claimed.add((ux, uy, act[0]))
+            # Reserve the rest of this tile's work for the unit standing on it.
+            #
+            # `claimed` is keyed on (tile, op), so without this the global pass
+            # sends other units across the farm for the *other* jobs on this
+            # animal -- and by next turn the unit standing here has nothing left
+            # and walks away. Measured: our animal work chains at 11% (FEED) and
+            # 16% (COLLECT_FERTILIZER) against 54% for CARE, which needs nothing
+            # carried; the opponent's overall zero-movement rate is 50%.
+            held_tiles.add((ux, uy))
             break
 
     for (prio, tx, ty, act, need) in tasks:
@@ -687,6 +697,8 @@ def _plan(obs):
 
         if (tx, ty, op) in claimed:
             continue
+        if (tx, ty) in held_tiles:
+            continue          # saved for the unit already standing there
         best, bd = None, None
         for k, (idx, ux, uy) in enumerate(units):
             if busy[k] or (need and invs[idx].get(need, 0) <= 0):

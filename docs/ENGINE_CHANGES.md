@@ -367,6 +367,34 @@ against the bench field and $75,727 median over 46,592 episodes, beating
 Four failures and then a win, because the thing that made it fail was somewhere
 else entirely.
 
+### Reserve the rest of a tile's work for the unit standing on it
+
+A refinement of the one above, found by breaking our own zero-movement rate down
+by action type:
+
+| action | zero-movement | note |
+|---|---|---|
+| `CARE` | 54% | needs nothing carried |
+| `FERTILIZE` | 42% | |
+| `PLANT` / `HARVEST` | 35% / 29% | |
+| `WATER` | 18% | one per plant per day — inherently a step apart |
+| `COLLECT_FERTILIZER` | 16% | |
+| `FEED` | **11%** | |
+
+`CARE` chains and `FEED` does not, on the same animals. `claimed` is keyed on
+`(tile, op)`, so the global pass was sending other units across the farm for the
+*other* jobs on an animal a unit was already standing on — and by the next turn
+that unit had nothing left and walked away.
+
+Tiles worked in the here-pass are now held back from the global pass.
+**96.0% → 96.6%** over 7,680 episodes an arm — 2.7 standard errors, small but
+real, and free.
+
+The zero-movement rate is 27.5% against the opponent's 50.1%, so most of that gap
+is still open. `WATER` is the reason it cannot close much further with this
+approach: it is the largest single category and one watering per plant per day
+means consecutive waterings are always a step apart.
+
 ### Eleven schedulers, and the greedy one wins
 
 `steps per action that does work` is the cleanest statement of the gap: the
