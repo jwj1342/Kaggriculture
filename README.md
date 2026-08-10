@@ -193,7 +193,9 @@ or only in a chat log.
 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | **start here** — setup, first tournament, the five things that will bite you |
 | [`docs/GAME_ECONOMICS.md`](docs/GAME_ECONOMICS.md) | what the engine actually rewards; the three places the official page is wrong |
 | [`docs/EVALUATION.md`](docs/EVALUATION.md) | **read before trusting any number you produce** |
-| [`docs/LADDER_FIELD.md`](docs/LADDER_FIELD.md) | **what real opponents do, and why local rank did not predict it** |
+| [`docs/MAP.md`](docs/MAP.md) | **which document answers which question, and where each behaviour lives in the code** |
+| [`docs/LADDER_FIELD.md`](docs/LADDER_FIELD.md) | what real opponents do, and why local rank did not predict it |
+| [`docs/ENGINE_CHANGES.md`](docs/ENGINE_CHANGES.md) | every change to the agent, what it measured, and the seventeen that were rejected |
 | [`docs/ATOM_EFFECTS.md`](docs/ATOM_EFFECTS.md) | what each atom measured to be worth — superseded in part, see the notice at the top |
 | [`docs/STRATEGY_LIBRARY.md`](docs/STRATEGY_LIBRARY.md) | the atom taxonomy and the boundary cases |
 | [`docs/ADVERSARIAL.md`](docs/ADVERSARIAL.md) | can you win by suppressing the opponent? (partly, and not how you'd think) |
@@ -210,6 +212,19 @@ or only in a chat log.
 
 Short version; the evidence is in `docs/ATOM_EFFECTS.md` and, for anything about
 the real field, `docs/LADDER_FIELD.md`.
+
+**The loop that produces the gains.** Local measurement kept converging on the
+wrong answer until the ladder corrected it, three times. The sequence that works:
+submit → pull our own replays with `tools/ladder.py` → read what the opponent
+*did*, not what their farm looked like → change one thing → A/B it at 2,000+
+episodes an arm → resubmit. `docs/MAP.md` is the index; `docs/ENGINE_CHANGES.md`
+records all twenty-eight attempts, eleven of which landed.
+
+The single most valuable measurement in the project came from one replay's
+**action histogram**: the leader spends 1.02 movement actions per action that
+does work and we spent 2.4, because 50% of their work is done without moving —
+an animal takes FEED, CARE, COLLECT_FERTILIZER and HARVEST on one tile. Three
+*shape* ideas taken from the same replay all measured negative first.
 
 **Local rank did not predict ladder rank, and we know why.** `enhanced` beats
 `barnyard` 384 out of 384 locally and is level with it against real opponents
