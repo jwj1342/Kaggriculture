@@ -12,7 +12,8 @@ win/loss only — the coin margin never counts.
 - **Timeline** started 2026-07-29 · entry and merger deadline 2026-09-23 · final
   submission 2026-09-30 · leaderboard converges ~2026-10-15.
 - **Field** 2,903 teams, 5,376 submissions as of 2026-08-07.
-- **Status** one agent live (`55332339`, ~623 rating). 95,000 local episodes run.
+- **Status** `mgtight` live at ~790 (from 623 at the first submission).
+  **1,228,544 local episodes** across 32 runs, plus 184 real ladder replays digested.
 
 ### → New here? Read [`docs/ONBOARDING.md`](docs/ONBOARDING.md). It takes an hour and ends with you having run a real tournament.
 
@@ -73,17 +74,19 @@ same tool with `-j $SLURM_CPUS_PER_TASK`.
 
 ## The idea
 
-Every strategy is one option from each of **six orthogonal atoms**, so its name
+Every strategy is one option from each of **seven orthogonal atoms**, so its name
 *is* its definition and the library is a cross product rather than a pile of
 files:
 
 ```
-land - labour - produce - market - intel - muck
+land - labour - produce - market - intel - muck - adapt
 
-estate-crew-mixedfarm-metered-blind-muck
+smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
 ```
 
-9,216 strategies are expressible; 637 are materialised and have been played.
+The seventh axis, `adapt`, is the only one about the *town* rather than the farm
+or the opponent: shops are drawn with replacement, so demand for one product
+swings 49x between episodes.
 There are **no version numbers anywhere in this repo**.
 
 Everything is measured locally before it goes near the ladder. `tools/tournament.py`
@@ -92,8 +95,8 @@ SQLite, and fits **Bradley-Terry** strengths — the same estimator Kaggle uses 
 the final leaderboard.
 
 Every episode lands in `data/arena.sqlite` on the cluster and is mirrored to a
-**Cloudflare D1** database, so collaborators query 85,000 measured episodes
-without a cluster account or a downloaded file. Sync is one-way, local to remote;
+**Cloudflare D1** database, so collaborators query the measured episodes without
+a cluster account or a downloaded file. Sync is one-way, local to remote;
 see `docs/CONTRIBUTING.md` "The sync contract".
 
 **Live leaderboard:** <https://claude.ai/code/artifact/c576b6af-80f5-4240-9f97-40e294ee47fa>
@@ -107,12 +110,12 @@ Four layers. Each one only depends on the layer above it, and everything below
 `tools/` is regenerated rather than edited.
 
 ```
-  DEFINITION      tools/registry.py          six atom tables + composition plans
+  DEFINITION      tools/registry.py          seven atom tables + composition plans
                   agents/_engine.py          one execution path, generated CONFIG block
                           │
                           │  registry.py gen --plan all
                           ▼
-  STRATEGIES      agents/lib/*.py            637 standalone, submittable agents
+  STRATEGIES      agents/lib/*.py            standalone, submittable agents
                   agents/spar/*.py           opponents reconstructed from real
                                              ladder replays -- keep in every field
                   agents/lib/manifest.json   name, atoms, source hash
@@ -149,9 +152,9 @@ survive abuse), `tools/eval.py` (is A better than B, with an interval).
 ```
 agents/
   _engine.py       the single execution path; its CONFIG block is generated
-  lib/             637 generated strategies + manifest.json  (git-ignored)
+  lib/             generated strategies + manifest.json  (git-ignored)
   spar/            sparring field rebuilt from ladder replays  (git-ignored)
-  barnyard.py      hand-tuned original; the agent on the ladder
+  barnyard.py      hand-tuned original; the first agent submitted
   legacy/          superseded ad-hoc agents, kept because docs cite them
 tools/
   bootstrap.sh     build venv/ from scratch
