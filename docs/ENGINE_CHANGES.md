@@ -239,6 +239,42 @@ the negative result stays reproducible.
 
 ---
 
+### Four sweeps around the two biggest levers, all confirming what is there
+
+Once the hiring ramp landed, the two settings it interacts with were swept
+rather than assumed. All four arms were 2,304–3,072 episodes each against the
+same fixed opponents.
+
+**The ramp shape.** `min(plan, 2 + plants/3 + animals/2)` was a first guess and
+turns out to sit on the optimum:
+
+| ramp | win rate | median $ |
+|---|---|---|
+| `2 + p/3 + a/2` (kept) | **89.2%** | **71,176** |
+| `2 + (p+a)/3` | 86.7% | 70,319 |
+| `3 + p/2 + a/2` | 84.1% | 68,900 |
+| `1 + p/4 + a/3` | 57.7% | 64,850 |
+
+**Daily watering, retried.** It had been neutral before the ramp, and the ramp
+frees actions, so it was worth re-running — changes interact, which is the whole
+lesson of the fertilizer episode above. It is not neutral now, it is much worse:
+**53.1% against 87.8%**. Watering only on tick days is right.
+
+**The carrying threshold.** An idle unit walks to the shed once it holds six
+units of produce, and the engine has *no carry limit at all* — `_inv_add` simply
+adds — so raising the threshold looked like free movement savings, and shed
+round trips are a large share of the 55% of actions spent walking.
+
+| threshold | win rate | median $ |
+|---|---|---|
+| 6 (kept) | **89.2%** | **71,176** |
+| 12 | 68.4% | 64,850 |
+| 20 / 30 | 67.8% | 64,718 |
+
+Produce in hand is produce not yet sellable. The delayed sales cost more than
+the walking saves, and the effect saturates by 12 — above that the trigger
+stops binding at all.
+
 ## The pattern in the rejections
 
 Three of the four rejected changes were derived correctly from the rules and
