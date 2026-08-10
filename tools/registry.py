@@ -215,6 +215,24 @@ PRODUCE = {
                      "animals": {"COW": 9, "SHEEP": 4}},
     "mgnano":       {"crops": [["STRAWBERRY", 10, 19], ["MELON", 6, 18]],
                      "animals": {"COW": 5, "SHEEP": 2}},
+    # `mgtight` uses 34 of 50 tiles and still PASSes 30% of its actions. The
+    # earlier wheat-filler test was confounded -- it sat on a 20-strawberry base
+    # when 16 is the optimum -- so it is re-run here on the tight base, where
+    # there are sixteen spare tiles and idle hands to work them.
+    "mgtightgrain": {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
+                               ["WHEAT", 14, 24]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    "mgtightgrain2": {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
+                                ["WHEAT", 24, 24]],
+                      "animals": {"COW": 7, "SHEEP": 3}},
+    "mgtightcarrot": {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
+                                ["CARROT", 14, 25]],
+                      "animals": {"COW": 7, "SHEEP": 3}},
+    "mgtightherd":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18]],
+                     "animals": {"COW": 9, "SHEEP": 5}},
+    "mgtightboth":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
+                               ["WHEAT", 12, 24]],
+                     "animals": {"COW": 9, "SHEEP": 4}},
 
     "berryflood":   {"crops": [["STRAWBERRY", 50, 19], ["MELON", 12, 18]],
                      "animals": {"COW": 6, "SHEEP": 6}},
@@ -556,8 +574,8 @@ def plan_crop():
     So those are fixed here and the tile budget is the only thing varied, plus
     land -- because past about 46 tiles the plan needs a third quadrant.
     """
-    shapes = ("mgtight", "mgmin", "mgtiny", "mgcore", "mgtightwide",
-              "mgtighthigh", "mgnano", "mgsmall")
+    shapes = ("mgtight", "mgtightwide", "mgtightgrain", "mgtightgrain2",
+              "mgtightcarrot", "mgtightherd", "mgtightboth")
     out = []
     for produce, land, muck, market in itertools.product(
             shapes, ("smallhold",), ("compost",), ("flood",)):

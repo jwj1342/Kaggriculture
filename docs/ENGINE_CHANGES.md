@@ -311,6 +311,26 @@ sticky targets, idle pre-positioning, CARE priority, carrying threshold, daily
 watering, and this. Whatever the top of the ladder is doing, it is not something
 this scheduler can be tuned into.
 
+### The idle time is not convertible
+
+`mgtight` uses 34 of its 50 tiles and still spends 30% of its actions on `PASS`.
+Sixteen spare tiles, idle hands, and a hiring ramp that would grow the crew to
+match — so giving it more to do should be free. It is not. Every filler tried on
+the tight base, against a field that can rank:
+
+| shape | vs `bench` |
+|---|---|
+| `mgtight`, nothing added | **92.9%** |
+| `mgtightherd` (+2 cow, +2 sheep) | 67.8% |
+| `mgtightgrain` (+14 wheat) | 54.3% |
+| `mgtightgrain2` (+24 wheat), `mgtightcarrot`, `mgtightboth` | below the top 9 |
+
+This is the third independent test of the same idea — wheat on `smallhold`,
+wheat after the hiring ramp, and now wheat, carrot and livestock on the tight
+base — and all three say the same thing. **The `PASS` is not spare capacity.**
+Work added at the edge of the farm costs more in walking than it returns, and the
+21-22% ceiling on productive actions holds whatever is planted.
+
 ## The pattern in the rejections
 
 Three of the four rejected changes were derived correctly from the rules and
