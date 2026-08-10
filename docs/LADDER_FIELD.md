@@ -295,7 +295,31 @@ looks like once it is measured properly.
 
 ---
 
-## 7. What this does not settle
+## 7. Does the local work transfer? Measured, yes
+
+238 real episodes across eight submissions, each pulled and digested. The column
+that matters is the last one — strawberry units per planting is the mechanism the
+`compost` fix was supposed to move, and it moved on the ladder exactly as it did
+locally:
+
+| submission | episodes | win rate | our median | theirs | strawberry per planting |
+|---|---|---|---|---|---|
+| `barnyard` | 59 | 47% | $42,714 | $49,483 | 3.1 |
+| `enhanced` | 35 | 49% | $41,407 | $43,196 | — |
+| + fertilizer gate | 42 | 50% | $73,260 | $69,266 | 3.3 |
+| + `shopwise` | 41 | 54% | $67,675 | $63,217 | 3.4 |
+| `mgtight` | 30 | 50% | $73,924 | $77,532 | **6.0** |
+| `mgtight` + liquidate 29 | 24 | **58%** | $62,090 | $55,500 | **6.2** |
+
+**3.1 → 6.2 units per planting**, against a fertilized ceiling of 8 and a field
+median of 3.1. Our own money roughly doubled, $42,714 → $73,924.
+
+The win rate moved far less than the money: 47% → 58%. The field earns more too,
+and the competition scores wins. That is the whole reason `docs/EVALUATION.md`
+insists on win rate over margin — a change can double the money and be worth
+eleven points of win rate.
+
+## 8. What this does not settle
 
 The reconstructions are fitted to end-state digests, not to observed action
 sequences — a replay records what a farm looked like, not why. Two different
