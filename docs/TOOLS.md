@@ -101,6 +101,17 @@ already ignores anything malformed. Measured over three seeds: **3.13 s → 2.61
 17% faster, byte-identical results.** The deepcopy is left alone — agents must
 not share mutable state.
 
+#### A trap: agents are keyed by filename
+
+`short(path)` is the file's basename, so **two builds of the same strategy from
+different directories collapse into one row** in `ratings` and in the
+Bradley-Terry fit. `agents/final/x.py` and `agents/wheat2/x.py` are one agent as
+far as a run is concerned, and run #22 merged three of them without complaint.
+
+Ablations therefore read their shard JSONL directly and key on the *directory*
+(`"/final/" in path`), never on the ratings table. Only use `ingest` + `ratings`
+when every roster entry has a distinct filename.
+
 #### Sharding across a job array
 
 ```bash
