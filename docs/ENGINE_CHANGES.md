@@ -331,6 +331,42 @@ base — and all three say the same thing. **The `PASS` is not spare capacity.**
 Work added at the edge of the farm costs more in walking than it returns, and the
 21-22% ceiling on productive actions holds whatever is planted.
 
+### Work the tile you are standing on
+
+The one scheduler change that worked, and it came from looking at *when* the
+opponent's units move rather than how far.
+
+**50.1% of their actions that do work cost zero movement**, and 47% land on the
+same tile as that unit's previous action. That is what a tile affords: an animal
+takes FEED, then CARE, then COLLECT_FERTILIZER, then HARVEST — four turns
+without a step — and a plant takes WATER then FERTILIZE.
+
+Task-by-task assignment cannot see it. `claimed` is keyed on `(tile, op)`, so two
+units are cheerfully sent to the same animal for two different jobs and both walk
+there, while the unit already standing on it is sent somewhere else entirely.
+
+A pass now runs before everything and gives each unit whatever work is under its
+feet. It costs nothing, it is never wrong, and it is the first change to move the
+metric:
+
+| | steps per work action | movement | median $ |
+|---|---|---|---|
+| before | 2.36 | 50% | 66,722 |
+| after | **1.87** | **39%** | **76,439** |
+
+Measured over 1,920 episodes an arm on two shapes: `mgtight` 92.9% → **95.8%**,
+`mgtightwide` 91.8% → **97.2%**.
+
+**And it flipped a shape result that had failed three times.** Wheat as a filler
+crop lost on `smallhold`, lost again after the hiring ramp, and lost a third time
+on the tight base. With units able to chain work on a tile, `mgtightgrain`
+(16 strawberry, 8 melon, **14 wheat**) is now the best shape measured: 86.7%
+against the bench field and $75,727 median over 46,592 episodes, beating
+`mgtightwide` **58.8% [54.5%, 63.1%]** head to head.
+
+Four failures and then a win, because the thing that made it fail was somewhere
+else entirely.
+
 ### Eleven schedulers, and the greedy one wins
 
 `steps per action that does work` is the cleanest statement of the gap: the
