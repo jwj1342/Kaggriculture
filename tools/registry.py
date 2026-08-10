@@ -467,7 +467,7 @@ def plan_recheck():
             ("flood", "metered", "adaptive", "paced"),
             ("smallhold", "estate", "homestead"),
             ("compost", "muck")):
-        out.append({"land": land, "labour": labour, "produce": "mgtight",
+        out.append({"land": land, "labour": labour, "produce": "mgtightgrain",
                     "market": market, "intel": "blind", "muck": muck,
                     "adapt": "shopwise"})
     return out

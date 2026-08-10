@@ -16,37 +16,59 @@ sqlite3 data/arena.sqlite "SELECT * FROM runs"
 
 ## Tournaments in the database
 
-| Run | Label | Shape | Agents | Episodes | Slurm | Finished | Headline |
-|---|---|---|---|---|---|---|---|
-| **#1** | `library-screen-594` | panel, 6 anchors, 8 seeds, both seats | 594 | 56,944 | 409573 | 2026-08-07 22:29 | `orchardherd` compositions sweep the top; `swarm` and `nomuck` are catastrophic |
-| **#2** | `confirm-38-representative` | round robin, 20 seeds, both seats | 38 | 28,120 | 410822 | 2026-08-07 23:21 | `homestead-crew-orchardherd-flood-*` ranks 1–4; `barnyard` ranks 14th |
-| **#5** | `enhanced-vs-field` | round robin, 20 seeds, both seats | 36 | 25,200 | 420380 | 2026-08-08 | first cut of the enhanced baseline ranks **8th**; diagnosis below |
-| **#6** | `enhanced-fixed-vs-field` | round robin, 20 seeds, both seats | 32 | ~19,800 | 421206 | 2026-08-08 | after the herd-deadlock and land fixes |
-| **#7** | `ladder-field-spar` | round robin, 24 seeds, both seats | 34 | 26,928 | 430667 | 2026-08-09 | first field containing opponents we did not write; `enhanced` ranks **27th of 34** |
-| **#8** | `factorial-screen-960` | panel, 8 anchors, 12 seeds, both seats | 960 | 184,224 | 431224 (48-task array) | 2026-08-09 | fully balanced produce×land×muck×market; the three reconstructed ladder shapes take the top three `produce` places |
-| **#9** | `factorial-confirm-40` | round robin, 48 seeds, both seats | 40 | 74,880 | 431324 (48-task array) | 2026-08-09 | `enhanced` **39th of 40**, `barnyard` 40th; `compost` confirmed good for strawberry, bad for melon |
-| **#11** | `refine-labour-intel` | panel, 8 anchors, 12 seeds | 640 | 122,856 | 431419 | 2026-08-09 | `crew` beats every labour option by 39+ points; **`intel` is worth nothing** — four options within 1.5 points |
-| **#12** | `crop-ladder` | panel, 8 anchors, 24 seeds | 72 | 27,552 | 431566 | 2026-08-09 | the strawberry ladder peaks at **28 tiles**; 32, 36 and 40 are all worse |
-| **#13** | `crop-confirm` | round robin, 64 seeds | 24 | 35,328 | 431626 | 2026-08-09 | `smallhold-crew-bigberry-flood-blind-muck` 1st at 86.1% |
-| **#14** | `labour-recross` | panel, 8 anchors, 24 seeds | 112 | 42,912 | 431759 | 2026-08-09 | `crew` (11 hands, 6%) still optimal on the fixed engine — 57.2% against `crewrich` 51.6%, `gang` 45.6%, `company` 32.7% |
-| **#15** | `crop-ladder-2` | panel, 8 anchors, 24 seeds | 72 | 27,552 | 431936 | 2026-08-09 | 28 strawberry tiles still the peak **after** watering got cheaper — the trade-off is walked out |
-| **#16** | `melon-recross` | panel, 8 anchors, 32 seeds | 48 | 24,448 | 432094 | 2026-08-09 | more melon does not help locally, even though ladder winners out-sell us on it |
-| **#17** | `berryflood-confirm` | round robin, 64 seeds | 27 | 44,928 | 432464 | 2026-08-09 | `berryflood` (50 strawberry tiles, copied from the 113k ladder opponent) does not reach the top 11 locally |
+| Run | Label | Shape | Agents | Episodes | Headline |
+|---|---|---|---|---|---|
+| **#1** | `library-screen-594` | panel, 8 seeds | 594 | 56,944 | `orchardherd` sweeps the top — later shown to be an artefact of two engine bugs |
+| **#2** | `confirm-38-representative` | roundrobin, 20 seeds | 38 | 28,120 | `barnyard` 14th; first sign that rank and money had decoupled |
+| **#5** | `enhanced-vs-field` | roundrobin, 20 seeds | 36 | 25,200 | first enhanced cut ranks 8th; herd deadlocked at nine |
+| **#6** | `enhanced-fixed-vs-field` | roundrobin, 20 seeds | 36 | 25,200 | after the deadlock and land fixes: 75.8% against the field leader |
+| **#7** | `ladder-field-spar` | roundrobin, 24 seeds | 34 | 26,928 | first field with opponents we did not write; `enhanced` ranks **27th of 34** |
+| **#8** | `factorial-screen-960` | panel, 12 seeds | 960 | 184,224 | balanced produce×land×muck×market; the three reconstructed ladder shapes take the top three |
+| **#9** | `factorial-confirm-40` | roundrobin, 48 seeds | 40 | 74,880 | `enhanced` **39th of 40**; `compost` good for strawberry, bad for melon |
+| **#11** | `refine-labour-intel` | panel, 12 seeds | 640 | 122,856 | `crew` beats every labour option by 39+ points; **`intel` is worth nothing** |
+| **#12** | `crop-ladder` | panel, 24 seeds | 72 | 27,552 | the strawberry ladder peaks at 28 tiles — on the pre-`compost` engine |
+| **#13** | `crop-confirm` | roundrobin, 64 seeds | 24 | 35,328 | `bigberry` 1st at 86.1% |
+| **#14** | `labour-recross` | panel, 24 seeds | 112 | 42,912 | `crew` (11 hands, 6%) still optimal on the fixed engine |
+| **#15** | `crop-ladder-2` | panel, 24 seeds | 72 | 27,552 | 28 tiles still the peak after watering got cheaper |
+| **#16** | `melon-recross` | panel, 32 seeds | 48 | 24,448 | more melon does not help locally, though ladder winners out-sell us on it |
+| **#17** | `berryflood-confirm` | roundrobin, 64 seeds | 27 | 44,928 | `berryflood` (50 strawberry, copied from the 113k opponent) does not reach the top 11 |
+| **#18** | `late-filler` | panel, 32 seeds | 32 | 16,256 | late-season carrot/wheat fillers rank 10-12; filling idle tiles is worse than leaving them |
+| **#19** | `final-confirm` | roundrobin, 96 seeds | 14 | 17,472 | `marketgarden` 1st at 78.3% — fertilizing makes 18 strawberry tiles beat 28 |
+| **#20** | `wheat-filler` | panel, 32 seeds | 24 | 12,160 | wheat on `smallhold` loses; the ladder winners' wheat is not what makes them win |
+| **#21** | `wheat-after-ramp` | roundrobin, 64 seeds | 20 | 24,320 | wheat retried after the hiring ramp, still loses |
+| **#22** | `bench-baseline` | roundrobin, 96 seeds | 12 | 12,672 | **the old reference field had saturated**: everything beat the anchors 97-100% |
+| **#23** | `cand-vs-bench` | panel, 96 seeds | 6 | 11,520 | hiring ramp worth **+33 points** against a field that can rank; two identical builds score identically, validating the measurement |
+| **#24** | `mg-sweep` | panel, 96 seeds | 9 | 17,088 | smaller and denser wins: `mgtight` 90.2% against `marketgarden` 59.1% |
+| **#25** | `mg-sweep-2` | panel, 96 seeds | 8 | 15,360 | the shape brackets — 16 strawberry beats 14 and 18 |
+| **#26** | `mgtight-confirm` | roundrobin, 96 seeds | 14 | 17,472 | `mgtight` / `mgtightwide` tied at the top, 14 points clear of the submitted shape |
+| **#27** | `axis-recheck` | panel, 32 seeds | 144 | 92,160 | every axis re-measured on a field with spread; all previous choices confirmed |
+| **#28** | `liquidate-day` | panel, 96 seeds | 5 | 9,600 | liquidate on day **29**, monotone: 92.9 / 90.2 / 85.9 / 76.0 |
+| **#29** | `mgtight-fillers` | panel, 96 seeds | 7 | 13,440 | fillers on the tight base lose three ways — the idle time is not convertible |
+| **#30** | `final3-confirm` | roundrobin, 96 seeds | 17 | 26,112 | with the here-pass, the wheat filler **flips** and `mgtightgrain` reaches the top |
+| **#31** | `duel-final` | roundrobin, 256 seeds | 14 | 46,592 | `mgtightgrain` 86.7% and $75,727 over 46,592 episodes; beats `mgtightwide` 58.8% head to head |
+| **#32** | `resweep-new-engine` | panel, 64 seeds | 24 | 30,208 | invalidated by the filename collision — `bench2` shares names with the roster |
+| **#33** | `resweep-clean` | panel, 96 seeds | 7 | 13,440 | redone with unique names |
+| **#34** | `herd-resweep` | panel, 96 seeds | 7 | 13,440 | herd size re-measured on the new scheduler: 7+3 still optimal, monotone both ways |
+| **#36** | `axis-recheck-2` | panel, 32 seeds | 144 | 92,160 | every axis re-measured **again** after the here-pass; nothing flips |
 
-Run #10 was a duplicate ingest of #11 and was deleted; `PRAGMA integrity_check`
+Runs #10 and #35 were duplicate ingests of #11 and #36 and were deleted; `PRAGMA integrity_check`
 is clean and the totals below exclude it.
 
-Five further A/B ablations were analysed straight from their shard JSONL and
-deliberately **not** ingested, because each is one change against one control
-rather than a ranking: sticky assignment, alternate-day watering, CARE priority,
-`paced` selling, and `shopwise`. All five are written up with their arm sizes in
-`docs/ENGINE_CHANGES.md`.
+**Twelve further A/B ablations were analysed straight from their shard JSONL and
+deliberately not ingested**, because each is one change against one control
+rather than a ranking: sticky assignment, idle pre-positioning, alternate-day
+watering, CARE priority, `paced` selling, `shopwise`, the fertilizer reserve, the
+carrying threshold, the ramp shape, the inverted scheduler, two-pass and zone
+scheduling, the here-pass and the tile hold. Every one is written up with its arm
+size in `docs/ENGINE_CHANGES.md` — **eleven landed, seventeen were rejected**.
 
 Runs #8 and #9 were the first sharded runs: 48 array tasks × 32 cores = 1,536
 cores, `KG_FAST_ENV=1`. Run #8's 184,224 episodes took about six minutes of wall
 clock against the ~9 hours the same work would have taken on one 32-core job.
 
-**747,072 episodes total** across 14 runs, plus 101 real ladder episodes.
+**1,228,544 episodes total** across 32 runs, plus 184 real ladder episodes. Database is 3.0 GB.
+
+`docs/MAP.md` says which document explains which run.
 
 Runs #1–#6 ran on an engine with two defects that hurt crop plans much more than
 herd plans, and on a library that could not issue `FERTILIZE`. **Do not compare
@@ -85,7 +107,7 @@ These predate the SQLite store. Kept because published conclusions cite them.
 | Crop-scale sweep | 6 configs × 8 seeds | — | scaling the crop plan up is monotonically worse |
 | Stress suite | 28 pathological configs | — | `barnyard` 28/28 clean, worst turn 145 ms |
 
-Grand total including these: **~95,000 episodes**.
+Grand total including these and the ablations: **well over 1.3 million episodes**.
 
 ---
 
