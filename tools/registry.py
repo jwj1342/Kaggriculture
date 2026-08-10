@@ -233,6 +233,22 @@ PRODUCE = {
     "mgtightboth":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
                                ["WHEAT", 12, 24]],
                      "animals": {"COW": 9, "SHEEP": 4}},
+    # An animal affords four chainable actions on one tile -- FEED, CARE,
+    # COLLECT_FERTILIZER, HARVEST -- and about 85% of the ladder leader's
+    # zero-movement work comes from its thirteen animals against our ten. Herd
+    # size was measured *before* the here-pass existed, so it is re-run.
+    "mggrainherd":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
+                               ["WHEAT", 14, 24]],
+                     "animals": {"COW": 9, "SHEEP": 4}},
+    "mggrainherd2": {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
+                               ["WHEAT", 14, 24]],
+                     "animals": {"COW": 11, "SHEEP": 5}},
+    "mggrainherd3": {"crops": [["STRAWBERRY", 14, 19], ["MELON", 8, 18],
+                               ["WHEAT", 14, 24]],
+                     "animals": {"COW": 12, "SHEEP": 6}},
+    "mggrainlean":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
+                               ["WHEAT", 14, 24]],
+                     "animals": {"COW": 5, "SHEEP": 2}},
 
     "berryflood":   {"crops": [["STRAWBERRY", 50, 19], ["MELON", 12, 18]],
                      "animals": {"COW": 6, "SHEEP": 6}},
@@ -576,8 +592,8 @@ def plan_crop():
     So those are fixed here and the tile budget is the only thing varied, plus
     land -- because past about 46 tiles the plan needs a third quadrant.
     """
-    shapes = ("mgtight", "mgtightwide", "mgtightgrain", "mgtightgrain2",
-              "mgtightcarrot", "mgtightherd", "mgtightboth")
+    shapes = ("mggrainherd", "mggrainherd2", "mggrainherd3", "mggrainlean",
+              "mgtightboth", "mgtightherd")
     out = []
     for produce, land, muck, market in itertools.product(
             shapes, ("smallhold",), ("compost",), ("flood",)):

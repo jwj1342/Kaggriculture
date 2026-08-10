@@ -426,6 +426,30 @@ to units one turn at a time — it is more likely a different action model
 entirely, such as planning a unit's route several turns ahead so that each step
 lands on the next piece of work.
 
+### Herd size, re-measured on the new scheduler and unchanged
+
+An animal is the most chainable tile in the game — FEED, CARE,
+COLLECT_FERTILIZER, HARVEST, four turns without a step — and about 85% of the
+ladder leader's zero-movement work comes from its thirteen animals against our
+ten. So a bigger herd should now pay where it did not before. It does not, and
+the sweep is monotone in both directions around the incumbent:
+
+| herd | vs `bench2` |
+|---|---|
+| **7 cow, 3 sheep** (kept) | **49.0%** |
+| 9 cow, 4 sheep | 44.3% / 36.3% |
+| 11 cow, 5 sheep | 24.1% |
+| 12 cow, 6 sheep | 23.1% |
+| 5 cow, 2 sheep | 17.8% |
+
+Chainable work is not the only thing an animal costs. Each one also needs feed
+bought and carried, a pasture built, and its product sold into a market that
+reaches the floor after 59-76 units.
+
+`mgtightgrain` — strawberry 16, melon 8, wheat 14, 7 cow, 3 sheep, two
+quadrants, `compost`, `shopwise`, hiring ramp, liquidate on 29 — is the best
+configuration measured, from four independent directions.
+
 ## The pattern in the rejections
 
 Three of the four rejected changes were derived correctly from the rules and
