@@ -1,5 +1,24 @@
 # How to evaluate an agent
 
+> **The reference field must be able to lose to the candidate and beat it.**
+> Measured on 2026-08-10 (run #22): every strategy in the library beat the old
+> anchors — `berrybaron-muck`, `orchardherd`, the submitted `enhanced` — between
+> **97% and 100%** of the time, while `marketgarden` beat every other roster
+> shape 53% to 90%. Both ends were saturated, so the ranking carried no
+> information: a 99.2% and a 100.0% are the same measurement.
+>
+> `python tools/registry.py gen --plan bench --out agents/bench` materialises
+> the current standard field — the strongest shape of each production family
+> plus two deliberate outliers. Use it for `--panel` and as the fixed opponent
+> set in ablations, and regenerate it whenever a candidate starts beating it
+> above ~90%.
+>
+> **Four seeds cannot resolve anything.** Three separate changes on 2026-08-10
+> read positive over four seeds and were 21 to 44 points *behind* over 2,304
+> episodes an arm: a larger fertilizer reserve (+$6,500 → −44 points), the
+> inverted scheduler (+$15,000 → −23 points), and a raised carrying threshold.
+> A smoke test is a syntax check, not evidence.
+
 The hardest part of this competition is not writing a policy. It is knowing
 whether the policy you just wrote is better than the one before it.
 

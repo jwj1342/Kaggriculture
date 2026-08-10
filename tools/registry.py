@@ -384,6 +384,36 @@ def plan_edge():
     return corners
 
 
+def plan_bench():
+    """The standard reference field, and the reason it had to be replaced.
+
+    Measured in run #22, every strategy in the library beats the old anchors --
+    `estate-crew-berrybaron-flood-blind-muck`, `orchardherd`, and the submitted
+    `enhanced` -- between 97% and 100% of the time. An anchor that loses to
+    everything cannot rank anything. At the other end, `marketgarden` beat every
+    other roster shape 53% to 90%, so the internal comparison was saturated too.
+
+    This plan materialises a *spread*: the strongest shape of each production
+    family, on both engines' worth of settings, so a new candidate is measured
+    against opponents that are close to it rather than far below it. Use it as
+    `--panel` for screens and as the fixed opponent set for ablations.
+    """
+    out = []
+    for produce in ("marketgarden", "bigberry", "berrywheat", "berrybaron",
+                    "berrymelon", "orchardgarden", "grazier", "evengarden"):
+        out.append({"land": "smallhold", "labour": "crew", "produce": produce,
+                    "market": "flood", "intel": "blind", "muck": "compost",
+                    "adapt": "shopwise"})
+    # Two deliberate outliers, so the field is not all one idea.
+    out.append({"land": "estate", "labour": "crew", "produce": "orchardherd",
+                "market": "flood", "intel": "blind", "muck": "muck",
+                "adapt": "fixed"})
+    out.append({"land": "estate", "labour": "crew", "produce": "dairy",
+                "market": "adaptive", "intel": "blind", "muck": "muck",
+                "adapt": "shopwise"})
+    return out
+
+
 def plan_ladder():
     """The sparring field: shapes read off real ladder opponents.
 
@@ -504,7 +534,7 @@ def plan_labour():
 PLANS = {"main": plan_main, "grid": plan_grid, "produce": plan_produce,
          "muck": plan_muck, "edge": plan_edge, "ladder": plan_ladder,
          "factorial": plan_factorial, "refine": plan_refine, "crop": plan_crop,
-         "labour": plan_labour}
+         "labour": plan_labour, "bench": plan_bench}
 
 
 def plan_all():
