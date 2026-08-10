@@ -206,6 +206,31 @@ PRODUCE = {
     "berryboth":    {"crops": [["STRAWBERRY", 28, 19], ["MELON", 10, 18],
                                ["CARROT", 14, 25], ["WHEAT", 12, 24]],
                      "animals": {"COW": 6, "SHEEP": 4}},
+
+    # --- soak up the idle labour --------------------------------------------
+    # Read off the $160,864 opponent's replay, action by action. The gap is not
+    # fertilizer: they issue 72 FERTILIZE against our 55. It is that **30% of
+    # our actions are PASS and only 15% of theirs are** -- our hands run out of
+    # work. They hold three quadrants, thirteen animals, and plant 148 wheat
+    # seeds over the season, so there is always something to water and harvest:
+    # 1,010 WATER and 390 HARVEST against our 368 and 119, and 42% of their
+    # actions do work against our 21%.
+    #
+    # Wheat is the filler: $10 a seed, four units in five days, replantable to
+    # day 24, and its market is 4,000 deep so the volume never crashes it.
+    # Listed last so it only takes tiles the strawberry and melon do not want.
+    "berrywheat":   {"crops": [["STRAWBERRY", 20, 19], ["MELON", 10, 18],
+                               ["WHEAT", 40, 24]],
+                     "animals": {"COW": 8, "SHEEP": 5}},
+    "berrywheatbig": {"crops": [["STRAWBERRY", 28, 19], ["MELON", 10, 18],
+                                ["WHEAT", 32, 24]],
+                      "animals": {"COW": 8, "SHEEP": 5}},
+    "wheatgarden":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 12, 18],
+                               ["WHEAT", 48, 24]],
+                     "animals": {"COW": 8, "SHEEP": 6}},
+    "fullfarm":     {"crops": [["STRAWBERRY", 20, 19], ["MELON", 12, 18],
+                               ["WHEAT", 30, 24], ["CARROT", 16, 25]],
+                     "animals": {"COW": 8, "SHEEP": 6}},
 }
 
 MARKET = {
@@ -446,11 +471,11 @@ def plan_crop():
     So those are fixed here and the tile budget is the only thing varied, plus
     land -- because past about 46 tiles the plan needs a third quadrant.
     """
-    shapes = ("bigberry", "berrycarrot", "berrygrain", "berrymelonlate",
-              "berryboth", "bigberrymelon", "berrymelon", "marketgarden")
+    shapes = ("berrywheat", "berrywheatbig", "wheatgarden", "fullfarm",
+              "berrygrain", "marketgarden", "bigberry", "berrybaron")
     out = []
     for produce, land, muck, market in itertools.product(
-            shapes, ("smallhold", "estate"), ("muck", "compost"),
+            shapes, ("estate", "latifundium", "smallhold"), ("compost",),
             ("flood",)):
         out.append({"land": land, "labour": "crew", "produce": produce,
                     "market": market, "intel": "blind", "muck": muck,

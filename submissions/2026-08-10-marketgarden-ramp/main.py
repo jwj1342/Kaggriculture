@@ -23,21 +23,25 @@ on to track the opponent's realised sell rate.
 import math
 
 # === STRATEGY CONFIG (generated -- do not edit by hand) ===
-CONFIG = {
-    "name": "engine-default",
-    "atoms": {"land": "estate", "labour": "crew", "produce": "mixedfarm",
-              "market": "metered", "intel": "blind", "muck": "muck"},
-    "land": 3,
-    "hands": 11,
-    "hire_frac": 0.06,
-    "crops": [["MELON", 14, 18], ["STRAWBERRY", 14, 13], ["WHEAT", 20, 24]],
-    "animals": {"COW": 10, "SHEEP": 8, "GOOSE": 6},
-    "market": "metered",
-    "intel": "blind",
-    "muck": True,
-    "harvest_product": True,
-    "fertilise": False,
-}
+CONFIG = {   'name': 'smallhold-crew-marketgarden-flood-blind-compost-shopwise',
+    'atoms': {   'land': 'smallhold',
+                 'labour': 'crew',
+                 'produce': 'marketgarden',
+                 'market': 'flood',
+                 'intel': 'blind',
+                 'muck': 'compost',
+                 'adapt': 'shopwise'},
+    'land': 2,
+    'hands': 11,
+    'hire_frac': 0.06,
+    'crops': [['STRAWBERRY', 18, 19], ['MELON', 10, 18]],
+    'animals': {'COW': 8, 'SHEEP': 3},
+    'market': 'flood',
+    'intel': 'blind',
+    'muck': True,
+    'harvest_product': True,
+    'fertilise': True,
+    'shopwise': True}
 # === END CONFIG ===
 
 CROPS = {
