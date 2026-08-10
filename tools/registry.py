@@ -184,6 +184,28 @@ PRODUCE = {
                      "animals": {"COW": 6, "SHEEP": 6}},
     "berrytide":    {"crops": [["STRAWBERRY", 42, 19], ["MELON", 12, 18]],
                      "animals": {"COW": 6, "SHEEP": 4}},
+
+    # --- filling the last ten days ------------------------------------------
+    # Strawberry stops being worth planting on day 19 and each plant dies about
+    # seventeen days after it goes in, so from roughly day 19 the tiles that
+    # carried it stand empty -- measured on the ladder, we finish with 20 idle
+    # tiles and 20 weeds while the season is still paying. Carrot yields three
+    # units four days after planting and can still be sown on day 25; wheat
+    # yields four in five days and doubles as feed. Listing them last in the
+    # plan means they only ever take tiles the strawberry and melon do not
+    # want.
+    "berrycarrot":  {"crops": [["STRAWBERRY", 28, 19], ["MELON", 8, 18],
+                               ["CARROT", 24, 25]],
+                     "animals": {"COW": 6, "SHEEP": 4}},
+    "berrygrain":   {"crops": [["STRAWBERRY", 28, 19], ["MELON", 8, 18],
+                               ["WHEAT", 24, 24]],
+                     "animals": {"COW": 6, "SHEEP": 4}},
+    "berrymelonlate": {"crops": [["STRAWBERRY", 28, 19], ["MELON", 14, 18],
+                                 ["CARROT", 20, 25]],
+                       "animals": {"COW": 6, "SHEEP": 4}},
+    "berryboth":    {"crops": [["STRAWBERRY", 28, 19], ["MELON", 10, 18],
+                               ["CARROT", 14, 25], ["WHEAT", 12, 24]],
+                     "animals": {"COW": 6, "SHEEP": 4}},
 }
 
 MARKET = {
@@ -424,8 +446,8 @@ def plan_crop():
     So those are fixed here and the tile budget is the only thing varied, plus
     land -- because past about 46 tiles the plan needs a third quadrant.
     """
-    shapes = ("bigberry", "berrymelon", "berryfull", "marketgarden",
-              "evengarden", "berrywool", "berrydairy", "bigberrymelon")
+    shapes = ("bigberry", "berrycarrot", "berrygrain", "berrymelonlate",
+              "berryboth", "bigberrymelon", "berrymelon", "marketgarden")
     out = []
     for produce, land, muck, market in itertools.product(
             shapes, ("smallhold", "estate"), ("muck", "compost"),

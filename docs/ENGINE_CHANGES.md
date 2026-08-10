@@ -184,6 +184,40 @@ priority 7, below fertilizer collection. **72.2% against 83.3%** over 3,072
 episodes an arm, worse on all four shapes. It is not what the actions are short
 of.
 
+### Three attempts to raise FERTILIZE throughput
+
+The top of the ladder is separated from the middle by one number. Across 184
+real episodes, the median opponent gets **3.1 strawberry per planting** and so do
+we (3.3, or 5.3 with `compost`). Four opponents get **7.6** — essentially the
+fertilized ceiling of 8 — and they are the ones finishing on $139k-$171k while
+everyone else is at $60k-$100k.
+
+The gap is not fertilizer supply and not watering. It is the number of
+`FERTILIZE` actions: ~110 are needed for 37 plants over four ticks each, and we
+manage 52-62. Three ways to buy more were tried and all three lost:
+
+| change | win rate | median $ |
+|---|---|---|
+| as-is (`fert_reserve = min(12, tiles)`) | **84.9%** | **70,206** |
+| hold back `2 x tiles` of fertilizer instead of 12 | 41.0% | 58,772 |
+| water every day when fertilising (instead of tick days) | ~neutral | ~equal |
+| harvest ongoing crops every *other* tick | 82.6% | 69,382 |
+
+The reserve change is the instructive one. A four-seed smoke test showed it
++$6,500 ahead; over 3,072 episodes an arm it is **44 points behind**. Fertilizer
+held is fertilizer not sold, and the early price is real money. `docs/EVALUATION.md`
+says four seeds cannot resolve anything and this is what that looks like.
+
+The alternate-tick harvest is arithmetically free — `yield_units` caps at
+`max_yield`, so banking two ticks of `+2` gives the same 8 units for half the
+harvest actions — and it still lost overall, though it was the one change that
+helped `marketgarden` specifically (89.7% against 86.1%, about two standard
+errors). Not adopted on that evidence alone.
+
+**What this means:** the action budget is the wall, and it is not obviously
+movable by scheduling. 44% of actions are walking on a 50-tile board worked by
+12 units. Whatever the top four are doing, it is not a priority tweak.
+
 ### `paced` — rate-matched selling
 
 Depth and refill differ by sixty times across the nine products. Strawberry,
