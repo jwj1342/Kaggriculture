@@ -471,11 +471,11 @@ def plan_crop():
     So those are fixed here and the tile budget is the only thing varied, plus
     land -- because past about 46 tiles the plan needs a third quadrant.
     """
-    shapes = ("berrywheat", "berrywheatbig", "wheatgarden", "fullfarm",
-              "berrygrain", "marketgarden", "bigberry", "berrybaron")
+    shapes = ("marketgarden", "berrywheat", "berrywheatbig", "wheatgarden",
+              "fullfarm", "berrygrain", "bigberry", "berrybaron")
     out = []
     for produce, land, muck, market in itertools.product(
-            shapes, ("estate", "latifundium", "smallhold"), ("compost",),
+            shapes, ("smallhold", "estate"), ("compost",),
             ("flood",)):
         out.append({"land": land, "labour": "crew", "produce": produce,
                     "market": market, "intel": "blind", "muck": muck,

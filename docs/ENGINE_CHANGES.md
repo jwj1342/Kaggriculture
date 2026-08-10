@@ -275,6 +275,42 @@ Produce in hand is produce not yet sellable. The delayed sales cost more than
 the walking saves, and the effect saturates by 12 — above that the trigger
 stops binding at all.
 
+### Inverting the scheduler: let each unit pick its own task
+
+The clearest single number separating us from the top of the ladder, measured
+across three episodes: **they spend about one movement action per action that
+does work; we spend 2.5.** Their split is 43% movement / 15% `PASS` / 42% work;
+ours is 55% / 24% / 22%. Land does not explain it — two quadrants and three
+produce byte-identical profiles — and neither does idle tile count.
+
+The mechanism looked obvious. Assigning task-by-task in priority order hands
+every task the globally nearest free unit, and the high-priority tasks go first,
+so by the time a priority-8 watering is placed the only units left are the far
+ones. Inverting it — each unit scores every unclaimed task as
+`priority * W + distance` and takes its best — should cluster the work.
+
+It does exactly what it was meant to do and still loses:
+
+| scheduler | movement | `PASS` | work | win rate | median $ |
+|---|---|---|---|---|---|
+| task-picks-unit (kept) | 55% | 23% | 22% | **77.0%** | **70,301** |
+| unit-picks-task, `W=1` | 46% | 33% | 21% | 54.3% | 62,398 |
+| unit-picks-task, `W=2` | 48% | 32% | 20% | 42.8% | 60,016 |
+
+Movement falls nine points, and it is `PASS` that absorbs the saving, not work.
+Units that only take nearby tasks leave the distant urgent ones undone, and a
+farm loses more to one unwatered plant than it gains from three saved steps.
+
+Its four-seed smoke test showed **+$15,000**. Over 2,304 episodes an arm it is
+23 points behind. That is the third time in one session that a four-seed check
+pointed the wrong way; `docs/EVALUATION.md` is right and the smoke test is only
+ever a syntax check.
+
+**Six separate attempts have now failed to close the action-efficiency gap**:
+sticky targets, idle pre-positioning, CARE priority, carrying threshold, daily
+watering, and this. Whatever the top of the ladder is doing, it is not something
+this scheduler can be tuned into.
+
 ## The pattern in the rejections
 
 Three of the four rejected changes were derived correctly from the rules and
