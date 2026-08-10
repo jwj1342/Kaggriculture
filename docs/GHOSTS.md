@@ -94,6 +94,38 @@ ghost's recorded seed, in the ghost's recorded seat**. Two consequences:
   adapt — but it *can* be over-fitted to as a fixed sequence. Rotate the set as
   new days are published rather than tuning against the same twelve forever.
 
+## What the ghosts said about the engine decisions
+
+Every engine change was re-measured against the ghost field. The headline is not
+that anything reversed — it is **how badly the echo chamber compressed the
+magnitudes**:
+
+| change | against our own field | against 60–96 ghosts |
+|---|---|---|
+| the here-pass | +4 points (96.0% → 96.6% with the tile hold) | **36.7% → 1.7% without it** |
+| the hiring ramp | +18, later +33 | **36.7% → 6.7% without it** |
+| unit-picks-task scheduler | 77% → 54% | 36.7% → 3.3% |
+| daily watering | 87.8% → 53.1% | 36.7% → 26.7% |
+
+Removing the hiring ramp costs **$1,117 of median money and 30 points of win
+rate**. On a weak field that change looks negligible; on a strong one it decides
+the game. The echo chamber did not point the wrong way — it flattened the
+differences until they were indistinguishable from noise.
+
+The seven rejected changes were re-run too, and none of them reverses:
+
+| rejected change | vs ghosts | paired against current |
+|---|---|---|
+| current | **39.6%** | — |
+| `CARE` at priority 3 | 41.7% | 50–46 — a coin flip |
+| carrying threshold 12 | 32.3% | 47–49 |
+| fertilizer reserve 2× tiles | 12.5% | 41–55 |
+| static zones | 5.2% | 35–61 |
+| harvest every other tick | 25.0% | 24–72 |
+
+`CARE` moves from clearly wrong to neutral; everything else stays rejected. The
+engine decisions were right, and now they are right for a measured reason.
+
 ## What this does not give us
 
 A ghost shows what a strong player *did*, never what they would have done. It
