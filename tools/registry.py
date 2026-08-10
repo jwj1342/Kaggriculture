@@ -180,6 +180,42 @@ PRODUCE = {
     # 211 units, against our 37 seeds and 106 units. A strawberry tile hosts two
     # plantings a season, so 107 seeds needs about fifty tiles standing -- three
     # quadrants, and a target high enough that the buyer never stops.
+    # --- around `marketgarden`, measured against the `bench` field ----------
+    # It wins 83.9% there with the hiring ramp; these vary one thing at a time
+    # so the optimum is walked out on a field that can actually rank things.
+    "mgsmall":      {"crops": [["STRAWBERRY", 14, 19], ["MELON", 10, 18]],
+                     "animals": {"COW": 8, "SHEEP": 3}},
+    "mgwide":       {"crops": [["STRAWBERRY", 22, 19], ["MELON", 10, 18]],
+                     "animals": {"COW": 8, "SHEEP": 3}},
+    "mgmelonlow":   {"crops": [["STRAWBERRY", 18, 19], ["MELON", 6, 18]],
+                     "animals": {"COW": 8, "SHEEP": 3}},
+    "mgmelonhigh":  {"crops": [["STRAWBERRY", 18, 19], ["MELON", 14, 18]],
+                     "animals": {"COW": 8, "SHEEP": 3}},
+    "mgherdbig":    {"crops": [["STRAWBERRY", 18, 19], ["MELON", 10, 18]],
+                     "animals": {"COW": 10, "SHEEP": 5}},
+    "mgherdsmall":  {"crops": [["STRAWBERRY", 18, 19], ["MELON", 10, 18]],
+                     "animals": {"COW": 6, "SHEEP": 2}},
+    "mgwool":       {"crops": [["STRAWBERRY", 18, 19], ["MELON", 10, 18]],
+                     "animals": {"COW": 5, "SHEEP": 6}},
+    "mgtight":      {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    # `mgtight` won the sweep at 90.2%, and the trend all the way down was
+    # "smaller and denser" -- which is what the action budget would predict: a
+    # tile the hands never reach is worse than no tile at all. These push past
+    # it to find where it turns.
+    "mgmin":        {"crops": [["STRAWBERRY", 12, 19], ["MELON", 6, 18]],
+                     "animals": {"COW": 6, "SHEEP": 2}},
+    "mgtiny":       {"crops": [["STRAWBERRY", 14, 19], ["MELON", 6, 18]],
+                     "animals": {"COW": 6, "SHEEP": 3}},
+    "mgcore":       {"crops": [["STRAWBERRY", 16, 19], ["MELON", 6, 18]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    "mgtightwide":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 10, 18]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    "mgtighthigh":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18]],
+                     "animals": {"COW": 9, "SHEEP": 4}},
+    "mgnano":       {"crops": [["STRAWBERRY", 10, 19], ["MELON", 6, 18]],
+                     "animals": {"COW": 5, "SHEEP": 2}},
+
     "berryflood":   {"crops": [["STRAWBERRY", 50, 19], ["MELON", 12, 18]],
                      "animals": {"COW": 6, "SHEEP": 6}},
     "berrytide":    {"crops": [["STRAWBERRY", 42, 19], ["MELON", 12, 18]],
@@ -501,12 +537,11 @@ def plan_crop():
     So those are fixed here and the tile budget is the only thing varied, plus
     land -- because past about 46 tiles the plan needs a third quadrant.
     """
-    shapes = ("marketgarden", "berrywheat", "berrywheatbig", "wheatgarden",
-              "fullfarm", "berrygrain", "bigberry", "berrybaron")
+    shapes = ("mgtight", "mgmin", "mgtiny", "mgcore", "mgtightwide",
+              "mgtighthigh", "mgnano", "mgsmall")
     out = []
     for produce, land, muck, market in itertools.product(
-            shapes, ("smallhold", "estate"), ("compost",),
-            ("flood",)):
+            shapes, ("smallhold",), ("compost",), ("flood",)):
         out.append({"land": land, "labour": "crew", "produce": produce,
                     "market": market, "intel": "blind", "muck": muck,
                     "adapt": "shopwise"})
