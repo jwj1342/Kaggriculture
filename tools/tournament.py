@@ -291,7 +291,7 @@ def main():
         return cmd_ingest(ap.parse_args())
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("kind", choices=["panel", "roundrobin"])
+    ap.add_argument("kind", choices=["panel", "roundrobin", "ghosts"])
     ap.add_argument("--lib", default=None, help="directory of generated strategies")
     ap.add_argument("--agents", nargs="*", default=None)
     ap.add_argument("--panel", nargs="*", default=None)
@@ -363,6 +363,24 @@ def main():
                     jobs.append((b, a, s, args.steps))
         names = sorted({short(a) for a in roster} | panel_short)
         label = args.label or f"panel:{os.path.basename(args.lib or 'agents')}"
+    elif args.kind == "ghosts":
+        # Against recorded trajectories of top-rated players, not against
+        # ourselves. A ghost is open-loop and only meaningful on the seed and
+        # seat it actually played, so the seed comes from its manifest and the
+        # seats are never swapped -- which also means this measurement is not
+        # seat-balanced, and is a *field* rather than a duel.
+        with open("agents/ghosts/manifest.json") as f:
+            gm = json.load(f)
+        jobs = []
+        for a in roster:
+            for g, meta in sorted(gm.items()):
+                gp = f"agents/ghosts/{g}.py"
+                if meta["seat"] == 0:
+                    jobs.append((gp, a, meta["seed"], args.steps))
+                else:
+                    jobs.append((a, gp, meta["seed"], args.steps))
+        names = sorted({short(a) for a in roster} | set(gm))
+        label = args.label or f"ghosts:{len(roster)}x{len(gm)}"
     else:
         jobs = []
         for a, b in itertools.combinations(roster, 2):

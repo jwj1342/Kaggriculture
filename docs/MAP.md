@@ -15,6 +15,7 @@ everything after that.
 |---|---|---|
 | what the game actually rewards | `docs/GAME_ECONOMICS.md` | `reference/engine/kaggriculture.py` |
 | what real opponents do, and why our own field misled us | `docs/LADDER_FIELD.md` | `tools/ladder.py` → `ladder_episodes` |
+| how to measure against the **top** of the ladder locally | `docs/GHOSTS.md` | `tools/topeps.py`, `tools/ghost.py` |
 | every change made to the agent and what it measured | `docs/ENGINE_CHANGES.md` | shard JSONL under `data/shards/` |
 | how to produce a number that survives scrutiny | `docs/EVALUATION.md` | — |
 | what each atom option is worth | `docs/ATOM_EFFECTS.md` *(superseded in part)* | runs #1–#2 |
@@ -74,7 +75,23 @@ shard JSONL into one run. Array tasks never touch SQLite.
 `short(path)` is the basename and two builds of the same strategy from different
 directories merge silently into one row.
 
-### `tools/ladder.py` — the only opponents we did not write
+### `tools/topeps.py` and `tools/ghost.py` — the top of the ladder, locally
+
+`topeps.py` digests Kaggle's daily dumps of the highest-scoring episodes — games
+between players rated ~3,100 that we will never be matched into. Its digest
+carries the **action histogram**, because that is where the difference lives:
+they work 40.6% of their actions and spend 1.09 movement actions per action that
+works; we were at 21-27% and 1.85.
+
+`ghost.py` turns those trajectories into opponents. A ghost is 11 KB — the
+recorded action sequence of one player, replayed on the seed and seat it played.
+Nothing is fitted. `verify` measures how much of its original score it still
+reaches (median 114%) before the set is trusted.
+
+Our win rate: **96% against our own field, 42% against ghosts, 50-58% on the
+ladder.** The ghost number is the one that tracks reality.
+
+### `tools/ladder.py` — the opponents matched to *our* rating
 
 Pulls our own ladder episodes, keeps a ~1.4 KB digest, deletes the 19 MB replay.
 The seat is *determined* by the 403 on the opponent's logs, never guessed.

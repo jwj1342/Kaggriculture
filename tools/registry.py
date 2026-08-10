@@ -249,6 +249,24 @@ PRODUCE = {
     "mggrainlean":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
                                ["WHEAT", 14, 24]],
                      "animals": {"COW": 5, "SHEEP": 2}},
+    # --- the top of the leaderboard, read off Kaggle's daily episode dumps ---
+    # 48 episodes averaging 3,068-3,218 rating, 96 farms (tools/topeps.py). The
+    # median top farm: three quadrants, fourteen animals, fourteen hands at day
+    # 20, 320 strawberry sold at 7.6 per planting, 38 idle tiles and 19 weeds it
+    # never touches. It works 40.6% of its actions against our 21-27% and spends
+    # 1.09 movement actions per action that works against our 1.85.
+    #
+    # Every one of those numbers was measured against a different, weaker field
+    # before. This is the first time the target configuration has been visible.
+    "apex":         {"crops": [["STRAWBERRY", 24, 19], ["MELON", 12, 18],
+                               ["WHEAT", 10, 24]],
+                     "animals": {"COW": 8, "SHEEP": 6}},
+    "apexwide":     {"crops": [["STRAWBERRY", 28, 19], ["MELON", 14, 18],
+                               ["WHEAT", 12, 24]],
+                     "animals": {"COW": 9, "SHEEP": 5}},
+    "apexherd":     {"crops": [["STRAWBERRY", 22, 19], ["MELON", 12, 18],
+                               ["WHEAT", 10, 24]],
+                     "animals": {"COW": 10, "SHEEP": 6}},
 
     "berryflood":   {"crops": [["STRAWBERRY", 50, 19], ["MELON", 12, 18]],
                      "animals": {"COW": 6, "SHEEP": 6}},
@@ -592,13 +610,12 @@ def plan_crop():
     So those are fixed here and the tile budget is the only thing varied, plus
     land -- because past about 46 tiles the plan needs a third quadrant.
     """
-    shapes = ("mggrainherd", "mggrainherd2", "mggrainherd3", "mggrainlean",
-              "mgtightboth", "mgtightherd")
+    shapes = ("apex", "apexwide", "apexherd", "mgtightgrain")
     out = []
-    for produce, land, muck, market in itertools.product(
-            shapes, ("smallhold",), ("compost",), ("flood",)):
-        out.append({"land": land, "labour": "crew", "produce": produce,
-                    "market": market, "intel": "blind", "muck": muck,
+    for produce, land, labour in itertools.product(
+            shapes, ("estate", "smallhold"), ("crew", "gang", "company")):
+        out.append({"land": land, "labour": labour, "produce": produce,
+                    "market": "flood", "intel": "blind", "muck": "compost",
                     "adapt": "shopwise"})
     return out
 
