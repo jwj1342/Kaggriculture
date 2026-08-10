@@ -420,6 +420,25 @@ def plan_edge():
     return corners
 
 
+def plan_recheck():
+    """Re-measure every axis around `mgtight`, on a field that can rank.
+
+    Everything except `produce` was settled against anchors that lost to the
+    whole library 97-100% of the time. Re-sweeping `produce` on `bench` moved
+    the optimum by 32 points, so the rest is re-run rather than inherited.
+    """
+    out = []
+    for labour, market, land, muck in itertools.product(
+            ("crew", "gang", "crewrich", "handful", "gangtight", "lean"),
+            ("flood", "metered", "adaptive", "paced"),
+            ("smallhold", "estate", "homestead"),
+            ("compost", "muck")):
+        out.append({"land": land, "labour": labour, "produce": "mgtight",
+                    "market": market, "intel": "blind", "muck": muck,
+                    "adapt": "shopwise"})
+    return out
+
+
 def plan_bench():
     """The standard reference field, and the reason it had to be replaced.
 
@@ -569,7 +588,7 @@ def plan_labour():
 PLANS = {"main": plan_main, "grid": plan_grid, "produce": plan_produce,
          "muck": plan_muck, "edge": plan_edge, "ladder": plan_ladder,
          "factorial": plan_factorial, "refine": plan_refine, "crop": plan_crop,
-         "labour": plan_labour, "bench": plan_bench}
+         "labour": plan_labour, "bench": plan_bench, "recheck": plan_recheck}
 
 
 def plan_all():
