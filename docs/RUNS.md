@@ -123,6 +123,32 @@ Grand total including these and the ablations: **well over 1.3 million episodes*
 | 2026-08-09 | `55386857` | + fertilizer price gate | `submissions/2026-08-09-bigberry-fertgate/` | 85.0% against 83.3%, 3,072 an arm | 711.4 over 4 episodes |
 | 2026-08-09 | `55386…` | + `shopwise` herd | `submissions/2026-08-09-bigberry-shopwise/` | 71.9% against 68.4%, 6,144 an arm | pending |
 
+| 2026-08-10 | `55402695` | `mgtight` | `submissions/2026-08-10-mgtight/` | 1st of 24 over 35,328 episodes | **759.9** over 41 episodes |
+| 2026-08-10 | `55404837` | + liquidate on day 29 | `submissions/2026-08-10-mgtight-liq29/` | monotone sweep, 92.9/90.2/85.9/76.0 | **838.4** over 47 — the liquidation day is worth +69 on the ladder |
+| 2026-08-11 | `55418588` | `mgtightgrain` | `submissions/2026-08-11-mgtightgrain/` | 86.7% over 46,592 episodes | 781.1 over 38 — **bundled two changes, see below** |
+| 2026-08-11 | `55424…` | `mgtight` + here-pass, no wheat | `submissions/2026-08-11-mgtight-here/` | 2×2 factorial: here-pass +42, wheat −31; agreed by three fields | pending |
+
+### One submission, two changes, and why that was a mistake
+
+`55418588` changed the production shape *and* added the here-pass. It landed at
+781.1 against the incumbent's 838.4, and that number could not say which change
+was responsible — exactly what `docs/SUBMISSION_POLICY.md` rule 3 forbids, and
+the rule was written before the mistake was made.
+
+A 2×2 factorial separated them, 512 episodes a cell:
+
+| | no here-pass | here-pass |
+|---|---|---|
+| **no wheat** | 48.2% (the incumbent) | **90.6%** |
+| **wheat** | 1.5% | 59.7% (what was submitted) |
+
+The here-pass is worth **+42 points** and the wheat filler **−31**. Three
+independent fields agree: direct head to head, the meta-inclusive `bench3`
+(55.9% against 47.4%), and 156 replayed top-player trajectories (58.3% against
+54.5%, with the incumbent at 33.3%).
+
+**The best combination had never been submitted.** It is now.
+
 ### Submitting too often destroys the measurement
 
 Only the **latest two** submissions stay active, and the ladder plays roughly ten

@@ -102,6 +102,24 @@ single change in the project (`docs/ENGINE_CHANGES.md` §3).
 
 ---
 
+## What a fresh clone does not have
+
+Two opponent fields are git-ignored — one is third-party code, the other is 150+
+generated files — and **both are load-bearing**. A bench without them measures
+our own family against itself, which is the mistake that cost this project a
+week.
+
+```bash
+bash tools/fetch_fields.sh            # both
+bash tools/fetch_fields.sh ghosts 60  # just ghosts, 60 of them
+```
+
+| directory | what | why it is not committed |
+|---|---|---|
+| `agents/ref/` | the public teaching ladder, tiers 0–9; tiers 6–9 replay the shared meta line | third-party (MIT + a NOTICE with a real scope carve-out); one command to fetch |
+| `agents/ghosts/` | 11 KB opponents replaying top-player trajectories | reconstructible from public replay data; ~90 s each to build |
+| `agents/bench3/` | the standard reference field | generated: `registry.py gen --plan bench`, plus the tier 4–9 agents |
+
 ## The measurement chain
 
 ```
