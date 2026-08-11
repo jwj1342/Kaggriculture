@@ -450,6 +450,62 @@ reaches the floor after 59-76 units.
 quadrants, `compost`, `shopwise`, hiring ramp, liquidate on 29 — is the best
 configuration measured, from four independent directions.
 
+### The ten-day seed freeze is not a deadlock, it is a trade
+
+The clearest-looking defect found here, and the largest single rejection.
+
+Instrumenting the seed-purchase gate day by day against the public meta shows we
+buy one round of seed on day 0 and then buy **nothing until day 11**, sitting on
+$109-$435 with eight plants while it holds $2,034 and twenty-seven:
+
+```
+D 0 cash=512 room=19 plants= 0 seeds={WHEAT:4, STRAWBERRY:4, MELON:4}
+D 2 cash=160 room= 6 plants=12 seeds={all zero}
+D 8 cash=109 room= 8 plants= 8 seeds={all zero}
+D11 cash=127 room=23 plants=10 seeds={STRAWBERRY:17, MELON:9}   <- released
+```
+
+Two individually correct rules produce it. `floor_cash = 100 + min(4,
+pending_herd) * 420` reserves $1,780 against the unbought herd, and the animal
+gate allows only `n_waiting < 2` in flight, so `pending_herd` stays at its cap
+for ten days and a farm that never holds $1,780 can never buy a seed. It
+releases on day 11, the day the herd completes.
+
+Three arms, `bench3` plus the five reference agents, 96 seeds, **137,664
+episodes**, keyed on directory because the builds share basenames:
+
+| engine | win rate | 95% CI |
+|---|---|---|
+| **unchanged** (kept) | **47.57%** | [47.11, 48.03] |
+| wheat exempt from the reserve | 39.27% | [38.82, 39.72] |
+| wheat exempt + reserve capped at two animals | 33.24% | [32.81, 33.68] |
+
+Balanced on produce and land, the control wins ten of twelve cells, and the loss
+is monotone in how much of the reserve is removed. The freeze is the engine
+spending its cash on livestock instead of seed, and **livestock is where the
+money is**: milk reaches the price floor after 76 units and wool after 59
+against strawberry's 62, and one animal supports four chainable actions on a
+tile nobody has to walk to. The probe showed the cost plainly and it was read
+backwards — the fixed arms reach day 10 with 9 animals against the control's 11.
+
+The same run rejects the crop plan it was built to enable. Wheat as a four-day
+bridging loan — $10 a seed, first yield day 2, dead by day 4, 4,000 units to the
+price floor, and the opening the meta actually plays — listed first with a
+last-plant-day of 4 so it takes the cash while strawberry is unaffordable and is
+off the tiles before strawberry wants them:
+
+| produce | win rate |
+|---|---|
+| **`mgtight`** — strawberry 16, melon 8 (kept) | **51.4%** |
+| `mgboot` — + wheat 12 to day 4 | 50.5% |
+| `mgbootlong` — + wheat 12 to day 8 | 48.5% |
+| `apexboot` — wheat 16, strawberry 24, melon 12 | 46.2% |
+| `mgbootmelon` — wheat, then melon, then strawberry | 40.2% |
+
+Under the unchanged engine the wheat target does not even bind: `mgboot` and
+`mgboot20` score identically to the dollar, because the reserve stops the second
+round of buying whatever the target says.
+
 ## The pattern in the rejections
 
 Three of the four rejected changes were derived correctly from the rules and
@@ -462,3 +518,10 @@ those assumptions is false in a way the arithmetic does not show.
 The two that landed are both of the opposite kind: they remove work that the
 *engine's own rules* say is unnecessary — a watering that does not affect yield,
 an action spent collecting something with no buyer.
+
+The seed freeze adds a fifth kind, and it is the one to watch for: **the engine
+doing something correct for a reason not written down anywhere.** Nothing in the
+code says "livestock outranks seed"; it falls out of a cash floor and a purchase
+rate limit meeting each other. A probe that shows the farm doing nothing is not
+evidence that it should be doing something — read what it spends the cash on
+before deciding it is stuck.

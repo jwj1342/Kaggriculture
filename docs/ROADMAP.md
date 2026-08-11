@@ -89,38 +89,84 @@ independently-optimised trace beats the community-evolved one, and that question
 is only answerable by doing C.
 
 ### D. Hybrid — trace opening, adaptive endgame
-**The most likely-to-work version of C.** The meta's rigidity is real: it cannot
-respond to the shop draw, and the shop draw swings demand for a single product
-**49x**. A trace for the opening, where the board is deterministic and the meta
-is strongest, handing over to the adaptive engine from about day 15, when the
-town has revealed itself and a fixed plan is bleeding.
+~~**The most likely-to-work version of C.**~~ **Measured and dead.** The idea was
+that the meta's rigidity is real — it cannot respond to the shop draw, and the
+shop draw swings demand for a single product **49x** — so a trace would carry
+the deterministic opening and hand over to the adaptive engine around day 15.
+
+`tools/hybrid.py` splices a recorded opening onto our engine at a chosen day and
+the handover day is swept. Against `bench3` plus four reference agents, 96 seeds,
+3,648 episodes an arm:
+
+| handover | win rate | median $ |
+|---|---|---|
+| our engine alone | 54.0% | 69,804 |
+| day 2 | 63.3% | 77,321 |
+| day 6 | 69.7% | 78,591 |
+| day 12 | 67.7% | 83,047 |
+| day 16 | 64.7% | 86,879 |
+| day 20 | 71.1% | 90,003 |
+| day 24 | 72.3% | 89,017 |
+| day 28 | 77.9% | 89,272 |
+| the recording alone | **98.6%** | **99,168** |
+
+**The curve never turns over.** There is no day at which our engine starts adding
+value; more recording is better all the way to 100% of it. Two days of it are
+worth +9.3 points. The premise of D — that the gap is concentrated in the opening
+— is false: the gap is every phase.
+
+Rerun with the engine's crop, herd and hand targets raised at handover to the
+board it inherits (`--adopt`, without which the absolute targets make it refuse
+to replant a farm larger than its plan, and it decays 55 -> 12 plants): ±4 points,
+no change in shape. The handover shock is real and it is not the effect.
+
+**What the curve does say** is where the cheapest remaining money is. Priced per
+day, the steepest segment by a factor of four is the *last two*: day 28 to the
+end is worth +20.7 points and $9,896, against 0-5 points for every other
+segment. `endgame` switches the whole task list off on the liquidation day, so
+WATER, FEED, CARE and COLLECT_FERTILIZER stop and an `ongoing` crop that is not
+watered does not tick; the recording harvests 30 times, waters 19 and keeps
+eleven hands on the payroll on day 29 while selling 133 wheat.
 
 ---
 
-## 4. What tomorrow's numbers decide
+## 4. What the numbers decided
 
-Two measurements are in flight. They select the road:
+Both measurements are in. They ruled out more than they selected.
 
-**If `mgtightgrain` beats the meta agents in ≥35% of games** — the base is close
-enough that road B pays. Counter-play on top of a competitive base is the
-cheapest route to ~1,100.
+**`mgtightgrain` against the meta agents: 0 wins in 384.** Under 20% by the
+widest possible margin, so **road B is dead** — countering an opponent we never
+beat cannot be the lever. Its ladder score settled at 767, below the 850 line,
+while the shape without the wheat filler reached 857.6 before falling back to
+812 as its episode count grew.
 
-**If it is under 20%** — the base is not competitive and countering will not
-save it. Go to C or D; anything else is decoration.
+**The handover sweep killed road D** (§3). The gap is not concentrated in the
+opening, so there is no opening to graft.
 
-**If the ladder score of `mgtightgrain` lands above 900** — the local-to-ladder
-transfer is holding and the engine work is still paying. Below 850, it is not,
-and the local field has drifted from reality again.
+That leaves **A** — worth one more pass and nothing more — and **C**, building a
+full-season trace of our own. C is now the only road with a top-10 ceiling on it,
+and the handover curve is the argument for it: a recording of *someone else's*
+season, played by nothing but a lookup table, wins 98.6% of a field our best
+engine wins 54% of.
 
 ## 5. The order I would take them in
 
-1. **Submit `mgtightgrain`** when the quota resets, and let it run 40+ episodes.
-   It is measured, snapshotted and stress-clean; there is nothing to gain by
-   holding it. (`docs/SUBMISSION_POLICY.md`)
-2. **Road B, immediately**, while that accumulates — clone detection is a day's
-   work and it is measurable against `agents/ref/` locally within minutes.
-3. **Decide on C/D with the numbers from §4**, not before. A week-long search
-   started on a hunch is the most expensive mistake available here.
+1. **The endgame decoupling first.** It is the cheapest thing the handover curve
+   found — 20 points priced in two days — and it is an engine change measurable
+   in fifteen minutes, not a week. `endgame` fuses "start dumping inventory" with
+   "stop farming"; the recording separates them.
+2. **Then C, and only C.** A trace search seeded from our own engine's output,
+   evaluated on many seeds against many opponents, because common random numbers
+   do not control this environment — weeds and the shop unlock share one RNG and
+   weed draws scale with *both* farms' empty tiles, so a sequence tuned on one
+   seed sees a different board on the next. The recording's answer to that is to
+   ignore weeds entirely, and it can afford to.
+3. **Do not submit a copy of the public line.** 104 teams already run it. The
+   final ranking is Bradley-Terry among submissions, so a clone of the modal
+   agent draws 50% against the mode by construction — it inherits the cluster's
+   rating and nothing above it, and `agents/ref/NOTICE` declines to claim a
+   licence over the sequence. Use it as an instrument (`tools/hybrid.py`), never
+   as a submission.
 
 The competition runs to 2026-09-30, so there is time for exactly one project of
 C's size. Spending it on the right one matters more than starting it early.

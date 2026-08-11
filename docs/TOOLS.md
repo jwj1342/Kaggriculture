@@ -288,6 +288,34 @@ submitted code cannot drift.
 python tools/build_notebook.py agents/barnyard.py notebooks/baseline.ipynb
 ```
 
+### `tools/hybrid.py`
+Splices a recorded 720-turn opening onto a generated agent at a chosen day, so
+"how much of the season is decided in the opening" can be measured instead of
+argued.
+
+```bash
+python tools/hybrid.py <agent>.py --open agents/ref/closer_cleo.py \
+    --days 0,4,8,12,16,20,24,28 [--adopt] --out agents/hybrid
+```
+
+`--adopt` raises the engine's crop, herd and hand targets to the board it
+inherits at handover. Without it the targets are absolute counts, so an engine
+configured for 16 strawberry handed a board carrying 41 never replants one and
+the farm decays 55 -> 12 plants — which measures our target ceiling, not the
+opening.
+
+Two silent-failure traps are guarded, because both were hit while writing it and
+neither raises: `get_last_callable` returns the **last callable value in the
+module dict**, so `_INNER = agent` and a helper `def` after `agent` both make the
+framework load the wrong function and every handover day then scores identically.
+The generated file parks callables in lists and `del`s the helper name, and every
+file is verified after writing — the framework must resolve `agent`, step 0 must
+come from the recording, and the handover step must not.
+
+Output goes to `agents/hybrid/` (git-ignored). **These are instruments, not
+submissions** — see `docs/ROADMAP.md` §5.3 for why a copy of the public line
+cannot rank above the crowd that already runs it.
+
 ### `tools/make_probes.py`
 Regenerates the legacy single-strategy probes in `agents/legacy/probes/`.
 Superseded by `registry.py`; kept because published results name them.

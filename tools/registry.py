@@ -268,6 +268,48 @@ PRODUCE = {
                                ["WHEAT", 10, 24]],
                      "animals": {"COW": 10, "SHEEP": 6}},
 
+    # --- wheat as a four-day bridging loan, not a filler ---
+    # Decoding the public meta's own opening (agents/ref/closer_cleo.py, days
+    # 0-8) shows where our farm actually falls behind, and it is not day 15: it
+    # is day 1. It puts 10 wheat + 7 melon in the ground on day 0, hires five
+    # hands, buys the herd, and ends the day on $138; we end day 0 with nothing
+    # planted and $552 in the bank, reach 8 plants by day 3 and sit there for
+    # five days while it goes to 27. By day 8 it holds $2,328 against our $306.
+    #
+    # Wheat is why. Seed $10, first yield day 2, dead by day 4, $150 of produce
+    # off one tile -- 15x in four days, against strawberry's 4.8x over ten --
+    # and 4,000 units to the price floor, so the harvest can be dumped whole
+    # without moving the market. The meta sells 40 units on day 5 and buys its
+    # first strawberry seed with the proceeds.
+    #
+    # Every wheat atom above puts WHEAT last with a last-plant-day of 24, which
+    # makes it a filler competing with strawberry for tiles and hands all season
+    # -- and it lost by 31 points as recently as the last factorial. Listed
+    # *first* with a last-plant-day of 4 it competes with nothing: the seed loop
+    # walks `crop_plan` in order, so wheat gets the cash while strawberry is
+    # still unaffordable, and it is dead and off the tiles before strawberry is
+    # ready to take them. Same crop, opposite role.
+    "mgboot":       {"crops": [["WHEAT", 12, 4], ["STRAWBERRY", 16, 19],
+                               ["MELON", 8, 18]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    "mgboot20":     {"crops": [["WHEAT", 20, 4], ["STRAWBERRY", 16, 19],
+                               ["MELON", 8, 18]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    # The meta buys melon on day 0 and strawberry only on day 4; this is its
+    # ordering rather than ours.
+    "mgbootmelon":  {"crops": [["WHEAT", 12, 4], ["MELON", 8, 18],
+                               ["STRAWBERRY", 16, 19]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    # One wheat generation is four days; this buys a second before handing over.
+    "mgbootlong":   {"crops": [["WHEAT", 12, 8], ["STRAWBERRY", 16, 19],
+                               ["MELON", 8, 18]],
+                     "animals": {"COW": 7, "SHEEP": 3}},
+    # If the bridge works, the farm it is bridging to should be bigger than the
+    # one our scheduler could previously afford to start.
+    "apexboot":     {"crops": [["WHEAT", 16, 4], ["STRAWBERRY", 24, 19],
+                               ["MELON", 12, 18]],
+                     "animals": {"COW": 8, "SHEEP": 6}},
+
     "berryflood":   {"crops": [["STRAWBERRY", 50, 19], ["MELON", 12, 18]],
                      "animals": {"COW": 6, "SHEEP": 6}},
     "berrytide":    {"crops": [["STRAWBERRY", 42, 19], ["MELON", 12, 18]],
@@ -644,10 +686,37 @@ def plan_labour():
     return out
 
 
+def plan_boot():
+    """Does a four-day wheat bridge lift the ceiling that forced us small?
+
+    A day-by-day comparison against the public meta (see the `mgboot` comment in
+    PRODUCE) puts the divergence on day 1, not day 15: it has 17 plants down and
+    $2 in the bank while we have 7 plants and $202, and by day 8 it holds
+    $2,328 against our $306. Wheat -- $10 a seed, harvested day 2, gone day 4 --
+    is what it opens with.
+
+    The land axis rides along because the two are not independent. `smallhold`
+    won every previous sweep on the argument that "a tile the hands never reach
+    is worse than no tile", but that ceiling was measured on a farm that was
+    broke until day 10. If the bridge works, the farm it can afford to service
+    is a different farm, and `estate` -- the meta's own three-quadrant footprint
+    -- has to be re-asked rather than inherited.
+    """
+    out = []
+    for produce in ("mgtight", "mgboot", "mgboot20", "mgbootmelon",
+                    "mgbootlong", "apexboot"):
+        for land in ("smallhold", "estate"):
+            out.append({"land": land, "labour": "crew", "produce": produce,
+                        "market": "flood", "intel": "blind", "muck": "compost",
+                        "adapt": "shopwise"})
+    return out
+
+
 PLANS = {"main": plan_main, "grid": plan_grid, "produce": plan_produce,
          "muck": plan_muck, "edge": plan_edge, "ladder": plan_ladder,
          "factorial": plan_factorial, "refine": plan_refine, "crop": plan_crop,
-         "labour": plan_labour, "bench": plan_bench, "recheck": plan_recheck}
+         "labour": plan_labour, "bench": plan_bench, "recheck": plan_recheck,
+         "boot": plan_boot}
 
 
 def plan_all():
