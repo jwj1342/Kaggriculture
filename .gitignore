@@ -39,3 +39,4 @@ logs/
 *.pyc
 __pycache__/
 agents/hybrid/
+agents/lines/
