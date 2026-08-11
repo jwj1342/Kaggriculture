@@ -40,3 +40,4 @@ logs/
 __pycache__/
 agents/hybrid/
 agents/lines/
+agents/term/

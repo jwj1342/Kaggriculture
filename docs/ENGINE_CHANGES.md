@@ -3,7 +3,7 @@
 `agents/_engine.py` is the single execution path behind every generated
 strategy, so a change here moves the whole library at once. That is exactly why
 each one below is an A/B against a fixed set of opponents on the same seeds,
-with the arm size stated. **Six landed and five were rejected**, and one of the
+with the arm size stated. **Seven landed and five were rejected**, and one of the
 rejections turned out to be a bug in the change rather than a fact about the
 game — `compost` lost twice on good evidence before an interaction was found and
 it became the largest single win here.
@@ -207,6 +207,35 @@ clears the way for the market to dump, which is the half of `endgame` that was
 carrying it.
 
 ---
+
+### 7. The terminal controller's window is three turns, and should be six
+
+Not our engine — a one-line change to `agents/ref/closer_cleo.py`, kept here
+because it is the first measurement taken *above* our own engine's level.
+
+That agent replays a fixed 720-turn plan and overrides it in the last three
+turns with `_terminal_action`, an observation-driven harvest/drop/sell
+controller. Its plan spends 8.8% of the last twenty turns on `WATER` — a day-29
+watering ticks at the end of day 29, after the last turn, so it can never be
+harvested — and leaves 13 units standing in the field at the close.
+
+Sweeping the threshold, 384 seeds against `bench3`, 10,800 episodes an arm:
+
+| controller starts | turns covered | win rate | 95% CI |
+|---|---|---|---|
+| step 704 (day 29 h8) | 16 | 91.9% | [91.3, 92.4] |
+| step 708 (h12) | 12 | 97.7% | [97.4, 97.9] |
+| **step 710-714 (h14-h18)** | **6-10** | **98.1%** | [97.8, 98.4] |
+| step 716 (h20) | 4 | 94.7% | [94.3, 95.1] |
+| step 717 (h21) — unchanged | 3 | 95.2% | [94.8, 95.6] |
+
+`step 714` is the smallest change that reaches the plateau: 712 and 714 have
+identical median money to the dollar, so the controller and the plan already
+agree on those two turns. **+2.9 points for six turns**, intervals disjoint.
+
+A wider window is worse, not better, and the curve is not monotone — 704 loses
+3.3 points where 708 gains 2.4. Snapshot in
+`submissions/2026-08-11-closercleo-term714/`.
 
 ## Measured and rejected
 

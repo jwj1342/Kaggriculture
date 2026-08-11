@@ -295,6 +295,23 @@ What the panel lacked was the middle, and `tools/lines.py --emit` supplies it:
 `line1` is the ladder's most-played line and sits at 66.6% against this panel,
 just above our best engine's 60.9%.
 
+### Saturation has two ends, and we just hit the far one
+
+`dairy` was cut because every candidate beat it every time. On 2026-08-11 the
+opposite happened: measuring eight variants of a `closer_cleo`-class agent, the
+**ghost field returned 99.4% for seven of them** and could not separate any.
+`bench3` is close behind — the same arms sit at 92-98% there.
+
+Both reference fields are built to rank *our* engine, which wins 54-61% of them.
+They have no resolution at the level of an agent that wins 98%.
+
+The only field that still discriminates at that level is **the wrapped agents
+against each other**: `closer_cleo` 92.7%, `slotter_silas` 73.8%, `ledger_lena`
+54.1%, `broker_bea` 29.3% over 3,072 episodes — clean spacing, no saturation at
+either end. Use that panel for anything at this level, and read money as a
+secondary signal when win rate saturates (it still ordered the terminal-window
+sweep correctly when the ghost win rates were all identical).
+
 ### Two failure modes this repo keeps producing
 
 **"It is doing nothing, so it must be stuck."** The seed-purchase probe showed
