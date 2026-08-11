@@ -32,6 +32,18 @@ import db as DB  # noqa: E402
 
 # Anchors span the strategy space so a panel score is informative: a strong
 # metered farm, a flooder, a hoarder, a land-light farm, and two weak controls.
+# The public reference agents (agents/ref/, MIT — see agents/ref/NOTICE). Tiers
+# 6-9 replay the shared meta line that 79% of the top of the ladder runs, so a
+# field without them is not a field. Kept as a named constant because every
+# screen should include them from here on.
+REF_PANEL = [
+    "agents/ref/closer_cleo.py",      # tier 9: meta line + clone-aware sell layer
+    "agents/ref/ledger_lena.py",      # tier 7: same line, different sell ordering
+    "agents/ref/broker_bea.py",       # tier 6: same line, cash-timed wheat
+    "agents/ref/rancher_rita.py",     # tier 5: the strongest *scheduled* agent
+    "agents/ref/melon_mateo.py",      # tier 4: melon + fertilizer
+]
+
 DEFAULT_PANEL = [
     "agents/lib/estate-crew-mixedfarm-metered-blind-muck.py",
     "agents/lib/homestead-crew-mixedfarm-metered-blind-muck.py",

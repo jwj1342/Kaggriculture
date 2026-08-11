@@ -513,6 +513,12 @@ def plan_bench():
         out.append({"land": "smallhold", "labour": "crew", "produce": produce,
                     "market": "flood", "intel": "blind", "muck": "compost",
                     "adapt": "shopwise"})
+    # NOTE: the public reference agents in `agents/ref/` are not generated here
+    # -- they are third-party code (MIT, see agents/ref/NOTICE) and four of them
+    # replay the shared meta line that 79% of the top of the ladder runs. Add
+    # them to any panel with `tournament.REF_PANEL`; a bench without them
+    # measures our own family against itself.
+
     # Two deliberate outliers, so the field is not all one idea.
     out.append({"land": "estate", "labour": "crew", "produce": "orchardherd",
                 "market": "flood", "intel": "blind", "muck": "muck",

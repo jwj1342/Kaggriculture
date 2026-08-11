@@ -32,8 +32,46 @@ import gzip
 import json
 import os
 import subprocess
+import random
 import sys
 import zipfile
+from collections import Counter
+
+# Final-money bands. A day's dump spans $31k to $139k and a field of only the
+# extremes measures something other than the ladder.
+BANDS = [(0, 60_000, "low"), (60_000, 90_000, "mid"),
+         (90_000, 115_000, "high"), (115_000, 10**9, "top")]
+
+
+def _band(score):
+    for lo, hi, name in BANDS:
+        if lo <= score < hi:
+            return name
+    return "top"
+
+
+def cmd_balance(args):
+    """What the current field is made of. Run it before trusting a measurement."""
+    import statistics as st
+    with open(os.path.join(OUT, "manifest.json")) as f:
+        m = json.load(f)
+    print(f"{len(m)} ghosts\n")
+    tc = Counter(v.get("team") for v in m.values())
+    print(f"  {len(tc)} teams, largest share {tc.most_common(1)[0][1]/len(m):.0%}")
+    for t, n in tc.most_common(8):
+        print(f"    {n:>3d}  {t}")
+    bc = Counter(v.get("band", _band(v["original_score"])) for v in m.values())
+    print("\n  score bands:")
+    for _lo, _hi, name in BANDS:
+        print(f"    {name:5s} {bc.get(name, 0):>3d}")
+    dc = Counter(str(v.get("date", "?")) for v in m.values())
+    print("\n  days:")
+    for d, n in sorted(dc.items()):
+        print(f"    {d} {n:>3d}")
+    sc = [v["original_score"] for v in m.values()]
+    print(f"\n  score median ${st.median(sc):,.0f}  "
+          f"min ${min(sc):,.0f}  max ${max(sc):,.0f}")
+    return 0
 
 OUT = "agents/ghosts"
 WORK = "data/topeps"
@@ -79,10 +117,7 @@ def _fetch(date, name):
     return path if os.path.exists(path) else None
 
 
-def cmd_make(args):
-    os.makedirs(OUT, exist_ok=True)
-    os.makedirs(WORK, exist_ok=True)
-    slug = f"kaggle/kaggriculture-episodes-{args.date}"
+def _listing(slug):
     out, token = [], None
     while True:
         cmd = ["kaggle", "datasets", "files", slug, "--page-size", "200"]
@@ -98,22 +133,68 @@ def cmd_make(args):
             if p and p[0].endswith(".json"):
                 out.append(p[0])
         if not token:
-            break
+            return out
+
+
+def cmd_make(args):
+    """Sample a ghost field rather than taking whatever comes first.
+
+    Three biases have to be designed out, and none of them is visible until you
+    look at the composition of a naive pull:
+
+    **One player dominating.** Taking the first N files gave 12% of the field to
+    a single team, so a third of the "opponents" were three copies of one policy.
+    `--per-team` caps it.
+
+    **A narrow time window.** The listing is ordered by episode id, which is
+    time, so the first N files are all from the same hour of the same day.
+    `--dates` samples round-robin across days, which also captures meta drift.
+
+    **No spread in strength.** A day's dump ranges from $31k to $139k of final
+    money. A field that is all extremes measures something other than the ladder.
+    `--bands` fills score quartiles evenly.
+
+    The metadata only exists inside the 32 MB file, so the caps are applied
+    *after* download and an over-quota episode is discarded. That wastes some
+    bandwidth and is the price of an unbiased sample. Order is shuffled with a
+    fixed seed so a pull is reproducible.
+    """
+    os.makedirs(OUT, exist_ok=True)
+    os.makedirs(WORK, exist_ok=True)
+
+    dates = [d.strip() for d in (args.dates or args.date).split(",") if d.strip()]
+    per_day = {}
+    for d in dates:
+        per_day[d] = _listing(f"kaggle/kaggriculture-episodes-{d}")
+        print(f"  {d}: {len(per_day[d])} episodes listed")
+
+    rng = random.Random(args.seed)
+    for d in dates:
+        rng.shuffle(per_day[d])
+    # Round-robin across days so a short run still spans all of them.
+    order = []
+    for i in range(max(len(v) for v in per_day.values())):
+        for d in dates:
+            if i < len(per_day[d]):
+                order.append((d, per_day[d][i]))
 
     manifest = {}
     mpath = os.path.join(OUT, "manifest.json")
     if os.path.exists(mpath):
         with open(mpath) as f:
             manifest = json.load(f)
+    team_count = Counter(v.get("team") for v in manifest.values())
+    band_count = Counter(v.get("band") for v in manifest.values())
+    band_quota = max(1, args.limit // max(len(BANDS), 1)) if args.bands else None
 
-    made = 0
-    for name in out:
+    made = skipped_team = skipped_band = 0
+    for date, name in order:
         if made >= args.limit:
             break
         ep = int(name[:-5])
         if any(k.startswith(f"ghost-{ep}-") for k in manifest):
             continue
-        path = _fetch(args.date, name)
+        path = _fetch(date, name)
         if not path:
             continue
         try:
@@ -126,6 +207,15 @@ def cmd_make(args):
                 continue
             # Only the stronger side is worth keeping as an opponent.
             seat = 0 if (rew[0] or 0) >= (rew[1] or 0) else 1
+            score = float(rew[seat] or 0)
+            team = str(teams[seat])
+            if team_count[team] >= args.per_team:
+                skipped_team += 1
+                continue
+            band = _band(score)
+            if band_quota and band_count[band] >= band_quota:
+                skipped_band += 1
+                continue
             turns = [s[seat].get("action") for s in d["steps"]]
             blob = base64.b64encode(
                 gzip.compress(json.dumps(turns).encode(), 9)).decode()
@@ -135,10 +225,18 @@ def cmd_make(args):
                                         score=float(rew[seat] or 0),
                                         seed=int(seed), blob=blob))
             manifest[fn[:-3]] = {"episode": ep, "seat": seat, "seed": int(seed),
-                                 "team": teams[seat],
-                                 "original_score": float(rew[seat] or 0),
+                                 "team": team, "date": date, "band": band,
+                                 "original_score": score,
                                  "opponent_score": float(rew[1 - seat] or 0)}
+            team_count[team] += 1
+            band_count[band] += 1
             made += 1
+            # Written every time, not once at the end: a run that is interrupted
+            # -- and these run for an hour -- otherwise leaves orphan .py files
+            # with no manifest entry, which `tournament.py ghosts` then cannot
+            # seed correctly.
+            with open(mpath, "w") as mf:
+                json.dump(manifest, mf, indent=1, sort_keys=True)
             print(f"  {fn}  {teams[seat][:22]:22s} ${float(rew[seat] or 0):>9,.0f}  "
                   f"seed {seed}  ({os.path.getsize(os.path.join(OUT, fn))/1024:.0f} KB)")
         except Exception as e:
@@ -150,6 +248,9 @@ def cmd_make(args):
     with open(mpath, "w") as f:
         json.dump(manifest, f, indent=1, sort_keys=True)
     print(f"\n{made} ghosts written to {OUT}/ ({len(manifest)} total)")
+    if skipped_team or skipped_band:
+        print(f"  discarded after download: {skipped_team} over the per-team cap, "
+              f"{skipped_band} over a score-band quota")
     return 0
 
 
@@ -190,9 +291,18 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("make")
-    p.add_argument("--date", required=True)
+    p.add_argument("--date", default=None, help="one day, e.g. 2026-08-09")
+    p.add_argument("--dates", default=None,
+                   help="comma-separated days, sampled round-robin")
     p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--per-team", type=int, default=3,
+                   help="cap on ghosts from one team (default 3)")
+    p.add_argument("--bands", action="store_true",
+                   help="fill score bands evenly instead of taking any score")
+    p.add_argument("--seed", type=int, default=17, help="shuffle seed")
     p.set_defaults(fn=cmd_make)
+    b = sub.add_parser("balance")
+    b.set_defaults(fn=cmd_balance)
     v = sub.add_parser("verify")
     v.add_argument("--limit", type=int, default=8)
     v.add_argument("--against",
