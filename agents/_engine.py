@@ -749,30 +749,41 @@ def _plan(obs):
     def afford(c):
         return money - spend >= c
 
-    if not endgame:
-        if cfg["hands"] > 0 and hour <= 3:
-            hires = farm.get("hires_today", 0)
-            payroll = sum(_fib(i) for i in range(hires))
-            budget_h = max(4.0, money * cfg["hire_frac"])
-            # Hire to the work, not to the plan. Hands are a daily rental, and
-            # measured against the $160,864 ladder opponent in the same episode
-            # we PASS 62-70% of our actions on days 0-5 against their 26-41%:
-            # eleven hands stand around a farm with four plants and two animals,
-            # billed every day, in exactly the window where we are too poor to
-            # buy strawberry seed. Their hand count ramps 1 -> 8 -> 11 -> 14.
-            #
-            # One hand per three plants and one per two animals, plus the farmer
-            # and a spare, reproduces that ramp without capping the plateau.
-            want_hands = min(cfg["hands"], 2 + len(plants) // 3 + n_animals // 2)
-            while len(orders) < 7 and hires < want_hands:
-                c = _fib(hires)
-                if payroll + c > budget_h or not afford(c + 40):
-                    break
-                orders.append(["HIRE"])
-                spend += c
-                payroll += c
-                hires += 1
+    # Hands are a *daily* rental -- re-hired every morning, or they are gone --
+    # and this block used to sit inside `if not endgame:`, so the entire
+    # workforce was dismissed on the liquidation day. Measured from an identical
+    # board at day 28: twelve units on day 28 and **one** on day 29, against the
+    # public meta's eleven, finishing with 84 units of produce standing in the
+    # field to its 13, and turning +$11,360 over those two days into +$2,839.
+    #
+    # Hiring is the only part of the endgame worth reopening. Keeping the task
+    # list alive as well is *negative* (`FARM_TO_THE_END`, 43.82% against
+    # 45.03%) and never entering liquidation at all is worse still (37.70%):
+    # switching the tasks off is what clears the way for the market to dump.
+    if cfg["hands"] > 0 and hour <= 3:
+        hires = farm.get("hires_today", 0)
+        payroll = sum(_fib(i) for i in range(hires))
+        budget_h = max(4.0, money * cfg["hire_frac"])
+        # Hire to the work, not to the plan. Hands are a daily rental, and
+        # measured against the $160,864 ladder opponent in the same episode
+        # we PASS 62-70% of our actions on days 0-5 against their 26-41%:
+        # eleven hands stand around a farm with four plants and two animals,
+        # billed every day, in exactly the window where we are too poor to
+        # buy strawberry seed. Their hand count ramps 1 -> 8 -> 11 -> 14.
+        #
+        # One hand per three plants and one per two animals, plus the farmer
+        # and a spare, reproduces that ramp without capping the plateau.
+        want_hands = min(cfg["hands"], 2 + len(plants) // 3 + n_animals // 2)
+        while len(orders) < 7 and hires < want_hands:
+            c = _fib(hires)
+            if payroll + c > budget_h or not afford(c + 40):
+                break
+            orders.append(["HIRE"])
+            spend += c
+            payroll += c
+            hires += 1
 
+    if not endgame:
         n_extra = len(unlocked) - 1
         crop_room = sum(1 for p in free if p not in animal_zone)
         if n_extra < min(len(LAND_PRICES), cfg["land"] - 1) and len(orders) < MAX_ORDERS:

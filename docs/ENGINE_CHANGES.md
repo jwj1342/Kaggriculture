@@ -3,7 +3,7 @@
 `agents/_engine.py` is the single execution path behind every generated
 strategy, so a change here moves the whole library at once. That is exactly why
 each one below is an A/B against a fixed set of opponents on the same seeds,
-with the arm size stated. **Five landed and four were rejected**, and one of the
+with the arm size stated. **Six landed and five were rejected**, and one of the
 rejections turned out to be a bug in the change rather than a fact about the
 game — `compost` lost twice on good evidence before an interaction was found and
 it became the largest single win here.
@@ -153,6 +153,58 @@ look like.
 It cannot do more than it does: the herd is bought by about day 15 and only
 three of eight shops have unlocked by day 10, so most of the bet is placed
 before the town has revealed itself.
+
+### 6. Keep hiring on the liquidation day
+
+Hands are a **daily rental** — re-hired every morning or they are gone — and the
+hiring block sat inside `if not endgame:`. So on the liquidation day the whole
+workforce was dismissed and one farmer was left to clear the farm.
+
+Found by instrumenting the two days the handover sweep priced highest
+(`docs/ROADMAP.md` §3 D), from an identical board at day 28:
+
+| day | our units | the meta's units |
+|---|---|---|
+| 28 | 12 | 12 |
+| 29 | **1** | **11** |
+
+Same board, same starting cash ($90,298 against $90,143), two days later: we add
+**$2,839** and leave **84 units of produce standing in the field**; it adds
+**$11,360** and leaves 13. Nothing is stuck in the shed on either side — this is
+not a selling defect, it is nobody left to harvest.
+
+Three arms against `bench3` plus the five reference agents, 96 seeds, **109,440
+episodes**, and again on the 156 replayed ladder trajectories:
+
+| engine | vs `bench3`+refs | vs ghosts |
+|---|---|---|
+| unchanged | 43.37% [42.86, 43.88] | 48.33% [45.86, 50.81] |
+| **hire on the liquidation day** (landed) | **45.03%** [44.52, 45.54] | **52.88%** [50.40, 55.35] |
+| hire *and* keep the task list alive | 43.82% [43.32, 44.33] | — |
+
+**The gain is entirely in how much farm there is to clear**, and it is large
+enough to reorder the produce axis on the ghost field:
+
+| produce | before | after |
+|---|---|---|
+| `mgtightgrain2` | 53.8% | **65.4%** |
+| `mgtightherd` | 52.6% | **62.8%** |
+| `orchardherd` | 25.6% | 35.3% |
+| `mgtightgrain` | 54.5% | 62.8% |
+| `mgtight` (what is on the ladder) | 58.3% | **57.7%** |
+
+Our own shape is small enough that one farmer nearly suffices — day 29 has 14-21
+units ready and nine extra hands are 93% idle while drawing wages. So this is a
+change that pays for a farm we do not currently run, and the produce sweep has
+to be re-asked because of it (in flight, `endD-ref`).
+
+Two neighbouring variants were measured and rejected in the same runs. Keeping
+the **task list** alive on the liquidation day loses on its own (40.63%) and
+still loses with hiring (43.82% against 45.03%): WATER, FEED and CARE compete
+with harvesting for the same unit-turns. Never entering liquidation at all
+(`LIQUIDATE_DAY = 30`) is worse again (37.70%) — switching the tasks off is what
+clears the way for the market to dump, which is the half of `endgame` that was
+carrying it.
 
 ---
 
