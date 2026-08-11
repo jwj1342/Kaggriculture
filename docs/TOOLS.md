@@ -316,6 +316,31 @@ Output goes to `agents/hybrid/` (git-ignored). **These are instruments, not
 submissions** — see `docs/ROADMAP.md` §5.3 for why a copy of the public line
 cannot rank above the crowd that already runs it.
 
+### `tools/lines.py`
+Clusters `agents/ghosts/` into the distinct *lines* the ladder actually plays,
+and writes one representative per cluster.
+
+```bash
+python tools/lines.py                      # report
+python tools/lines.py --emit agents/lines  # write line1.py ... line4.py
+```
+
+Alignment is the whole trick: two farms playing the same plan one turn apart
+agree on **nothing** compared index to index, so the comparison sweeps shifts of
++-8 turns. Without it, 156 recordings look like 156 distinct strategies.
+
+156 trajectories collapse to 25 lines at 85% agreement, the largest holding 97 of
+them across 38 teams. Only 8 of the 156 match the plan embedded in `agents/ref/`,
+so **the line this repo spent its measurements against is played by about 5% of
+the top**. And the most-played line is not the strongest: cluster 1's median
+original score is $78,510 against cluster 2's $132,032.
+
+Replayed on seeds they never saw, cluster 1 holds 66.6% while cluster 2 collapses
+to 11.8% and cluster 3 to 0.9% — these are open-loop recordings, and different
+weeds turn their actions into silent no-ops. The most-played line is the most
+*robust* one. `line1.py` is in `agents/bench3` for exactly that reason: it is the
+only opponent we have between "we win 90%" and "we lose 99.8%".
+
 ### `tools/make_probes.py`
 Regenerates the legacy single-strategy probes in `agents/legacy/probes/`.
 Superseded by `registry.py`; kept because published results name them.

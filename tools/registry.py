@@ -561,13 +561,31 @@ def plan_bench():
     # them to any panel with `tournament.REF_PANEL`; a bench without them
     # measures our own family against itself.
 
-    # Two deliberate outliers, so the field is not all one idea.
+    # One deliberate outlier, so the field is not all one idea. `orchardherd` is
+    # weak as a *candidate* -- 36.5% -- and the third most informative opponent
+    # in the whole panel, spreading candidates from 0% to 88.5%. Weak and
+    # useless are different things.
     out.append({"land": "estate", "labour": "crew", "produce": "orchardherd",
                 "market": "flood", "intel": "blind", "muck": "muck",
                 "adapt": "fixed"})
-    out.append({"land": "estate", "labour": "crew", "produce": "dairy",
-                "market": "adaptive", "intel": "blind", "muck": "muck",
-                "adapt": "shopwise"})
+    # `dairy` used to be the second outlier and was removed: over 7,296
+    # episodes every one of ten candidates beat it in **every single episode**
+    # -- mean 100.0%, standard deviation 0.0. An opponent with no variance
+    # cannot rank anything, it just adds a constant to every score. Dropping it
+    # and the three meta agents leaves the candidate ranking *completely
+    # unchanged* (all ten hold their position) for 37% less compute.
+    #
+    # Keep the meta agents (`tournament.REF_PANEL`) even though they are
+    # saturated the other way -- we win 0.2% against them. They are the target,
+    # and they are the only local measurement of how far away it is. Report them
+    # **separately** rather than averaging them in: three unbeatable opponents
+    # in fifteen depress every headline number by about 25 points, which is how
+    # "43%" turned out to mean "73.5% against opponents we can contest".
+    #
+    # What the panel still lacks is the middle. `tools/lines.py --emit` writes
+    # the ladder's actual lines; `line1.py` sits at 66.6% against this panel,
+    # just above our best engine's 60.9%, and is the most informative opponent
+    # available. Add it with `--panel agents/bench3/*.py agents/lines/line1.py`.
     return out
 
 

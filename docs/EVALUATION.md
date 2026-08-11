@@ -7,11 +7,16 @@
 > shape 53% to 90%. Both ends were saturated, so the ranking carried no
 > information: a 99.2% and a 100.0% are the same measurement.
 >
-> `python tools/registry.py gen --plan bench --out agents/bench` materialises
+> `python tools/registry.py gen --plan bench --out agents/bench3` materialises
 > the current standard field — the strongest shape of each production family
-> plus two deliberate outliers. Use it for `--panel` and as the fixed opponent
-> set in ablations, and regenerate it whenever a candidate starts beating it
-> above ~90%.
+> plus one deliberate outlier. Copy in `agents/ref/*.py` and
+> `agents/lines/line1.py` afterwards. Use it for `--panel` and as the fixed
+> opponent set in ablations, and regenerate it whenever a candidate starts
+> beating it above ~90%.
+>
+> **Saturation has two ends.** `dairy` was dropped from the field on
+> 2026-08-11 for the opposite reason to the anchors above: every candidate beat
+> it in **every single episode** over 7,296 of them. See §6.
 >
 > **Four seeds cannot resolve anything.** Three separate changes on 2026-08-10
 > read positive over four seeds and were 21 to 44 points *behind* over 2,304
@@ -254,6 +259,41 @@ Two ways to do better than raw win counting:
    evidence about the ladder. A number quoted from one field alone is a number
    about that field.
 8. **Only then submit.** Five per day, latest two active.
+
+### Which opponents are worth the compute
+
+An opponent's value is its **variance across candidates**, not its strength.
+Measured over 7,296 episodes with ten candidates on one engine:
+
+| sparring partner | mean beaten | spread across candidates |
+|---|---|---|
+| `mgtightgrain2` | 64.6% | **29.7** |
+| `orchardherd` | 73.4% | **26.1** |
+| `rancher_rita` | 92.4% | 22.7 |
+| `mgtight` | 39.8% | 20.8 |
+| `melon_mateo` | 94.3% | 17.0 |
+| `closer_cleo` | 0.3% | 0.7 |
+| `ledger_lena` | 0.2% | 0.5 |
+| `broker_bea` | 0.2% | 0.4 |
+| `dairy` | **100.0%** | **0.0** |
+
+`orchardherd` is weak — 36.5% as a candidate — and the third most informative
+opponent in the panel. **Weak and useless are different things.** `dairy` is the
+useless one: every candidate beat it in every single episode, mean 100.0% and
+standard deviation exactly zero. It is removed.
+
+Dropping `dairy` and the three meta agents leaves the candidate ranking
+**completely unchanged** — all ten hold their position — for 37% less compute.
+
+But keep the meta agents in the field and **report them separately**. They are
+saturated the other way (we win 0.2%), so averaging them in only adds a
+constant: three unbeatable opponents in fifteen depress every headline by about
+25 points, which is how "43%" turned out to mean "73.5% against opponents we can
+contest, and 0% against three we cannot". Two numbers, not one.
+
+What the panel lacked was the middle, and `tools/lines.py --emit` supplies it:
+`line1` is the ladder's most-played line and sits at 66.6% against this panel,
+just above our best engine's 60.9%.
 
 ### Two failure modes this repo keeps producing
 
