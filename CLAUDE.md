@@ -41,7 +41,12 @@ regenerate. Keep the axes orthogonal.
 
 - `main.py` is loaded with `get_last_callable`: the agent function must be the
   **last callable bound at module level**. No `def`, `class` or
-  `from x import f` after it.
+  `from x import f` after it — and no plain `_INNER = agent` either. It returns
+  `[v for v in env.values() if callable(v)][-1]`, and redefining `agent` reuses
+  its existing dict slot, so any callable bound *after* it wins. Wrapping an
+  agent this way loads the **unwrapped** one and every variant then scores
+  identically, with no error. Park callables in a list, `del` helper names, and
+  verify by asking the loaded function for a known answer.
 - 1 second per turn (`actTimeout`); only the excess draws on the 60 s bank.
 - Wrap the policy in `try/except` returning `PASS`. A crash forfeits the episode.
 - `hands` actions are positional — entry `i` maps to `farms[me]["hands"][i]`.

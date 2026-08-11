@@ -16,6 +16,7 @@ everything after that.
 | what the game actually rewards | `docs/GAME_ECONOMICS.md` | `reference/engine/kaggriculture.py` |
 | what real opponents do, and why our own field misled us | `docs/LADDER_FIELD.md` | `tools/ladder.py` → `ladder_episodes` |
 | how to measure against the **top** of the ladder locally | `docs/GHOSTS.md` | `tools/topeps.py`, `tools/ghost.py` |
+| **how much of the season the opening decides** | `docs/ROADMAP.md` §3 D | `tools/hybrid.py` → `data/shards/handover*` |
 | every change made to the agent and what it measured | `docs/ENGINE_CHANGES.md` | shard JSONL under `data/shards/` |
 | how to produce a number that survives scrutiny | `docs/EVALUATION.md` | — |
 | what each atom option is worth | `docs/ATOM_EFFECTS.md` *(superseded in part)* | runs #1–#2 |

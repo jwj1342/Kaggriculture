@@ -247,7 +247,34 @@ Two ways to do better than raw win counting:
 6. **`trace.py` any surprise.** Silent no-ops mean bugs look like bad strategy —
    every five-figure bug in this repo was found by reading a day-by-day trace,
    not by staring at a final score.
-7. **Only then submit.** Five per day, latest two active.
+7. **Measure on two fields, and say so when they disagree.** `agents/bench3` is
+   our own family; `agents/ghosts` is 156 replayed ladder trajectories. They
+   have now disagreed on the produce axis by seven places — `mgtightgrain2`
+   ranks first on the ghosts and seventh on `bench3` — and only one of them is
+   evidence about the ladder. A number quoted from one field alone is a number
+   about that field.
+8. **Only then submit.** Five per day, latest two active.
+
+### Two failure modes this repo keeps producing
+
+**"It is doing nothing, so it must be stuck."** The seed-purchase probe showed
+the farm buying nothing for ten days on $109-$435. It was not stuck; it was
+spending the cash on livestock, which is worth more. Removing the "deadlock"
+cost 8-14 points across 137,664 episodes. *Before concluding an engine is
+broken, find out what it spent the resource on.* Nothing in the code says
+"livestock outranks seed" — it falls out of a cash floor meeting a purchase
+rate limit, and correct behaviour with no comment attached looks exactly like a
+bug.
+
+**A harness that silently runs the wrong code.** `get_last_callable` returns
+`[v for v in env.values() if callable(v)][-1]` — the last *callable* in the
+module dict. Wrapping an agent (`_INNER = agent`, then a new `def agent`) leaves
+`_INNER` last, so the framework loads the **unwrapped** agent, every arm scores
+identically, and the clean-looking conclusion is "the change is worth nothing".
+A helper `def` placed after `agent` does the same. Park callables in lists,
+`del` helper names, and *verify by asking the loaded function for a known
+answer* — compiling is not enough. Two arms of this session's handover sweep
+were lost to this before the check existed.
 
 ---
 
