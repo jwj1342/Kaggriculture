@@ -10,7 +10,7 @@ venv/
 .kaggle/
 *.secret
 .secret*
-
+.kilo
 # --- Generated: rebuild from source, never hand-edit ----------------------
 # 594 strategies from agents/_engine.py + tools/registry.py
 # Every agents/<dir> containing generated strategies. `registry.py gen --out`
