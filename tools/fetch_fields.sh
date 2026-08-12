@@ -61,10 +61,25 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "bench" ]; then
   # `gen` does not clean the directory, so an atom removed from the plan lingers
   # as a stale file. `dairy` was cut on 2026-08-11 and has to go by hand.
   rm -f agents/bench3/estate-crew-dairy-*.py
-  for a in closer_cleo ledger_lena broker_bea rancher_rita melon_mateo; do
+  # tier 6-9 only. `rancher_rita` and `melon_mateo` (tiers 5 and 4) are beaten
+  # 100% of the time by *both* the champion and our own engine -- measured over
+  # 192 seeds -- so they carry no information at either level any more.
+  for a in closer_cleo ledger_lena broker_bea slotter_silas; do
     [ -f "agents/ref/$a.py" ] && cp "agents/ref/$a.py" agents/bench3/
   done
   [ -f agents/lines/line1.py ] && cp agents/lines/line1.py agents/bench3/
+  # The current champion, so a candidate is measured against what it has to beat
+  # rather than against whatever was best last week. `agents/CHAMPION` is tracked
+  # in git; its last line is the path.
+  CHAMP="$(grep -v '^#' "$ROOT/agents/CHAMPION" | grep -v '^$' | tail -1)"
+  if [ -n "$CHAMP" ] && [ -f "$ROOT/$CHAMP" ]; then
+    cp "$ROOT/$CHAMP" agents/bench3/champion.py
+    [ -f "$ROOT/$(dirname "$CHAMP")/kg_rules.py" ] && \
+      cp "$ROOT/$(dirname "$CHAMP")/kg_rules.py" agents/bench3/ 2>/dev/null
+    echo "    champion: $CHAMP"
+  else
+    echo "    WARNING: agents/CHAMPION points at $CHAMP, which is missing" >&2
+  fi
   echo "    $(ls agents/bench3/*.py | wc -l) opponents"
 fi
 

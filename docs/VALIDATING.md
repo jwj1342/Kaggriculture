@@ -8,6 +8,25 @@
 
 ---
 
+## 0. 先跑这一条
+
+```bash
+bash tools/fetch_fields.sh          # 每次开工前
+```
+
+它会把**当前最强的 agent** 拷成 `agents/bench3/champion.py`（路径记在 git 追踪的
+`agents/CHAMPION` 里）。**你的对手里必须有它。**
+
+为什么这条排在第一位：我们引擎最好的形状 `mgtight` 打 `champion` 是 **0/360 = 0.0%**。
+换句话说，一个人可以在 `bench3` 上把候选调到赢 `mgtight`，而那个候选对排行榜上的东西
+**仍然是零胜**。他会得到一个真实的数字和一个完全错误的结论。
+
+`tools/tournament.py` 现在会在场地里没有 champion 时**在输出顶部报警**，但报警只是
+兜底 —— 先跑 `fetch_fields.sh` 更省事。
+
+打赢了它？改 `agents/CHAMPION` 那一行，并在 `docs/RUNS.md` 记一笔。规矩是：
+**两个独立场地都赢它，才算。**
+
 ## 1. 选一个和你的 agent 水平匹配的场地
 
 有两个场地，用错了这一轮就白跑。
@@ -15,7 +34,16 @@
 | 你的 agent 能赢… | 用 | 为什么 |
 |---|---|---|
 | `agents/bench3` 的 **50–70%** | `agents/bench3/*.py` | 引擎级：形状和你接近，两端都没饱和 |
-| `agents/bench3` 的 **95% 以上** | `closer_cleo`、`slotter_silas`、`ledger_lena`、`broker_bea` | 外包装级：唯一还能区分开的场地 |
+| `agents/bench3` 的 **95% 以上** | `champion.py`、`closer_cleo`、`slotter_silas`、`ledger_lena`、`broker_bea` | 外包装级：唯一还能区分开的场地 |
+
+192 种子实测的分层（champion 赢它 / mgtight 赢它）：
+
+| 陪练 | champion | mgtight | 用途 |
+|---|---|---|---|
+| `closer_cleo` | 84.2% | 0.0% | **对顶层仍有分辨率** |
+| `broker_bea` / `ledger_lena` | 97% | 0.0% | 顶层的靶子 |
+| `mgtightwide` / `line1` / `bigberry` | 100% | 27–36% | 只对引擎层有用 |
+| ~~`rancher_rita`~~ / ~~`melon_mateo`~~ | 100% | 100% | 两层都碾压 —— **已剔除** |
 
 第二行不是第一行的精细版，**是另一个测量**。2026-08-11 那天，八个 `closer_cleo` 量级的
 变体在幽灵场地上**全部打出 99.4%，完全分不出高下**；`bench3` 把同样八个放在 92–98%。

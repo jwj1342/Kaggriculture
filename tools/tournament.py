@@ -144,6 +144,65 @@ def _play(job):
                 "error": repr(e)[:200]}
 
 
+
+def _champion_path():
+    """The agent every candidate has to beat, from the tracked `agents/CHAMPION`."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    f = os.path.join(here, "agents", "CHAMPION")
+    if not os.path.exists(f):
+        return None
+    for line in reversed(open(f).read().splitlines()):
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return os.path.join(here, line)
+    return None
+
+
+NOT_AGENTS = ("kg_rules.py", "manifest.json", "__init__.py")
+
+
+def drop_non_agents(paths):
+    """Filter out files that share a directory with agents but are not agents.
+
+    `registry.py gen` writes `kg_rules.py` beside every strategy, so
+    `--panel agents/bench3/*.py` swept it in as an opponent. It has no `agent`
+    function, so the framework fell back to PASS and both sides beat it 100% of
+    the time -- a zero-variance opponent that quietly shifted every panel number
+    by a constant. Nothing detected it because losing to everything is exactly
+    what a bad strategy looks like.
+    """
+    keep, dropped = [], []
+    for p in paths:
+        (dropped if os.path.basename(p) in NOT_AGENTS else keep).append(p)
+    if dropped:
+        sys.stderr.write("  skipping %d non-agent file(s): %s\n"
+                         % (len(dropped), ", ".join(os.path.basename(d) for d in dropped)))
+    return keep
+
+
+def _warn_no_champion(roster, panel):
+    """Say so, loudly, when the field cannot see the thing that is actually best.
+
+    A field is only evidence about the level it can still separate, and this
+    repo's default field ranks our own engine -- which the champion beats about
+    100% of the time. Somebody can spend a week tuning a candidate to 95% of
+    `bench3` and have it score 0% against what is on the ladder. That is not
+    hypothetical; it is why `agents/CHAMPION` exists.
+    """
+    champ = _champion_path()
+    if not champ or not os.path.exists(champ):
+        return
+    have = {short(p) for p in list(roster) + list(panel)}
+    if "champion" in have or short(champ) in have:
+        return
+    sys.stderr.write(
+        "\n  !! no champion in this field\n"
+        f"     the best measured agent is {os.path.relpath(champ, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))}\n"
+        "     and nothing here is measured against it. A 95% here can still be\n"
+        "     0% against what is on the ladder -- see docs/VALIDATING.md #1.\n"
+        "     fix:  bash tools/fetch_fields.sh bench    (adds champion.py)\n\n")
+
+
 def short(path):
     return os.path.splitext(os.path.basename(path))[0] if path.endswith(".py") else path
 
@@ -328,6 +387,7 @@ def main():
                         if f.endswith(".py"))
     else:
         raise SystemExit("give --lib, --agents or --from-run")
+    roster = drop_non_agents(roster)
 
     manifest_path = os.path.join(args.lib or "agents/lib", "manifest.json")
     if con is not None and os.path.exists(manifest_path):
@@ -336,8 +396,8 @@ def main():
 
     # ---- job list ----
     if args.kind == "panel":
-        panel = args.panel or [p for p in DEFAULT_PANEL
-                               if p == "starter" or os.path.exists(p)]
+        panel = drop_non_agents(args.panel or [p for p in DEFAULT_PANEL
+                                if p == "starter" or os.path.exists(p)])
         jobs = []
         panel_short = {short(p) for p in panel}
         for a in roster:
@@ -349,6 +409,7 @@ def main():
                     jobs.append((a, b, s, args.steps))
                     jobs.append((b, a, s, args.steps))
         names = sorted({short(a) for a in roster} | panel_short)
+        _warn_no_champion(roster, panel)
         label = args.label or f"panel:{os.path.basename(args.lib or 'agents')}"
     elif args.kind == "ghosts":
         # Against recorded trajectories of top-rated players, not against
@@ -376,6 +437,7 @@ def main():
                 jobs.append((a, b, s, args.steps))
                 jobs.append((b, a, s, args.steps))
         names = sorted({short(a) for a in roster})
+        _warn_no_champion(roster, [])
         label = args.label or f"roundrobin:{len(roster)}"
 
     if args.shard:

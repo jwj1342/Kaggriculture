@@ -1,0 +1,10 @@
+# The best agent measured so far, by path. One line, no comments after it.
+#
+# `tools/fetch_fields.sh` copies this into every field it builds, under the name
+# `champion.py`, so a candidate is always measured against the thing it has to
+# beat rather than against whatever was best last week.
+#
+# Update it when something beats it on two independent fields, and say so in
+# docs/RUNS.md. It is tracked in git precisely so collaborators do not have to
+# ask which agent is current.
+submissions/2026-08-11-closercleo-term714/main.py
