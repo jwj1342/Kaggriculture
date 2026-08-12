@@ -200,21 +200,19 @@ A properly powered A/B (384 episodes) costs about 40 seconds of a compute node.
 
 ## 5. Read the knowledge, in this order (25 minutes)
 
-| Order | Document | Why |
-|---|---|---|
-| 1 | `docs/GAME_ECONOMICS.md` | what the engine actually rewards, and the three places the official page is wrong |
-| 2 | `docs/EVALUATION.md` | **read before trusting any number you produce** |
-| 3 | `docs/ATOM_EFFECTS.md` | what each atom measured to be worth, over 85,064 episodes |
-| 4 | `docs/STRATEGY_LIBRARY.md` | the atom taxonomy and the boundary cases |
-| 5 | `docs/ADVERSARIAL.md` | can you win by suppressing the opponent? (partly yes) |
-| 6 | `docs/IMPROVEMENTS.md` | the backlog, including a measured-and-rejected list |
-| 7 | `docs/CONTRIBUTING.md` | conventions for adding your own work |
-| 8 | `docs/TOOLS.md` | every script, and the known limitations |
-| 9 | `docs/RUNS.md` | provenance: every tournament, what it measured |
+If you have been away for more than a few days, **start with `docs/ROADMAP.md`**
+— it is written for exactly that case and opens with what turned out to be wrong.
 
-If you only read two, make it **EVALUATION** and **ATOM_EFFECTS**.
+1. `docs/ROADMAP.md` — where this went and why, with the arm size on every claim
+2. `docs/VALIDATING.md` — how to tell whether your change is real. Two fields for
+   two levels; using the wrong one wastes the run
+3. `docs/GAME_ECONOMICS.md` — what the game actually rewards
+4. `docs/ENGINE_CHANGES.md` — seven landed, five rejected, all with arm sizes
+5. `docs/LADDER_FIELD.md` — why a field we wrote ourselves misled us for a week
+6. `docs/SUBMISSION_POLICY.md` — before you touch the ladder
+7. `docs/EVALUATION.md` — the long form of §2 above
 
----
+`docs/MAP.md` routes any other question to the document that answers it.
 
 ## 6. Five things that will bite you
 

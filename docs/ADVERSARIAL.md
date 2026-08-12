@@ -1,5 +1,13 @@
 # Can you win by suppressing the opponent?
 
+> **Provenance.** The agents named below (`agents/adversary.py`, `agents/adv/*`,
+> `agents/probes/*`) were hand-written for this study, were never committed —
+> `agents/` is git-ignored — and no longer exist on disk. The conclusion is the
+> artefact; the episodes behind it are in `data/arena.sqlite`. Nothing here needs
+> rerunning, because the answer is **no** and the reason is structural (§1). If
+> you want to reproduce it, the agents are three dozen lines each and §5
+> describes what each one does.
+
 The idea: since the ladder scores **win/loss only** and never the margin, an
 agent does not need to be rich — it only needs to be richer. So could an agent
 default to doing nothing and act purely to hold the opponent down?

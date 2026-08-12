@@ -18,7 +18,10 @@ everything after that.
 | how to measure against the **top** of the ladder locally | `docs/GHOSTS.md` | `tools/topeps.py`, `tools/ghost.py` |
 | **how much of the season the opening decides** | `docs/ROADMAP.md` §3 D | `tools/hybrid.py` → `data/shards/handover*` |
 | every change made to the agent and what it measured | `docs/ENGINE_CHANGES.md` | shard JSONL under `data/shards/` |
+| **is my agent actually better** | `docs/VALIDATING.md` | `tools/fetch_fields.sh`, `slurm/tournament_array.sh` |
 | how to produce a number that survives scrutiny | `docs/EVALUATION.md` | — |
+| **why the score jumped from 838 to 1364** | `docs/ROADMAP.md` §5 | `tools/hybrid.py`, `tools/lines.py` |
+| which distinct plans the ladder actually plays | `docs/ROADMAP.md` §3 | `tools/lines.py` |
 | what each atom option is worth | `docs/ATOM_EFFECTS.md` *(superseded in part)* | runs #1–#2 |
 | the atom taxonomy and boundary cases | `docs/STRATEGY_LIBRARY.md` | `tools/registry.py` |
 | provenance for any single number | `docs/RUNS.md` | `runs` table |

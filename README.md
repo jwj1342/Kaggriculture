@@ -186,6 +186,111 @@ logs/              Slurm output and pre-database league JSON
 `venv/`, `.cache/`, `.kaggle/`, `data/`. A fresh checkout is ~6 MB; see
 `docs/ONBOARDING.md` §1 for restoring the library and the database.
 
+## FAQ
+
+Three questions everyone asks in their first week. Longer answers behind each
+link; these are enough to get moving.
+
+### 1. How do I actually submit to Kaggle?
+
+**Credentials first.** `setup_env.sh` points `KAGGLE_CONFIG_DIR` at the
+project's own `.kaggle/`, so nothing here touches `~/.kaggle` and you can hold
+several accounts on one machine:
+
+```bash
+mkdir -p .kaggle && chmod 700 .kaggle
+printf '{"username":"YOU","key":"..."}' > .kaggle/kaggle.json   # kaggle.com/settings/api
+chmod 600 .kaggle/*
+source setup_env.sh
+kaggle competitions submission-limits kaggriculture     # proves it works
+```
+
+**Then submit.** A single-file agent goes up as `main.py`; a multi-file one has
+to be a tar.gz with every module at the **archive root**, because Kaggle unpacks
+into `/kaggle_simulations/agent/` and a nested directory breaks the imports.
+
+```bash
+python tools/stress.py agents/mine/main.py -j 14        # must be 28/28
+mkdir -p submissions/$(date +%F)-mine && cp agents/mine/main.py submissions/$(date +%F)-mine/
+kaggle competitions submit -c kaggriculture \
+    -f submissions/$(date +%F)-mine/main.py -m "one sentence + the local evidence"
+
+# multi-file: builds, unpacks, checks get_last_callable, runs a full episode
+bash tools/package.sh agents/mine mine
+```
+
+**Three rules that have each already cost us a slot** — the full list is
+[`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md):
+
+* **Five a day, only the latest two active, and deactivation is by *recency*, not
+  score.** A third submission drops the older active one even if it is your best.
+* **An agent needs 40+ ladder episodes before its score means anything** — about
+  four hours. Submitting again inside that window throws away the measurement you
+  were waiting for.
+* **Always snapshot** under `submissions/<date>-<name>/` and log the local
+  evidence in [`docs/RUNS.md`](docs/RUNS.md). A ladder entry has to stay
+  traceable months later.
+
+### 2. How do I run my strategy locally first?
+
+```bash
+source setup_env.sh                  # any directory, any machine
+bash tools/bootstrap.sh              # only if venv/ is missing
+bash tools/fetch_fields.sh           # opponents -- a fresh clone has none
+```
+
+Then, cheapest first:
+
+| what you want | command |
+|---|---|
+| does it crash? | `python tools/stress.py <agent>.py -j 8` |
+| one episode, day by day | `python tools/trace.py <agent>.py starter` |
+| is A better than B? | `python tools/eval.py h2h a.py b.py --seeds 96 -j 32` |
+| against the whole field | `sbatch --array=0-15 --cpus-per-task=32 --mem=40G --time=00:30:00 slurm/tournament_array.sh panel --agents <agent>.py --panel agents/bench3/*.py --seeds 96 --jobs 32 --label mine` |
+| fold the shards in | `python tools/tournament.py ingest --shards data/shards/mine` |
+
+**Do not hand-write a strategy file.** Add an atom option in
+`tools/registry.py` and regenerate — the name is the definition, and every
+generated strategy shares one execution path so the comparison stays fair.
+
+**Then read [`docs/VALIDATING.md`](docs/VALIDATING.md) before believing the
+number.** It is short and it exists because this project has produced confident
+nonsense at both ends of the scale: a reference field everything beat, and a
+reference field everything beat by the same amount. Four seeds resolve nothing —
+three changes read positive over four seeds and were 21 to 44 points *behind*
+over 2,304 episodes an arm.
+
+### 3. How do I analyse a game?
+
+**Your own ladder games.** Kaggle keeps the replays; `ladder.py` pulls them,
+keeps a ~1.4 KB digest and deletes the 19 MB original:
+
+```bash
+python tools/ladder.py pull --limit 40      # your recent ladder episodes
+python tools/ladder.py stats                # win rate, opponent shapes, what sold
+```
+
+**The top of the ladder**, which you will never be matched into:
+
+```bash
+python tools/topeps.py index                # list Kaggle's daily top-episode dumps
+python tools/topeps.py pull                 # digest them into the database
+python tools/ghost.py make --limit 60 --per-team 2 --bands
+python tools/lines.py                       # which distinct plans they actually play
+```
+
+A *ghost* is one of those trajectories turned into a local opponent — 11 KB, the
+recorded action sequence replayed turn by turn. Nothing is fitted.
+[`docs/GHOSTS.md`](docs/GHOSTS.md) has the sampling design and its limits.
+
+**One episode, in detail.** `tools/trace.py` prints the farm day by day — tiles,
+shed, prices, money. **Illegal actions are silent no-ops in this engine**, so a
+bug looks exactly like bad strategy and a final score will never tell you which
+you have. Every five-figure defect in this repo was found by reading a trace,
+not by staring at a score.
+
+---
+
 ## Documentation
 
 Everything the project knows lives in `docs/`. Nothing is only in someone's head
@@ -195,7 +300,9 @@ or only in a chat log.
 |---|---|
 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | **start here** — setup, first tournament, the five things that will bite you |
 | [`docs/GAME_ECONOMICS.md`](docs/GAME_ECONOMICS.md) | what the engine actually rewards; the three places the official page is wrong |
-| [`docs/EVALUATION.md`](docs/EVALUATION.md) | **read before trusting any number you produce** |
+| [`docs/VALIDATING.md`](docs/VALIDATING.md) | **is my change real?** two fields for two levels, and the two ways to get a confident wrong answer |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | **where this went and why** — read first if you have been away |
+| [`docs/EVALUATION.md`](docs/EVALUATION.md) | the long form: how many episodes, and what the randomness does |
 | [`docs/MAP.md`](docs/MAP.md) | **which document answers which question, and where each behaviour lives in the code** |
 | [`docs/LADDER_FIELD.md`](docs/LADDER_FIELD.md) | what real opponents do, and why local rank did not predict it |
 | [`docs/ENGINE_CHANGES.md`](docs/ENGINE_CHANGES.md) | every change to the agent, what it measured, and the seventeen that were rejected |

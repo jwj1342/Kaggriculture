@@ -47,9 +47,32 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "ghosts" ]; then
   echo "      python tools/ghost.py verify --limit 12"
 fi
 
+if [ "$WHAT" = "all" ] || [ "$WHAT" = "lines" ]; then
+  echo "==> lines (the distinct plans the ladder actually plays)"
+  # Needs agents/ghosts/ to exist. Aligns within +-8 turns before comparing:
+  # two farms running the same plan one turn apart agree on *nothing* index to
+  # index, which is why 156 recordings once looked like 156 strategies.
+  python tools/lines.py --emit agents/lines
+fi
+
+if [ "$WHAT" = "all" ] || [ "$WHAT" = "bench" ]; then
+  echo "==> bench3 (the engine-level reference field)"
+  python tools/registry.py gen --plan bench --out agents/bench3 >/dev/null
+  # `gen` does not clean the directory, so an atom removed from the plan lingers
+  # as a stale file. `dairy` was cut on 2026-08-11 and has to go by hand.
+  rm -f agents/bench3/estate-crew-dairy-*.py
+  for a in closer_cleo ledger_lena broker_bea rancher_rita melon_mateo; do
+    [ -f "agents/ref/$a.py" ] && cp "agents/ref/$a.py" agents/bench3/
+  done
+  [ -f agents/lines/line1.py ] && cp agents/lines/line1.py agents/bench3/
+  echo "    $(ls agents/bench3/*.py | wc -l) opponents"
+fi
+
 echo
-echo "done. The standard field is now:"
-echo "  agents/ref/*.py        the public meta and the teaching ladder"
-echo "  agents/ghosts/*.py     replayed top-player trajectories"
-echo "  agents/bench3/*.py     regenerate with: python tools/registry.py gen --plan bench --out agents/bench3"
-echo "                         then copy in the tier 4-9 agents from agents/ref/"
+echo "done. Two fields, for two different levels -- see docs/VALIDATING.md:"
+echo "  agents/bench3/*.py     ENGINE level. Ranks agents that win 50-70% of it."
+echo "  agents/ref/{closer_cleo,slotter_silas,ledger_lena,broker_bea}.py"
+echo "                         WRAPPED level. The only field that still separates"
+echo "                         agents winning 98%+ of bench3."
+echo "  agents/ghosts/*.py     156 replayed ladder trajectories (saturating)"
+echo "  agents/lines/line*.py  one representative per distinct ladder plan"

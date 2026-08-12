@@ -105,7 +105,7 @@ not share mutable state.
 
 `short(path)` is the file's basename, so **two builds of the same strategy from
 different directories collapse into one row** in `ratings` and in the
-Bradley-Terry fit. `agents/final/x.py` and `agents/wheat2/x.py` are one agent as
+Bradley-Terry fit. `agents/lib/<strategy>.py` and `agents/lib/<strategy>.py` are one agent as
 far as a run is concerned, and run #22 merged three of them without complaint.
 
 Ablations therefore read their shard JSONL directly and key on the *directory*
@@ -167,8 +167,8 @@ rate and a paired bootstrap on the money margin, and prints the sample size
 needed when a result is not resolved.
 
 ```bash
-python tools/eval.py h2h agents/v2.py agents/barnyard.py --seeds 96 -j 32
-python tools/eval.py pool agents/v2.py agents/barnyard.py --vs starter --seeds 48
+python tools/eval.py h2h agents/lib/<candidate>.py agents/barnyard.py --seeds 96 -j 32
+python tools/eval.py pool agents/lib/<candidate>.py agents/barnyard.py --vs starter --seeds 48
 ```
 
 ### `tools/ladder.py`

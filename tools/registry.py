@@ -138,16 +138,8 @@ PRODUCE = {
     # Two quadrants is 50 tiles, so anything past ~46 needs the third.
     "berryfull":    {"crops": [["STRAWBERRY", 32, 19], ["MELON", 10, 18]],
                      "animals": {"COW": 6, "SHEEP": 6}},
-    "hugeberry":    {"crops": [["STRAWBERRY", 36, 19], ["MELON", 6, 18]],
-                     "animals": {"COW": 4, "SHEEP": 4}},
-    "berryonly":    {"crops": [["STRAWBERRY", 40, 19]],
-                     "animals": {"COW": 4, "SHEEP": 2}},
-    "berrylean":    {"crops": [["STRAWBERRY", 32, 19], ["MELON", 8, 18]],
-                     "animals": {"COW": 4, "SHEEP": 2}},
     "bigberrywool": {"crops": [["STRAWBERRY", 28, 19], ["MELON", 8, 18]],
                      "animals": {"COW": 4, "SHEEP": 8}},
-    "bigberrycow":  {"crops": [["STRAWBERRY", 28, 19], ["MELON", 8, 18]],
-                     "animals": {"COW": 10, "SHEEP": 2}},
     "berrymelon":   {"crops": [["STRAWBERRY", 24, 19], ["MELON", 14, 18]],
                      "animals": {"COW": 6, "SHEEP": 4}},
 
@@ -155,12 +147,6 @@ PRODUCE = {
     # The crop ladder peaked at 28 strawberry tiles when every tile was watered
     # every day. Alternate-day watering freed ~160 actions an episode, so the
     # tile budget is worth re-walking; these need the third quadrant.
-    "berrysea":     {"crops": [["STRAWBERRY", 40, 19], ["MELON", 8, 18]],
-                     "animals": {"COW": 6, "SHEEP": 4}},
-    "berrymax":     {"crops": [["STRAWBERRY", 48, 19], ["MELON", 4, 18]],
-                     "animals": {"COW": 4, "SHEEP": 2}},
-    "berryherd2":   {"crops": [["STRAWBERRY", 36, 19], ["MELON", 8, 18]],
-                     "animals": {"COW": 8, "SHEEP": 6}},
 
     # --- the two shapes that beat `bigberry` on the ladder -------------------
     # Both hold three or four quadrants, leave 51-59 tiles idle, and out-sell us
@@ -168,12 +154,6 @@ PRODUCE = {
     # yields twice a season -- planted day 0 and again around day 12 -- so eight
     # tiles cap at 96 units and we realise 72. More melon tiles is the only way
     # to take more of a pool that is drained to the floor in every episode.
-    "laddergarden": {"crops": [["STRAWBERRY", 28, 19], ["MELON", 18, 18]],
-                     "animals": {"COW": 6, "SHEEP": 6}},
-    "bigberrymelon": {"crops": [["STRAWBERRY", 28, 19], ["MELON", 14, 18]],
-                      "animals": {"COW": 6, "SHEEP": 4}},
-    "melonberry":   {"crops": [["STRAWBERRY", 20, 19], ["MELON", 22, 18]],
-                     "animals": {"COW": 6, "SHEEP": 4}},
 
     # The shape that beat `bigberry` by 113k to 89k on the ladder. The tell is
     # in the seeds, not the board: they bought **107 strawberry seeds** and sold
@@ -183,38 +163,14 @@ PRODUCE = {
     # --- around `marketgarden`, measured against the `bench` field ----------
     # It wins 83.9% there with the hiring ramp; these vary one thing at a time
     # so the optimum is walked out on a field that can actually rank things.
-    "mgsmall":      {"crops": [["STRAWBERRY", 14, 19], ["MELON", 10, 18]],
-                     "animals": {"COW": 8, "SHEEP": 3}},
-    "mgwide":       {"crops": [["STRAWBERRY", 22, 19], ["MELON", 10, 18]],
-                     "animals": {"COW": 8, "SHEEP": 3}},
-    "mgmelonlow":   {"crops": [["STRAWBERRY", 18, 19], ["MELON", 6, 18]],
-                     "animals": {"COW": 8, "SHEEP": 3}},
-    "mgmelonhigh":  {"crops": [["STRAWBERRY", 18, 19], ["MELON", 14, 18]],
-                     "animals": {"COW": 8, "SHEEP": 3}},
-    "mgherdbig":    {"crops": [["STRAWBERRY", 18, 19], ["MELON", 10, 18]],
-                     "animals": {"COW": 10, "SHEEP": 5}},
-    "mgherdsmall":  {"crops": [["STRAWBERRY", 18, 19], ["MELON", 10, 18]],
-                     "animals": {"COW": 6, "SHEEP": 2}},
-    "mgwool":       {"crops": [["STRAWBERRY", 18, 19], ["MELON", 10, 18]],
-                     "animals": {"COW": 5, "SHEEP": 6}},
     "mgtight":      {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18]],
                      "animals": {"COW": 7, "SHEEP": 3}},
     # `mgtight` won the sweep at 90.2%, and the trend all the way down was
     # "smaller and denser" -- which is what the action budget would predict: a
     # tile the hands never reach is worse than no tile at all. These push past
     # it to find where it turns.
-    "mgmin":        {"crops": [["STRAWBERRY", 12, 19], ["MELON", 6, 18]],
-                     "animals": {"COW": 6, "SHEEP": 2}},
-    "mgtiny":       {"crops": [["STRAWBERRY", 14, 19], ["MELON", 6, 18]],
-                     "animals": {"COW": 6, "SHEEP": 3}},
-    "mgcore":       {"crops": [["STRAWBERRY", 16, 19], ["MELON", 6, 18]],
-                     "animals": {"COW": 7, "SHEEP": 3}},
     "mgtightwide":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 10, 18]],
                      "animals": {"COW": 7, "SHEEP": 3}},
-    "mgtighthigh":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18]],
-                     "animals": {"COW": 9, "SHEEP": 4}},
-    "mgnano":       {"crops": [["STRAWBERRY", 10, 19], ["MELON", 6, 18]],
-                     "animals": {"COW": 5, "SHEEP": 2}},
     # `mgtight` uses 34 of 50 tiles and still PASSes 30% of its actions. The
     # earlier wheat-filler test was confounded -- it sat on a 20-strawberry base
     # when 16 is the optimum -- so it is re-run here on the tight base, where
@@ -237,18 +193,6 @@ PRODUCE = {
     # COLLECT_FERTILIZER, HARVEST -- and about 85% of the ladder leader's
     # zero-movement work comes from its thirteen animals against our ten. Herd
     # size was measured *before* the here-pass existed, so it is re-run.
-    "mggrainherd":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
-                               ["WHEAT", 14, 24]],
-                     "animals": {"COW": 9, "SHEEP": 4}},
-    "mggrainherd2": {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
-                               ["WHEAT", 14, 24]],
-                     "animals": {"COW": 11, "SHEEP": 5}},
-    "mggrainherd3": {"crops": [["STRAWBERRY", 14, 19], ["MELON", 8, 18],
-                               ["WHEAT", 14, 24]],
-                     "animals": {"COW": 12, "SHEEP": 6}},
-    "mggrainlean":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 8, 18],
-                               ["WHEAT", 14, 24]],
-                     "animals": {"COW": 5, "SHEEP": 2}},
     # --- the top of the leaderboard, read off Kaggle's daily episode dumps ---
     # 48 episodes averaging 3,068-3,218 rating, 96 farms (tools/topeps.py). The
     # median top farm: three quadrants, fourteen animals, fourteen hands at day
@@ -312,8 +256,6 @@ PRODUCE = {
 
     "berryflood":   {"crops": [["STRAWBERRY", 50, 19], ["MELON", 12, 18]],
                      "animals": {"COW": 6, "SHEEP": 6}},
-    "berrytide":    {"crops": [["STRAWBERRY", 42, 19], ["MELON", 12, 18]],
-                     "animals": {"COW": 6, "SHEEP": 4}},
 
     # --- filling the last ten days ------------------------------------------
     # Strawberry stops being worth planting on day 19 and each plant dies about
@@ -324,18 +266,6 @@ PRODUCE = {
     # yields four in five days and doubles as feed. Listing them last in the
     # plan means they only ever take tiles the strawberry and melon do not
     # want.
-    "berrycarrot":  {"crops": [["STRAWBERRY", 28, 19], ["MELON", 8, 18],
-                               ["CARROT", 24, 25]],
-                     "animals": {"COW": 6, "SHEEP": 4}},
-    "berrygrain":   {"crops": [["STRAWBERRY", 28, 19], ["MELON", 8, 18],
-                               ["WHEAT", 24, 24]],
-                     "animals": {"COW": 6, "SHEEP": 4}},
-    "berrymelonlate": {"crops": [["STRAWBERRY", 28, 19], ["MELON", 14, 18],
-                                 ["CARROT", 20, 25]],
-                       "animals": {"COW": 6, "SHEEP": 4}},
-    "berryboth":    {"crops": [["STRAWBERRY", 28, 19], ["MELON", 10, 18],
-                               ["CARROT", 14, 25], ["WHEAT", 12, 24]],
-                     "animals": {"COW": 6, "SHEEP": 4}},
 
     # --- soak up the idle labour --------------------------------------------
     # Read off the $160,864 opponent's replay, action by action. The gap is not
@@ -349,18 +279,6 @@ PRODUCE = {
     # Wheat is the filler: $10 a seed, four units in five days, replantable to
     # day 24, and its market is 4,000 deep so the volume never crashes it.
     # Listed last so it only takes tiles the strawberry and melon do not want.
-    "berrywheat":   {"crops": [["STRAWBERRY", 20, 19], ["MELON", 10, 18],
-                               ["WHEAT", 40, 24]],
-                     "animals": {"COW": 8, "SHEEP": 5}},
-    "berrywheatbig": {"crops": [["STRAWBERRY", 28, 19], ["MELON", 10, 18],
-                                ["WHEAT", 32, 24]],
-                      "animals": {"COW": 8, "SHEEP": 5}},
-    "wheatgarden":  {"crops": [["STRAWBERRY", 16, 19], ["MELON", 12, 18],
-                               ["WHEAT", 48, 24]],
-                     "animals": {"COW": 8, "SHEEP": 6}},
-    "fullfarm":     {"crops": [["STRAWBERRY", 20, 19], ["MELON", 12, 18],
-                               ["WHEAT", 30, 24], ["CARROT", 16, 25]],
-                     "animals": {"COW": 8, "SHEEP": 6}},
 }
 
 MARKET = {
