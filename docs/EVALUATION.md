@@ -37,9 +37,9 @@
 1. **平均收入是错误的头条指标。** 一个稳定进账 8 万的 agent，胜过一个平均 10 万但偶尔
    崩盘的。优化胜率；收入只作为诊断量报告。
 2. **方差是成本，不只是误差棒。** 评分奖励的是一致性。
-3. **本地排名要用和奖金同一个估计量。** `tools/league.py` 在本地循环赛上做
-   Bradley-Terry 极大似然拟合，所以本地排名在**种类上**可与真实排行榜比较，
-   而不是与一个沙盒平均值比较。
+3. **本地排名要用和奖金同一个估计量。** `tools/tournament.py` 在本地循环赛上做
+   Bradley-Terry 极大似然拟合（`tools/stats.py`），所以本地排名在**种类上**可与
+   真实排行榜比较，而不是与一个沙盒平均值比较。
 
 ---
 
@@ -113,8 +113,6 @@ town["unlocked_shops"].append(rng.choice(sorted(SHOPS)))
 | `tools/eval.py` | A 是否优于 B，带置信区间？ |
 | `tools/stress.py` | 这个 agent 会崩、会卡、会超时吗？ |
 | `tools/tournament.py` | 面板筛选 / 循环赛，持久化到 SQLite |
-| `tools/league.py` | N 个 agent 按 Bradley-Terry 怎么排？ |
-| `tools/sweep.py` | 对模块级可调参数做坐标扫描 |
 | `tools/lines.py` | 天梯实际在跑哪几条不同的剧本 |
 | `tools/hybrid.py` | 开局值多少钱 |
 
@@ -129,13 +127,6 @@ python tools/eval.py pool agents/lib/<candidate>.py agents/barnyard.py \
 打两个座位，报告胜率的 Wilson 区间和收入差的配对 bootstrap；当结果未分辨出来时，
 还会打印还需要多少局。`pool` 模式更接近天梯：两个候选在同样的种子上面对同样的对手。
 
-### `league.py` —— 带 Bradley-Terry 的循环赛
-
-发出胜负矩阵、类 Elo 尺度上的 BT 强度、以及每个 agent 的收入分布。`--variants` 会自动
-生成可调参数的变体，所以一次参数研究就是一条命令。
-
-读输出时：**高胜率配低中位收入是个危险信号**。它意味着这个 agent 靠抽干共享市场取胜，
-而不是靠赚钱 —— 这在天梯上确实计分，但对不喂它的对手很脆弱。
 
 ### `stress.py` —— 28 个病态配置
 
@@ -192,8 +183,8 @@ python tools/eval.py pool agents/lib/<candidate>.py agents/barnyard.py \
 
 ## 6. 推荐工作流
 
-1. **一次只改一件事。** 优先做成模块级可调参数，这样 `sweep.py` 和
-   `league.py --variants` 不用改代码就能驱动它。
+1. **一次只改一件事。** 优先做成 `tools/registry.py` 里的一个原子选项，这样它有名字、
+   能被生成、而且和其他一切共用同一条执行路径。
 2. **先 `stress.py`。** 28 个配置，不到一分钟，在你花掉算力之前抓出崩溃和慢回合。
 3. **跑够局数。** 24 个种子够第一眼看；任何小于 10 分的结论要 96+。
 4. **读胜负矩阵，不只读排名。** 一个除了某一个对手之外什么都赢的 agent，

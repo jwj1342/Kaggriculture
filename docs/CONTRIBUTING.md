@@ -187,6 +187,44 @@ a 1287.2 in one night: `kaggle competitions submissions kaggriculture | head -5`
 
 ---
 
+## A generated agent is a pair of files, not one
+
+`registry.py gen` writes `<strategy>.py` **and** `kg_rules.py` into the output
+directory. The strategy holds the policy and its stamped `CONFIG`; `kg_rules.py`
+is the game's rules mirrored from `reference/engine/kaggriculture.py` -- crop and
+animal tables, the price model, the shop map -- and it holds no strategy and
+reads no `CONFIG`.
+
+That boundary is the one that pays. The engine has been rebalanced once
+mid-competition and will be again, and when it is, `kg_rules.py` is the only
+file that changes.
+
+The pair travels together. `get_last_callable` puts the agent file's own
+directory on `sys.path` before exec'ing it, so a flat sibling import resolves
+both locally and inside Kaggle's `/kaggle_simulations/agent/`. To submit one:
+
+```bash
+bash tools/package.sh agents/lib/<strategy>.py mine
+```
+
+which stages the pair as `main.py` + `kg_rules.py` at the **archive root** -- a
+nested directory would not import -- then unpacks its own archive, resolves
+`get_last_callable`, and plays a full episode before handing you the tar.gz.
+
+**Import explicitly, never `import *`.** Star-import skips underscore names. The
+first attempt at this split used it, `_TO_FLOOR` and the private helpers went
+missing, every agent raised inside its own `try/except` and returned `PASS`, and
+nine strategies banked exactly the $3,000 they started with while the generator
+reported success. `gen` now smoke-tests its first output -- resolves it the way
+the framework will, calls it on a synthetic opening board, and refuses to finish
+if it passes on turn 0 -- but the rule is cheaper than the check.
+
+**Every plan may omit any axis it does not vary**; `complete()` fills the rest
+from `REFERENCE`. Nine of the fourteen plans were silently dead for exactly this
+reason -- they predated the seventh axis and raised `KeyError: 'adapt'`.
+
+---
+
 ## Tests
 
 There is one test file and it covers `tools/stats.py`:

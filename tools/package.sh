@@ -1,7 +1,8 @@
 #!/bin/bash
-# Package a multi-file agent into the tar.gz Kaggle expects.
+# Package an agent into the tar.gz Kaggle expects.
 #
-#     bash tools/package.sh agents/enhanced enhanced
+#     bash tools/package.sh agents/enhanced enhanced              # a directory
+#     bash tools/package.sh agents/lib/<strategy>.py mine         # one generated strategy
 #
 # Produces submissions/<date>-<name>/submission.tar.gz with main.py and its
 # modules at the archive ROOT -- Kaggle unpacks into /kaggle_simulations/agent/
@@ -18,6 +19,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 OUT="submissions/$(date +%F)-${NAME}"
 mkdir -p "$OUT"
+
+# A generated strategy is `<name>.py` beside a shared `kg_rules.py`. Accept the
+# strategy file directly and assemble the pair, so submitting one is a single
+# command and nobody has to remember that the rules travel with it.
+if [ -f "$SRC" ] && [ "${SRC##*.}" = "py" ]; then
+  STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
+  cp "$SRC" "$STAGE/main.py"
+  RULES="$(dirname "$SRC")/kg_rules.py"
+  [ -f "$RULES" ] || RULES="$ROOT/agents/kg_rules.py"
+  [ -f "$RULES" ] || { echo "error: kg_rules.py not found beside $SRC" >&2; exit 1; }
+  cp "$RULES" "$STAGE/"
+  SRC="$STAGE"
+fi
 
 [ -f "$SRC/main.py" ] || { echo "error: $SRC/main.py not found" >&2; exit 1; }
 
@@ -50,6 +64,11 @@ env_ = make("kaggriculture", configuration={"episodeSteps": 720, "seed": 7})
 env_.run([os.path.join(d, "main.py"), "starter"])
 fin = env_.steps[-1]
 assert all(s.status == "DONE" for s in fin), [str(s.status) for s in fin]
+# $3,000 is the starting money: the agent passed every turn, which is what a
+# missing import looks like from the outside. It has happened.
+assert float(fin[0].reward or 0) > 3000.0, (
+    f"scored exactly the starting money ({fin[0].reward}) -- it did nothing all "
+    "season, which usually means an import failed inside the try/except")
 print(f"  full 720-step episode from the unpacked archive: "
       f"{[float(s.reward or 0) for s in fin]}")
 PY

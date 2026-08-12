@@ -34,6 +34,7 @@ import pprint
 import sys
 
 ENGINE = "agents/_engine.py"
+RULES = "agents/kg_rules.py"   # copied beside every generated strategy
 LIB = "agents/lib"
 
 # --------------------------------------------------------------------------
@@ -340,11 +341,30 @@ ALIASES = {
 }
 
 
+def complete(combo):
+    """Fill in any axis a plan does not mention, from `REFERENCE`.
+
+    Nine of the fourteen composition plans were written before the seventh axis
+    (`adapt`) existed and never updated, so they raised `KeyError: 'adapt'` and
+    generated nothing. A plan should be allowed to say only what it varies --
+    that is the point of an orthogonal axis -- and everything it leaves out
+    takes the reference value.
+    """
+    out = dict(REFERENCE)
+    out.update(combo)
+    missing = [k for k, _ in AXES if k not in out]
+    if missing:
+        raise SystemExit(f"REFERENCE is missing an axis: {', '.join(missing)}")
+    return out
+
+
 def name_of(combo):
+    combo = complete(combo)
     return "-".join(combo[k] for k, _ in AXES)
 
 
 def config_of(combo):
+    combo = complete(combo)
     cfg = {"name": name_of(combo), "atoms": dict(combo)}
     for key, table in AXES:
         cfg.update(table[combo[key]])
@@ -659,6 +679,7 @@ def plan_all():
     seen, out = set(), []
     for fn in (plan_main, plan_edge, plan_ladder, plan_produce, plan_muck, plan_grid):
         for c in fn():
+            c = complete(c)
             key = tuple(c[k] for k, _ in AXES)
             if key not in seen:
                 seen.add(key)
@@ -673,12 +694,59 @@ PLANS["all"] = plan_all
 # Code generation
 # --------------------------------------------------------------------------
 
+def _root(rel):
+    """Resolve a repo-relative path from anywhere, so `gen` works from any cwd."""
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(repo, *rel.split("/"))
+
+
 START = "# === STRATEGY CONFIG (generated -- do not edit by hand) ==="
 END = "# === END CONFIG ==="
 
 
+
+def _smoke(path):
+    """Load a generated agent the way the framework will, and make it answer.
+
+    Compiling is not enough and neither is importing. The first attempt at
+    splitting the engine used `from kg_rules import *`, which silently skips
+    underscore names, so `_TO_FLOOR` and the private helpers were missing --
+    every agent raised inside its own `try/except`, returned `PASS`, and banked
+    exactly the $3,000 it started with. Nine strategies scored identically and
+    the generator reported success.
+
+    So: resolve it, call it on a synthetic opening board, and require an action
+    that is not `PASS`.
+    """
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(path)))
+    try:
+        from kaggle_environments.agent import get_last_callable
+        with open(path) as f:
+            fn = get_last_callable(f.read(), path=path)
+        if fn.__name__ != "agent":
+            return f"framework would load `{fn.__name__}`, not `agent`"
+        farm = {"money": 3000, "tiles": [[None] * 10 for _ in range(10)],
+                "hands": [], "farmer": [4, 4], "unlocked_quadrants": ["NW"],
+                "hires_today": 0}
+        act = fn({"step": 0, "day": 0, "hour": 0, "player": 0,
+                  "farms": [farm, farm],
+                  "private": {"shed": {}, "seeds": {}, "inventories": [{}]},
+                  "market": {"prices": {}, "inventory": {}},
+                  "town": {"unlocked_shops": []}})
+        if not isinstance(act, dict):
+            return f"returned {type(act).__name__}, not a dict"
+        if act.get("farmer") == ["PASS"] and not act.get("market"):
+            return "passes on turn 0 -- an import is probably missing"
+    except Exception as e:                       # noqa: BLE001 -- report, do not raise
+        return f"{type(e).__name__}: {e}"
+    finally:
+        sys.path.pop(0)
+    return None
+
+
 def generate(combos, out_dir, engine_path=ENGINE):
-    with open(engine_path) as f:
+    with open(_root(engine_path) if not os.path.isabs(engine_path) else engine_path) as f:
         src = f.read()
     if START not in src or END not in src:
         raise SystemExit("engine template is missing its CONFIG markers")
@@ -686,8 +754,21 @@ def generate(combos, out_dir, engine_path=ENGINE):
     _, tail = rest.split(END, 1)
     os.makedirs(out_dir, exist_ok=True)
 
+    # A generated strategy is `<name>.py` plus one shared `kg_rules.py` beside
+    # it, not a self-contained file. `get_last_callable` puts the agent file's
+    # own directory on `sys.path` before exec'ing it, so a flat sibling import
+    # resolves both here and inside Kaggle's `/kaggle_simulations/agent/`.
+    # `tools/package.sh` puts both at the archive root for the same reason --
+    # a nested directory would not.
+    rules_dst = os.path.join(out_dir, os.path.basename(RULES))
+    with open(_root(RULES)) as f:
+        rules_src = f.read()
+    with open(rules_dst, "w") as f:
+        f.write(rules_src)
+
     made = []
     for combo in combos:
+        combo = complete(combo)
         cfg = config_of(combo)
         alias = ALIASES.get(tuple(combo[k] for k, _ in AXES))
         if alias:
@@ -702,8 +783,16 @@ def generate(combos, out_dir, engine_path=ENGINE):
         made.append({
             "name": cfg["name"], "alias": alias, "path": path,
             "atoms": dict(combo),
-            "sha": hashlib.sha256(text.encode()).hexdigest()[:16],
+            "sha": hashlib.sha256((text + rules_src).encode()).hexdigest()[:16],
         })
+
+    # Smoke the first one. Every strategy shares one execution path, so if the
+    # template is broken they are all broken, and one check is enough.
+    if made:
+        bad = _smoke(made[0]["path"])
+        if bad:
+            raise SystemExit(f"generated agents are broken -- {bad}\n"
+                             f"  {made[0]['path']}")
     return made
 
 

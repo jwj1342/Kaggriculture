@@ -196,15 +196,13 @@ it. Guessing would mirror every opponent statistic in the dataset.
 Known limit: the `episodes` listing is truncated at roughly 37 rows per
 submission, so a pull reaches the most recent episodes, not the full history.
 
-### `tools/arena.py`, `tools/sweep.py`, `tools/league.py`
-Earlier single-purpose harnesses, superseded by `tournament.py` and `eval.py` but
-kept because published results cite them. `arena.py` is a quick head-to-head,
-`sweep.py` a coordinate sweep over module-level tunables, `league.py` a
-round robin with its own JSON output rather than the database.
-
----
-
-## Evidence and publishing
+### Removed: `arena.py`, `sweep.py`, `league.py`
+Deleted 2026-08-12. All three were superseded by `tournament.py` (panel and
+round robin, persisted to SQLite) and `eval.py` (A/B with an interval), and they
+were the main source of duplication in the repo -- five different `_play`
+implementations lived across them. Their results predate `data/arena.sqlite` and
+are transcribed into `docs/EVALUATION.md` §7, which is where published numbers
+citing them should point. `slurm/league.sh` and `slurm/sweep.sh` went with them.
 
 ### `tools/db.py`
 Schema and queries over `data/arena.sqlite`. Four tables: `agents`, `runs`,
@@ -381,8 +379,16 @@ bash tools/fetch_fields.sh ghosts 60  # just ghosts
 ```
 
 ### `tools/package.sh`
-Builds the tar.gz Kaggle expects from a multi-file agent, with every module at
-the **archive root** -- Kaggle unpacks into `/kaggle_simulations/agent/`, so a
+Builds the tar.gz Kaggle expects, with every module at the **archive root**
+
+```bash
+bash tools/package.sh agents/lib/<strategy>.py mine    # a generated strategy
+bash tools/package.sh agents/enhanced enhanced         # a directory
+```
+
+Given a single generated strategy it stages the pair (`main.py` + `kg_rules.py`)
+itself, so submitting one is one command and nobody has to remember that the
+rules travel with the policy. Everything ends up at the archive root -- Kaggle unpacks into `/kaggle_simulations/agent/`, so a
 nested directory breaks the imports. Verifies by unpacking, checking
 `get_last_callable` resolves to `agent`, and running a full episode. Single-file
 agents do not need it; submit the `.py` directly.
@@ -428,8 +434,6 @@ a GPU.
 |---|---|---|
 | `slurm/tournament.sh` | `tools/tournament.py` | 32 cpus, 48 G, 6 h |
 | `slurm/eval.sh` | `tools/eval.py` | 32 cpus, 32 G, 2 h |
-| `slurm/league.sh` | `tools/league.py` | 32 cpus, 32 G, 3 h |
-| `slurm/sweep.sh` | `tools/sweep.py` | 32 cpus, 48 G, 3 h |
 
 ```bash
 sbatch slurm/tournament.sh panel --lib agents/lib --seeds 8
@@ -484,7 +488,8 @@ Bradley-Terry strength diverges and their relative order is arbitrary. Run #1 di
 this with eight strategies tied. The fix is a stronger anchor in the panel, not
 trusting the order; the confirm round robin exists for exactly this.
 
-**Legacy harnesses write JSON, not the database.** `league.py`, `sweep.py` and
-`arena.py` predate `data/arena.sqlite`. Their results are transcribed into
+**The legacy harnesses wrote JSON, not the database.** `league.py`, `sweep.py`
+and `arena.py` predated `data/arena.sqlite` and are now deleted. Their results
+are transcribed into
 `docs/RUNS.md` but the raw dumps are not queryable alongside everything else.
 Prefer `tournament.py` for anything new.

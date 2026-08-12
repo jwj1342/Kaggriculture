@@ -139,7 +139,8 @@ smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
 
 ```
 agents/
-  _engine.py       唯一的执行路径；它的 CONFIG 块是生成的
+  _engine.py       策略：唯一的执行路径；它的 CONFIG 块是生成的
+  kg_rules.py      规则：作物表、价格模型、商店图 —— 无策略，引擎再平衡时只改这里
   lib/             生成的策略 + manifest.json  (git-ignored)
   spar/            从天梯回放重建的陪练场地  (git-ignored)
   ref/             第三方参考 agent (MIT，见其 NOTICE)  (git-ignored)
@@ -163,7 +164,8 @@ tools/
   lines.py         把那些轨迹聚类成它们实际在跑的"线"
   hybrid.py        把录制的开局拼接到我们的引擎上，测量开局的价值
   fetch_fields.sh  重建新克隆没有的全部对手场地
-  package.sh       把多文件 agent 打成 Kaggle 要的 tar.gz
+  package.sh       把 agent 打成 Kaggle 要的 tar.gz（策略 + 规则平铺在归档根）
+  stats.py         Bradley-Terry 和 Wilson —— 仓库里唯一的纯模块，有单元测试
 docs/              全部知识与结果 —— 见下方表格
 data/arena.sqlite  证据层  (git-ignored；用 tools/sync.py 分享)
 reference/
