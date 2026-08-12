@@ -1,143 +1,124 @@
-# How to evaluate an agent
+# 怎么评估一个 agent
 
-> **The reference field must be able to lose to the candidate and beat it.**
-> Measured on 2026-08-10 (run #22): every strategy in the library beat the old
-> anchors — `berrybaron-muck`, `orchardherd`, the submitted `enhanced` — between
-> **97% and 100%** of the time, while `marketgarden` beat every other roster
-> shape 53% to 90%. Both ends were saturated, so the ranking carried no
-> information: a 99.2% and a 100.0% are the same measurement.
->
-> `python tools/registry.py gen --plan bench --out agents/bench3` materialises
-> the current standard field — the strongest shape of each production family
-> plus one deliberate outlier. Copy in `agents/ref/*.py` and
-> `agents/lines/line1.py` afterwards. Use it for `--panel` and as the fixed
-> opponent set in ablations, and regenerate it whenever a candidate starts
-> beating it above ~90%.
->
-> **Saturation has two ends.** `dairy` was dropped from the field on
-> 2026-08-11 for the opposite reason to the anchors above: every candidate beat
-> it in **every single episode** over 7,296 of them. See §6.
->
-> **Four seeds cannot resolve anything.** Three separate changes on 2026-08-10
-> read positive over four seeds and were 21 to 44 points *behind* over 2,304
-> episodes an arm: a larger fertilizer reserve (+$6,500 → −44 points), the
-> inverted scheduler (+$15,000 → −23 points), and a raised carrying threshold.
-> A smoke test is a syntax check, not evidence.
+> **想快速上手，读 `docs/VALIDATING.md`（短）。这一份是它的完整版。**
 
-The hardest part of this competition is not writing a policy. It is knowing
-whether the policy you just wrote is better than the one before it.
+> **参考场地必须既可能输给候选、也可能赢它。**
+> 2026-08-10 实测（跑数 #22）：策略库里的每一个策略都以 **97%–100%** 的比率打败旧锚点，
+> 而 `marketgarden` 以 53%–90% 打败其余所有 roster 形状。两端都饱和，所以排名不含任何
+> 信息：99.2% 和 100.0% 是同一个测量。
+>
+> `python tools/registry.py gen --plan bench --out agents/bench3` 生成当前的标准场地 ——
+> 每个生产家族最强的那个形状，加一个刻意的离群值。之后把 `agents/ref/*.py` 和
+> `agents/lines/line1.py` 拷进去。用它当 `--panel`，也当消融实验的固定对手集；
+> 候选打到 ~90% 以上时重建它。
+>
+> **饱和有两端。** `dairy` 在 2026-08-11 被移出场地，原因和上面的锚点相反：
+> 每一个候选在 7,296 局里的**每一局**都打败它。见 §6。
+>
+> **四个种子分辨不出任何东西。** 2026-08-10 有三个独立改动在四种子下读数为正，
+> 在每臂 2,304 局下却**落后 21 到 44 分**：更大的肥料储备（+$6,500 → −44 分）、
+> 反转的调度器（+$15,000 → −23 分）、以及提高的搬运阈值。冒烟测试是语法检查，不是证据。
 
-Early sweeps in this repo, at 3–4 seeds, produced **contradictory orderings on
-repeat runs**. Every number they produced was noise. This document is the
-correction: what the environment's randomness actually looks like, what the
-tools measure, and how many games it takes to be allowed an opinion.
+这个比赛最难的部分不是写策略，是**知道你刚写的策略是不是比上一个好**。
+
+这个仓库早期 3–4 个种子的扫描**重复跑会得出互相矛盾的排序**。它们产出的每个数字都是
+噪声。这份文档就是那个更正：这个环境的随机性到底长什么样、工具在测什么、以及要跑多少局
+才有资格发表意见。
 
 ---
 
-## 1. What the ladder actually scores
+## 1. 天梯实际在给什么打分
 
-Only **win / loss / tie**. The coin margin never enters the rating. The final
-leaderboard is a single **Bradley-Terry** fit over the last two weeks of
-episodes ([host confirmation](https://www.kaggle.com/discussions/kaggriculture/731587)).
+只有**胜 / 负 / 平**。金额差距完全不进入评分。最终排行榜是对最后两周所有对局做一次
+**Bradley-Terry** 拟合（[主办方确认](https://www.kaggle.com/discussions/kaggriculture/731587)）。
 
-Three consequences for local evaluation:
+对本地评估的三个后果：
 
-1. **Mean money is the wrong headline metric.** An agent that reliably banks 80k
-   beats one averaging 100k that occasionally collapses. Optimise win rate;
-   report money only as a diagnostic.
-2. **Variance is a cost, not just an error bar.** Consistency is what the rating
-   rewards.
-3. **Rank locally with the same estimator the prize uses.** `tools/league.py`
-   fits Bradley-Terry by maximum likelihood over a local round robin, so local
-   rankings are comparable in kind to the real leaderboard rather than to a
-   sandbox mean.
+1. **平均收入是错误的头条指标。** 一个稳定进账 8 万的 agent，胜过一个平均 10 万但偶尔
+   崩盘的。优化胜率；收入只作为诊断量报告。
+2. **方差是成本，不只是误差棒。** 评分奖励的是一致性。
+3. **本地排名要用和奖金同一个估计量。** `tools/league.py` 在本地循环赛上做
+   Bradley-Terry 极大似然拟合，所以本地排名在**种类上**可与真实排行榜比较，
+   而不是与一个沙盒平均值比较。
 
 ---
 
-## 2. Measured facts about this environment's randomness
+## 2. 关于这个环境随机性的实测事实
 
-All verified against the installed 1.32.6 engine.
+全部对照已安装的 1.32.6 引擎验证过。
 
-### 2.1 Episodes are deterministic given `(seed, both agents)`
+### 2.1 给定 `(种子, 双方 agent)`，对局是确定性的
 
-Re-running the same pair on the same seed reproduces the episode exactly. So
-**repeat runs of an identical configuration add no information** — all variance
-lives across seeds. A harness that runs the same config twice on the same seed is
-burning CPU.
+同一对 agent 在同一个种子上重跑，会精确复现那一局。所以**同一配置重复跑不增加任何信息**
+—— 全部方差都活在种子之间。一个把同样配置在同样种子上跑两次的框架是在烧 CPU。
 
-Useful corollary: the league correctly scored `barnyard`,
-`barnyard__TARGET_COWS_10` and `barnyard__HAND_CAP_14` as *bit-identical*
-(same BT strength, same median, same win rate) because those overrides happen to
-equal the defaults. That is a free self-test of the whole pipeline.
+有用的推论：league 曾把 `barnyard`、`barnyard__TARGET_COWS_10` 和
+`barnyard__HAND_CAP_14` 正确地评为**逐位相同**（相同 BT 强度、相同中位、相同胜率），
+因为那些覆盖值恰好等于默认值。这是对整条流水线的一次免费自检。
 
-### 2.2 Common random numbers do **not** control the environment
+### 2.2 共同随机数**不能**控制这个环境
 
-This one is easy to get wrong. In `_end_of_day` a single RNG, seeded from
-`(seed, day)`, is used for **both** weed spawning and the shop unlock — and weed
-spawning consumes one draw per empty tile, on **both** farms:
+这条很容易搞错。在 `_end_of_day` 里，一个由 `(seed, day)` 播种的 RNG 被**同时**用于
+杂草生成和商店解锁 —— 而杂草生成在**双方**农场上每个空地消耗一次抽取：
 
 ```python
 rng = random.Random((seed * 1_000_003) ^ day)
 for player_id, farm in enumerate(obs0.farms):
     ...
-    _spawn_weeds(farm, board_size, weed_chance, rng)   # draws ∝ empty tiles
+    _spawn_weeds(farm, board_size, weed_chance, rng)   # 抽取次数 ∝ 空地数
 ...
 town["unlocked_shops"].append(rng.choice(sorted(SHOPS)))
 ```
 
-So **how you play changes which shops unlock**, and so does how your *opponent*
-plays. Measured on one fixed seed (42), four agent pairings produced four
-completely different shop sequences:
+所以**你怎么打会改变哪些商店解锁**，你的**对手**怎么打也会。在一个固定种子（42）上实测，
+四种对阵产生了四个完全不同的商店序列：
 
-| Pairing | Shops unlocked |
+| 对阵 | 解锁的商店 |
 |---|---|
 | `pass` vs `pass` | FARMERS_MARKET, PET_CAFE, YARN_STORE, YARN_STORE, … |
 | `starter` vs `starter` | ICE_CREAM_SHOP ×3, YARN_STORE, BAKERY, … |
 | `barnyard` vs `starter` | ICE_CREAM_SHOP, PET_CAFE, FARMERS_MARKET, BAKERY, … |
-| `barnyard` vs itself | BRUNCH_SPOT ×3, BAKERY, SMOOTHIE_SHOP, … |
+| `barnyard` vs 自己 | BRUNCH_SPOT ×3, BAKERY, SMOOTHIE_SHOP, … |
 
-Implications:
+含义：
 
-- Pairing on seed reduces variance but **does not cancel it**. You cannot treat
-  the shop draw as an exogenous control variable.
-- A config change can win a seed for a reason unrelated to its merit — it nudged
-  the weed count and drew a better shop.
-- **Results against a weak opponent do not transfer.** Changing the opponent
-  changes your own economy, not just the comparison.
+- 按种子配对能降低方差，但**抵消不了**。你不能把商店抽样当成一个外生的控制变量。
+- 一个配置改动可能因为与它自身优劣无关的原因赢下一个种子 —— 它挪动了杂草数量，
+  于是抽到了更好的商店。
+- **对着弱对手得出的结果不可迁移。** 换对手改变的是你自己的经济，不只是那个比较。
 
-### 2.3 Scores compress by roughly half against a real opponent
+### 2.3 面对真实对手，分数大致减半
 
-| Matchup | `barnyard` median |
+| 对阵 | `barnyard` 中位 |
 |---|---|
-| vs `starter` | ~67,000 |
-| vs itself, and in a mixed league | ~30,000–40,000 |
+| vs `starter` | 约 67,000 |
+| vs 自己，以及在混合联赛里 | 约 30,000–40,000 |
 
-Both players drain one shared market. Any number measured against a passive
-opponent is inflated; always report the contested number too.
+两个玩家在抽干同一个市场。任何对着消极对手测出来的数字都是虚高的；
+**永远同时报告有对抗的那个数字。**
 
-### 2.4 Seats are symmetric by construction — but verify anyway
+### 2.4 座位在构造上是对称的 —— 但还是要验
 
-All four quadrants are geometrically identical about the shed, each owning one
-shed-access tile, and market orders quote both players against the same
-pre-commit inventory. There is no structural seat advantage. Every harness here
-still plays both seats and reports the split, because that assumption is cheap to
-check and expensive to be wrong about.
+四个象限相对棚子几何全等，各自拥有一个棚子出入格，而市场订单对双方报的是同一个
+提交前库存。不存在结构性的座位优势。这里每个框架仍然会打两个座位并报告拆分结果，
+因为验证这个假设很便宜，而它错了会很贵。
 
 ---
 
-## 3. The tools
+## 3. 工具
 
-| Tool | Question it answers |
+| 工具 | 它回答什么问题 |
 |---|---|
-| `tools/arena.py` | quick sanity: does A beat B at all? |
-| `tools/trace.py` | *why* — day-by-day farm, shed, prices for one episode |
-| `tools/eval.py` | is A better than B, with a confidence interval? |
-| `tools/league.py` | how do N agents rank, by Bradley-Terry? |
-| `tools/stress.py` | does the agent ever crash, stall, or time out? |
-| `tools/sweep.py` | coordinate sweep over module-level tunables |
-| `tools/make_probes.py` | regenerate the single-strategy probe agents |
+| `tools/trace.py` | **为什么** —— 一局的逐日农场、棚子、价格 |
+| `tools/eval.py` | A 是否优于 B，带置信区间？ |
+| `tools/stress.py` | 这个 agent 会崩、会卡、会超时吗？ |
+| `tools/tournament.py` | 面板筛选 / 循环赛，持久化到 SQLite |
+| `tools/league.py` | N 个 agent 按 Bradley-Terry 怎么排？ |
+| `tools/sweep.py` | 对模块级可调参数做坐标扫描 |
+| `tools/lines.py` | 天梯实际在跑哪几条不同的剧本 |
+| `tools/hybrid.py` | 开局值多少钱 |
 
-### `eval.py` — A/B with an interval
+### `eval.py` —— 带区间的 A/B
 
 ```bash
 python tools/eval.py h2h agents/lib/<candidate>.py agents/barnyard.py --seeds 96 -j 32
@@ -145,127 +126,92 @@ python tools/eval.py pool agents/lib/<candidate>.py agents/barnyard.py \
     --vs starter --vs agents/barnyard.py --seeds 48 -j 32
 ```
 
-Plays both seats, reports a Wilson interval on the win rate and a paired
-bootstrap on the money margin, and — when the result is not resolved — prints how
-many episodes it would take. `pool` mode is closer to the ladder: both candidates
-face the same opponents on the same seeds.
+打两个座位，报告胜率的 Wilson 区间和收入差的配对 bootstrap；当结果未分辨出来时，
+还会打印还需要多少局。`pool` 模式更接近天梯：两个候选在同样的种子上面对同样的对手。
 
-### `league.py` — round robin with Bradley-Terry
+### `league.py` —— 带 Bradley-Terry 的循环赛
 
-```bash
-sbatch slurm/league.sh starter agents/barnyard.py \
-    --variants agents/barnyard.py:HAND_CAP=8,11,14 --seeds 24
-```
+发出胜负矩阵、类 Elo 尺度上的 BT 强度、以及每个 agent 的收入分布。`--variants` 会自动
+生成可调参数的变体，所以一次参数研究就是一条命令。
 
-Emits a win matrix, BT strengths on an Elo-like scale, and per-agent money
-distributions. `--variants` stamps out tunable variants automatically so a
-parameter study is one command.
+读输出时：**高胜率配低中位收入是个危险信号**。它意味着这个 agent 靠抽干共享市场取胜，
+而不是靠赚钱 —— 这在天梯上确实计分，但对不喂它的对手很脆弱。
 
-Reading the output: **a high win rate with a low median money is a red flag**.
-It means the agent wins by denying the shared market rather than by earning —
-which does score on the ladder, but is fragile against opponents who do not feed
-it.
+### `stress.py` —— 28 个病态配置
 
-### `stress.py` — 28 pathological configurations
-
-Zero money, a 4×4 board, a shed that holds one item, one turn per day, free farm
-hands, a market where everything crashes. Real episodes always use the defaults,
-so this is not about realism: it is about finding hardcoded assumptions before
-the leaderboard does. A crash forfeits the whole episode.
-
-`barnyard` currently passes 28/28 with a worst turn of 145 ms against a
-1,000 ms budget.
+零现金、4×4 棋盘、只放一件东西的棚子、一天一回合、免费雇工、什么都崩盘的市场。
+真实对局永远用默认值，所以这不是关于真实性的：它是**在排行榜发现之前找出写死的假设**。
+一次崩溃会让整局作废。
 
 ---
 
-## 4. The probe agents
+## 4. 探针 agent（历史）
 
-`agents/probes/` holds 19 deliberately bad agents, each committing to a single
-mechanic and abandoning everything else. They exist to price a lever in
-isolation, and as fixed yardsticks that do not move when the baseline changes.
+> **这批 agent 已不在磁盘上。** `agents/` 是 git-ignored 的，它们从未提交过。
+> 结论保留在 §7，对应的对局在 `data/arena.sqlite` 里。它们由 `tools/make_probes.py`
+> 生成，每个都刻意押注单一机制、放弃其他一切，用来**孤立地给一个杠杆定价**，
+> 并作为不随基线变动的固定标尺。
 
-| Group | Probes | Question |
+| 组 | 探针 | 问题 |
 |---|---|---|
-| Monoculture crops | `mono_wheat` `mono_carrot` `mono_tomato` `mono_strawberry` `mono_melon` | what is each crop worth alone? |
-| Monoculture animals | `mono_cow` `mono_sheep` `mono_goose` | which animal carries the engine? |
-| Animal decomposition | `fert_only` `product_only` | how much of animal income is the free fertilizer? |
-| Land | `one_quadrant` `two_quadrant` `four_quadrant` | what is a quadrant worth? |
-| Labour | `no_hire` `few_hands` `hire_max` | what is a farm hand worth, and where does `fib(n)` bite? |
-| Market | `dump_all` `hoarder` | does metered selling actually pay? |
-| Reference | `mixed_ref` | the probe's own balanced default |
-
-All 19 are generated by `tools/make_probes.py` from the single parameterised
-`agents/lib/<probe>.py`, so there is exactly one source of truth. Regenerate after
-editing:
-
-```bash
-python tools/make_probes.py
-```
-
-They double as a regression suite: if a refactor changes what `mono_melon`
-scores on a fixed seed, something moved that should not have.
+| 单一作物 | `mono_wheat` `mono_carrot` `mono_tomato` `mono_strawberry` `mono_melon` | 每种作物单独值多少？ |
+| 单一牲畜 | `mono_cow` `mono_sheep` `mono_goose` | 哪种牲畜撑起这个引擎？ |
+| 牲畜收入分解 | `fert_only` `product_only` | 牲畜收入里免费肥料占多少？ |
+| 土地 | `one_quadrant` `two_quadrant` `four_quadrant` | 一个象限值多少？ |
+| 雇工 | `no_hire` `few_hands` `hire_max` | 一个雇工值多少，`fib(n)` 从哪开始咬人？ |
+| 市场 | `dump_all` `hoarder` | 计量式卖出真的划算吗？ |
 
 ---
 
-## 5. How many games do you actually need?
+## 5. 到底要跑多少局？
 
-For a binary win/loss outcome, resolving a true win rate of `50% + d` at 95%
-confidence needs roughly `n = (1.96² × 0.25) / d²` episodes:
+对于二元胜负结果，在 95% 置信度下分辨出真实胜率 `50% + d` 大约需要
+`n = (1.96² × 0.25) / d²` 局：
 
-| Effect you want to detect | Episodes | Seeds (both seats) | Wall time on 32 cores |
-|---|---|---|---|
-| 10 points (60% vs 50%) | 96 | 48 | ~8 s |
-| 5 points | 384 | 192 | ~33 s |
-| 3 points | 1,068 | 534 | ~90 s |
-| 1 point | 9,604 | 4,802 | ~14 min |
+| 你想检出的效应 | 局数 | 种子（双座位） |
+|---|---|---|
+| 10 分（60% vs 50%） | 96 | 48 |
+| 5 分 | 384 | 192 |
+| 3 分 | 1,068 | 534 |
+| 1 分 | 9,604 | 4,802 |
 
-Throughput: one episode is ~2.7 s on one core, so 32 cores run **~11.8
-episodes/s ≈ 42,000 episodes/hour**.
+吞吐：带 `KG_FAST_ENV=1` 时**每核每秒约 0.375 局**，所以 8 核笔记本上一次有效力的
+5 分测试约 4 分钟。规模换算见 `docs/VALIDATING.md` §2。
 
-**There is no excuse for an underpowered experiment here.** A properly powered
-5-point test costs 33 seconds of a compute node. The 3–4 seed sweeps that started
-this project were resolving nothing at all.
+**在这里没有理由做一个统计效力不足的实验。** 这个项目最初那些 3–4 种子的扫描，
+分辨的是零。
 
-Two ways to do better than raw win counting:
+有两个办法比裸数胜场更好：
 
-- **Use the money margin as the statistic.** In a head-to-head the margin's sign
-  *is* the win, so it carries the same information with far lower variance.
-  `eval.py` bootstraps it alongside the win rate.
-- **Pair on seed.** Both candidates play the same seeds against the same
-  opponents. This helps even though §2.2 means it does not cancel everything.
+- **用收入差作为统计量。** 在一对一里，差额的符号**就是**胜负，所以它携带同样的信息
+  而方差低得多。`eval.py` 会同时给它做 bootstrap。
+- **按种子配对。** 两个候选在同样的种子上打同样的对手。即使 §2.2 说明它抵消不了一切，
+  这仍然有帮助。
 
 ---
 
-## 6. Recommended workflow
+## 6. 推荐工作流
 
-1. **Change one thing.** Prefer a module-level tunable so `sweep.py` and
-   `league.py --variants` can drive it without editing code.
-2. **`stress.py` first.** 28 configurations, under a minute, catches crashes and
-   slow turns before you spend a compute node.
-3. **`league.py` on Slurm** with the change as a variant plus 2–3 probes for
-   context. 24 seeds is enough for a first look; 96+ before believing anything
-   under 10 points.
-4. **Read the win matrix, not just the ranking.** An agent that beats everything
-   except one probe is telling you something specific.
-5. **Check the mirror.** Run the candidate against itself. Scores halve; if they
-   more than halve, the agent depends on a passive opponent.
-6. **`trace.py` any surprise.** Silent no-ops mean bugs look like bad strategy —
-   every five-figure bug in this repo was found by reading a day-by-day trace,
-   not by staring at a final score.
-7. **Measure on two fields, and say so when they disagree.** `agents/bench3` is
-   our own family; `agents/ghosts` is 156 replayed ladder trajectories. They
-   have now disagreed on the produce axis by seven places — `mgtightgrain2`
-   ranks first on the ghosts and seventh on `bench3` — and only one of them is
-   evidence about the ladder. A number quoted from one field alone is a number
-   about that field.
-8. **Only then submit.** Five per day, latest two active.
+1. **一次只改一件事。** 优先做成模块级可调参数，这样 `sweep.py` 和
+   `league.py --variants` 不用改代码就能驱动它。
+2. **先 `stress.py`。** 28 个配置，不到一分钟，在你花掉算力之前抓出崩溃和慢回合。
+3. **跑够局数。** 24 个种子够第一眼看；任何小于 10 分的结论要 96+。
+4. **读胜负矩阵，不只读排名。** 一个除了某一个对手之外什么都赢的 agent，
+   在告诉你一件很具体的事。
+5. **检查镜像对局。** 让候选和自己打。分数减半；减得比一半还多，说明它依赖消极对手。
+6. **任何意外都去 `trace.py`。** 静默空操作意味着 bug 看起来像"策略差" ——
+   这个仓库里每个五位数级别的 bug 都是靠读逐日 trace 找到的，不是靠盯最终分数。
+7. **在两个场地上测，而且在它们打架时说出来。** `agents/bench3` 是我们自己的家族；
+   `agents/ghosts` 是 156 条重放的天梯轨迹。它们已经在 produce 轴上相差七个名次 ——
+   `mgtightgrain2` 在幽灵上排第一、在 `bench3` 上排第七 —— 而其中只有一个是关于天梯的
+   证据。**只引用一个场地的数字，是一个关于那个场地的数字。**
+8. **然后才提交。** 每天 5 次，最新两个活跃。
 
-### Which opponents are worth the compute
+### 哪些对手值得花算力
 
-An opponent's value is its **variance across candidates**, not its strength.
-Measured over 7,296 episodes with ten candidates on one engine:
+一个对手的价值是它**跨候选的方差**，不是它的强弱。在一个引擎上用十个候选跑 7,296 局：
 
-| sparring partner | mean beaten | spread across candidates |
+| 陪练 | 平均被赢 | 跨候选标准差 |
 |---|---|---|
 | `mgtightgrain2` | 64.6% | **29.7** |
 | `orchardherd` | 73.4% | **26.1** |
@@ -277,67 +223,60 @@ Measured over 7,296 episodes with ten candidates on one engine:
 | `broker_bea` | 0.2% | 0.4 |
 | `dairy` | **100.0%** | **0.0** |
 
-`orchardherd` is weak — 36.5% as a candidate — and the third most informative
-opponent in the panel. **Weak and useless are different things.** `dairy` is the
-useless one: every candidate beat it in every single episode, mean 100.0% and
-standard deviation exactly zero. It is removed.
+`orchardherd` 很弱 —— 作为候选只有 36.5% —— 却是场地里第三有信息量的对手。
+**弱和没用是两回事。** 没用的是 `dairy`：每个候选在每一局都赢它，均值 100.0%、
+标准差精确为零。它已被移除。
 
-Dropping `dairy` and the three meta agents leaves the candidate ranking
-**completely unchanged** — all ten hold their position — for 37% less compute.
+剔掉 `dairy` 和三个 meta agent 后，候选排名**完全不变** —— 十个全部保持原位 ——
+而算力省了 37%。
 
-But keep the meta agents in the field and **report them separately**. They are
-saturated the other way (we win 0.2%), so averaging them in only adds a
-constant: three unbeatable opponents in fifteen depress every headline by about
-25 points, which is how "43%" turned out to mean "73.5% against opponents we can
-contest, and 0% against three we cannot". Two numbers, not one.
+但要把 meta agent 留在场地里，并且**分开报告**。它们是另一端的饱和（我们赢 0.2%），
+把它们平均进去只是加了一个常数：十五个对手里三个打不过，等于给每个头条数字压了
+约 25 分，所谓「43%」的真实含义是「对能打的对手 73.5%，对三个打不过的 0%」。
+**两个数字，不是一个。**
 
-What the panel lacked was the middle, and `tools/lines.py --emit` supplies it:
-`line1` is the ladder's most-played line and sits at 66.6% against this panel,
-just above our best engine's 60.9%.
+场地缺的是中间地带，而 `tools/lines.py --emit` 提供了它：`line1` 是天梯上跑得最多的
+那条线，对这个场地是 66.6%，刚好在我们最好的引擎 60.9% 之上。
 
-### Saturation has two ends, and we just hit the far one
+### 饱和有两端，我们刚撞上远的那端
 
-`dairy` was cut because every candidate beat it every time. On 2026-08-11 the
-opposite happened: measuring eight variants of a `closer_cleo`-class agent, the
-**ghost field returned 99.4% for seven of them** and could not separate any.
-`bench3` is close behind — the same arms sit at 92-98% there.
+`dairy` 被剔是因为每个候选每次都赢它。2026-08-11 出现了相反的情况：测量八个
+`closer_cleo` 量级 agent 的变体时，**幽灵场地对其中七个返回 99.4%**，一个都分不开；
+`bench3` 紧随其后 —— 同样这批臂在那里是 92–98%。
 
-Both reference fields are built to rank *our* engine, which wins 54-61% of them.
-They have no resolution at the level of an agent that wins 98%.
+两个参考场地都是为了给**我们的**引擎排序而建的，而我们的引擎赢它们 54–61%。
+它们在一个赢 98% 的 agent 那个层级上没有分辨率。
 
-The only field that still discriminates at that level is **the wrapped agents
-against each other**: `closer_cleo` 92.7%, `slotter_silas` 73.8%, `ledger_lena`
-54.1%, `broker_bea` 29.3% over 3,072 episodes — clean spacing, no saturation at
-either end. Use that panel for anything at this level, and read money as a
-secondary signal when win rate saturates (it still ordered the terminal-window
-sweep correctly when the ghost win rates were all identical).
+在那个层级唯一还能区分的场地，是**带外包装的 agent 互相打**：`closer_cleo` 92.7%、
+`slotter_silas` 73.8%、`ledger_lena` 54.1%、`broker_bea` 29.3%，3,072 局 ——
+间距干净，两端都不饱和。这个层级的任何测量都用那个面板，并在胜率饱和时把中位收入
+当作次级信号（在幽灵胜率全部相同时，它仍然正确地给终局窗口扫描排了序）。
 
-### Two failure modes this repo keeps producing
+### 这个仓库反复上的两种当
 
-**"It is doing nothing, so it must be stuck."** The seed-purchase probe showed
-the farm buying nothing for ten days on $109-$435. It was not stuck; it was
-spending the cash on livestock, which is worth more. Removing the "deadlock"
-cost 8-14 points across 137,664 episodes. *Before concluding an engine is
-broken, find out what it spent the resource on.* Nothing in the code says
-"livestock outranks seed" — it falls out of a cash floor meeting a purchase
-rate limit, and correct behaviour with no comment attached looks exactly like a
-bug.
+**「它什么都没做，所以一定卡住了」。** 种子购买探针显示农场十天什么都没买、现金只有
+$109–$435。它没卡住；它把现金花在牲畜上，而那更值钱。移除这个"死锁"在 137,664 局下
+损失 8–14 分。**在判定引擎坏掉之前，先查清楚它把资源花到哪去了。** 代码里没有任何
+地方写着"牲畜优先于种子" —— 那是一个现金下限和一个购买速率限制撞在一起的产物，
+而**一个没有注释的正确行为，看起来和 bug 一模一样**。
 
-**A harness that silently runs the wrong code.** `get_last_callable` returns
-`[v for v in env.values() if callable(v)][-1]` — the last *callable* in the
-module dict. Wrapping an agent (`_INNER = agent`, then a new `def agent`) leaves
-`_INNER` last, so the framework loads the **unwrapped** agent, every arm scores
-identically, and the clean-looking conclusion is "the change is worth nothing".
-A helper `def` placed after `agent` does the same. Park callables in lists,
-`del` helper names, and *verify by asking the loaded function for a known
-answer* — compiling is not enough. Two arms of this session's handover sweep
-were lost to this before the check existed.
+**框架静默地跑了另一份代码。** `get_last_callable` 返回
+`[v for v in env.values() if callable(v)][-1]` —— 模块字典里最后一个 callable。
+包装一个 agent（`_INNER = agent`，然后重新 `def agent`）会让 `_INNER` 排最后，
+于是框架加载的是**未包装**的那个，每个臂分数完全相同，而干净的结论是"这个改动毫无价值"。
+在 `agent` 之后放一个辅助 `def` 后果相同。把 callable 存进列表、`del` 掉辅助名字，
+然后**向加载出来的函数问一个已知答案的问题来验证** —— 能编译不等于对。
+交接扫描有两个臂就是这样丢掉的，直到那个检查被写出来。
 
 ---
 
-## 7. Results on record
+## 7. 存档结果
 
-### Tunable study — 8 agents, 24 seeds/pair, both seats (1,344 episodes)
+> **以下全部来自跑数 #1–#2**，早于引擎的两处缺陷修复和 1.32.6 的再平衡。保留是因为
+> 已发布的结论引用了它们，而且方法论仍然有效。**不要用这些数字做决策** —— 当前的结论在
+> `docs/ROADMAP.md` 和 `docs/ENGINE_CHANGES.md`。
+
+### 可调参数研究 —— 8 个 agent，每对 24 种子，双座位（1,344 局）
 
 ```
  #  agent                        BT-Elo   winrate   median $
@@ -351,17 +290,15 @@ were lost to this before the check existed.
  8  starter                       -4814      0.0%      3,498
 ```
 
-`HAND_CAP=11` beats the current default of 14 — the payroll curve bites earlier
-than the coordinate sweep suggested. `TARGET_COWS=10` is confirmed correct.
+`HAND_CAP=11` 胜过当时默认的 14 —— 工资曲线比坐标扫描显示的更早开始咬人。
 
-
-### Probe league — 21 agents, 16 seeds/pair, both seats (6,720 episodes)
+### 探针联赛 —— 21 个 agent，每对 16 种子，双座位（6,720 局）
 
 ```
  #  agent              BT-Elo  winrate   median $      sd $
  1  one_quadrant         +952    97.2%     54,784    21,285
  2  dump_all             +727    90.8%     39,810    13,298
- 3  barnyard          +619    86.6%     47,880    16,383
+ 3  barnyard             +619    86.6%     47,880    16,383
  4  few_hands            +535    82.8%     36,476     9,853
  5  two_quadrant         +471    79.7%     40,890    16,001
  6  mixed_ref            +304    70.8%     34,497    14,723
@@ -382,74 +319,54 @@ than the coordinate sweep suggested. `TARGET_COWS=10` is confirmed correct.
 21  product_only        -4289     0.0%         78         2
 ```
 
-Four results worth acting on:
+四条当时值得行动的结论：
 
-**Land is actively harmful, monotonically.** Within the identical probe family:
-`one_quadrant` +952 > `two_quadrant` +471 > `mixed_ref` (three) +304 >
-`four_quadrant` +284. `one_quadrant` beats `barnyard` **32/32** while earning
-*more* (46,163 vs 35,056). Extra tiles dilute a fixed labour pool across cheap
-work. This contradicts the public meta's three-quadrant farm — but that meta was
-measured before the 1.32.6 rebalance halved late-game town demand.
+**土地是有害的，而且单调。** 在同一个探针家族内部：`one_quadrant` +952 >
+`two_quadrant` +471 > `mixed_ref`（三块）+304 > `four_quadrant` +284。这与公开 meta 的
+三象限农场相反 —— 但那个 meta 是在 1.32.6 把后期城镇需求减半之前测的。
+**后来的结论修正了这一条**：象限数本身不重要，**能不能服务得过来**才重要；见
+`docs/ENGINE_CHANGES.md`。
 
-**Fertilizer is the animal economy, not a side effect.** `product_only` (animals
-harvested for milk but fertilizer never collected) finishes dead last on **$78**,
-having gone broke buying feed before the first milk arrives. `fert_only` at
-$8,409 is far from great, but it survives. Fertilizer is the early cash flow that
-funds the herd.
+**肥料是牲畜经济本身，不是副产品。** `product_only`（收牛奶但从不收肥料）以 **$78**
+垫底，在第一份牛奶（day 8）到来之前就买饲料买破产了。`fert_only` 的 $8,409 远称不上好，
+但它活下来了。
 
-**Metering is not unconditionally correct.** `dump_all` ranks *above*
-`barnyard` while earning 17% less. See `docs/ADVERSARIAL.md`.
+**计量式卖出不是无条件正确的。** `dump_all` 排在 `barnyard` **之上**，而收入少 17%。
+见 `docs/ADVERSARIAL.md`。
 
-**`mono_sheep` has sd $22,206 on a median of $14,138** — larger spread than
-median. Wool's only demand is a single-product shop consuming at 2x, so the
-result is dominated by whether a Yarn Store happens to spawn. Any strategy
-resting on one product is a coin flip under with-replacement shop draws.
+**`mono_sheep` 的标准差 $22,206 大于它 $14,138 的中位数。** 羊毛唯一的需求来自一个
+以 2 倍速消耗的单品商店，所以结果完全取决于有没有恰好刷出 Yarn Store。
+**在有放回的商店抽样下，任何押在单一产品上的策略都是抛硬币。**
 
-### Powered A/B tests — 192 seeds x 2 seats = 384 episodes each
+### 有效力的 A/B —— 192 种子 × 2 座位 = 每个 384 局
 
 ```
 dump_all      vs barnyard   71.4% win  CI [66.6%, 75.6%]  own median 35,776
 one_quadrant  vs barnyard   93.2% win  CI [90.3%, 95.3%]  own median 47,655
 ```
 
-Both seat splits are flat (72/70 and 93/93), so neither is a seat artefact.
-`dump_all` wins 71% of the time while earning ~25% *less* than it would by
-metering — see `docs/ADVERSARIAL.md`. `one_quadrant` wins 93% while earning
-*more*, which makes the three-quadrant plan in `barnyard` the single largest
-known defect.
+两边的座位拆分都是平的（72/70 和 93/93），所以都不是座位假象。
 
-### Quadrant study — 8 seeds
+### 稳健性 —— 28 个病态配置
 
-| Quadrants owned | Median money |
-|---|---|
-| 1 | 49,078 |
-| 2 | 68,738 |
-| 3 | 68,892 |
-| 4 | 68,892 (never actually buys SE) |
-
-### Robustness — 28 pathological configurations
-
-28/28 finish `DONE`. Worst single turn 145 ms. Most fragile dimension: with
-melon's base price set to $1 the agent falls from 66,409 to 18,060.
+28/28 全部 `DONE`。最坏单回合 145 ms。最脆弱的维度：把西瓜基价设成 $1 时，
+agent 从 66,409 掉到 18,060。
 
 ---
 
-## 8. Throughput reference
+## 8. 吞吐参考
 
-| Setup | Episodes/hour | Notes |
-|---|---|---|
-| login node, 1 core | ~1,300 | fine for a smoke test; nothing more |
-| login node, `-j 8` | ~10,600 | acceptable up to a few hundred episodes |
-| `sbatch`, 32 cores | **~42,000** | the default for anything that will be believed |
+带 `KG_FAST_ENV=1` 时**每核每秒约 0.375 局**（该开关跳过 jsonschema 校验，
+实测结果逐字节相同）。
 
-A 21-agent probe round robin at 16 seeds per pair is 6,720 episodes — about
-10 minutes on one 32-core node. A properly powered 5-point A/B is 33 seconds.
-Use the cluster.
+| 配置 | 局/小时 |
+|---|---|
+| 1 核 | 约 1,350 |
+| 8 核笔记本 | 约 10,800 |
+| 32 核 | 约 43,000 |
 
-```bash
-sbatch slurm/league.sh <agents...> --seeds 24 -o logs/run.json
-sbatch slurm/eval.sh h2h agents/lib/<candidate>.py agents/barnyard.py --seeds 192
-sbatch slurm/sweep.sh agents/barnyard.py --set HAND_CAP=8,10,12,14
-```
+一次有效力的 5 分 A/B（384 局）在八核笔记本上约 4 分钟。更大的跑数见
+`docs/CLUSTER.md`，或者直接拿别人跑好的证据（`tools/sync.py import`）。
 
-All three are CPU-only. Do not request a GPU.
+**这个负载是纯 CPU 的 —— 永远不要申请 GPU。** 它是单线程 Python，
+其中 42% 的时间花在框架内部的 `deepcopy` 上。

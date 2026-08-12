@@ -1,208 +1,173 @@
-# Where this went, and where it can go
+# 这个项目走到哪了，还能往哪走
 
-**Read this first if you have been away.** On 2026-08-11 the ladder score went
-from 838 to 1364, and it was not a tuning result. The shape of the problem
-turned out to be different from what the first ten days assumed, and most of
-what was believed on 2026-08-10 is now known to be wrong. This file is the
-correction, in the order the evidence arrived.
+**如果你离开了一段时间，先读这份。** 2026-08-11 那天排行榜分数从 838 涨到 1364，
+而这**不是调参调出来的**。问题的形状和前十天的假设完全不同，2026-08-10 时相信的
+大部分结论现在都已知是错的。这份文档就是那个更正，按证据到达的顺序排列。
 
 ---
 
-## 1. What we believed on 2026-08-10
+## 1. 2026-08-10 时我们相信的
 
-* Our engine was a competitive agent that needed better parameters.
-* The top of the ladder played one shared plan, and `agents/ref/closer_cleo.py`
-  contained it.
-* The gap was concentrated in the opening, so a recorded opening spliced onto
-  our engine would close most of it.
+* 我们的引擎是个有竞争力的 agent，只是需要更好的参数。
+* 天梯顶端跑的是同一套共享剧本，而 `agents/ref/closer_cleo.py` 里就装着它。
+* 差距集中在开局，所以把一段录制的开局拼到我们引擎前面，就能补上大部分。
 
-All three were wrong. The measurements that killed them are below, each with its
-arm size, because the pattern in this project is that plausible reasoning loses
-to 100,000 episodes about four times out of five.
+**三条全错。** 推翻它们的测量在下面，每条都附样本量 —— 因为这个项目里反复出现的
+规律是：看似合理的推理，大约五次里有四次输给十万局实测。
 
-## 2. The gap is not in the opening — it is in every phase
+## 2. 差距不在开局 —— 在全程
 
-`tools/hybrid.py` splices a recorded 720-turn opening onto our engine at a
-chosen day, so "how much of the season does the opening decide" is measurable
-rather than arguable. Sweeping the handover day, 96 seeds, 3,648 episodes an arm:
+`tools/hybrid.py` 把一段录制的 720 回合开局拼接到我们的引擎前面，交接日可调，
+于是"开局到底决定了这一季的多少"变成可测量的，而不是可争论的。扫描交接日，
+96 个种子，每臂 3,648 局：
 
-| handover | win rate | median $ |
+| 交接日 | 胜率 | 中位收入 |
 |---|---|---|
-| our engine alone | 54.0% | 69,804 |
+| 纯我们的引擎 | 54.0% | 69,804 |
 | day 2 | 63.3% | 77,321 |
 | day 6 | 69.7% | 78,591 |
 | day 12 | 67.7% | 83,047 |
 | day 20 | 71.1% | 90,003 |
 | day 28 | 77.9% | 89,272 |
-| the recording alone | **98.6%** | **99,168** |
+| 纯剧本 | **98.6%** | **99,168** |
 
-**The curve never turns over.** There is no day at which our engine starts
-adding value; more recording is better all the way to 100% of it. Two days of it
-are worth +9.3 points. A hybrid has nothing to be a hybrid *of*.
+**曲线不见顶。** 不存在某一天让我们的引擎开始产生价值；剧本占比越大越好，一直到 100%。
+只借两天就值 +9.3 分。**一个混合方案没有可以拿来混合的东西。**
 
-Raising the engine's crop, herd and hand targets at handover to the board it
-inherits (`--adopt`, without which its absolute targets make it refuse to replant
-a farm larger than its plan, and it decays 55 → 12 plants) moves this ±4 points
-and does not change the shape.
+交接时把引擎的作物、畜群、雇工目标抬到它继承的盘面（`--adopt`；不这么做的话，它的
+绝对目标会让它拒绝为一个比计划更大的农场补种，农场从 55 株衰减到 12 株）——
+这值 ±4 分，不改变曲线形状。
 
-## 3. The top does not play the plan in `agents/ref/`
+## 3. 榜首跑的不是 `agents/ref/` 里那条线
 
-This is the correction that mattered most, and it was hidden by a one-line bug in
-how similarity was measured.
+这是最重要的一条更正，而它一直被一个测量方式上的一行错误掩盖着。
 
-Two farms running the same plan **one turn apart** agree on nothing when compared
-index to index. Comparing the 156 recorded top trajectories to `closer_cleo`'s
-embedded `_TRACE` that way gives 0% and looks like "they all play something
-different". Sweeping shifts of ±8 turns first (`tools/lines.py`):
+**两个农场跑同一套剧本，只要错开一个回合，逐格比对就毫无重合。** 用那种方式把 156 条
+录制的榜首轨迹和 `closer_cleo` 内嵌的 `_TRACE` 相比，得到 0%，看起来像"他们各跑各的"。
+先做 ±8 回合的对齐再比（`tools/lines.py`）：
 
-* only **8 of 156** overlap `closer_cleo`'s plan above 30%
-* the recordings match **each other** at a median of **75.4%**, half of all pairs
-  above 90%
-* they collapse to **25 lines**, the largest holding **97 of 156 across 38 teams**
+* 只有 **8/156** 与 `closer_cleo` 的剧本重合超过 30%
+* 这些录音**彼此**中位重合 **75.4%**，一半的配对超过 90%
+* 它们塌成 **25 条线**，最大一条有 **97/156，跨 38 个队伍**
 
-So the monoculture is real, and **the line this repo measured against all week is
-played by about 5% of the top**.
+所以单一栽培是真的，而**这个仓库整整一周对标的那条线，只有约 5% 的榜首在跑**。
 
-## 4. The value is the wrapper, not the plan
+## 4. 值钱的是外包装，不是剧本
 
-Replayed on seeds they never saw, against `bench3` plus two references:
+放到它们从没见过的种子上，对 `bench3` 加两个参考 agent：
 
-| agent | win rate | median $ |
+| agent | 胜率 | 中位收入 |
 |---|---|---|
-| `closer_cleo` — plan **+ adaptive layer** | **99.2%** | 102,667 |
-| cluster 1 representative — raw recording | 66.6% | 85,057 |
-| our best engine | 60.9% | 71,557 |
-| cluster 4 — raw recording | 29.1% | 45,715 |
-| cluster 2 — raw, **best original score** | 11.8% | 14,984 |
-| cluster 3 — raw recording | 0.9% | 1,217 |
+| `closer_cleo` —— 剧本 **+ 自适应层** | **99.2%** | 102,667 |
+| 簇 1 代表 —— 原始录音 | 66.6% | 85,057 |
+| 我们最好的引擎 | 60.9% | 71,557 |
+| 簇 4 —— 原始录音 | 29.1% | 45,715 |
+| 簇 2 —— 原始录音，**原始分最高** | 11.8% | 14,984 |
+| 簇 3 —— 原始录音 | 0.9% | 1,217 |
 
-An open-loop recording cannot transfer: different weeds and a different opponent
-turn its actions into silent no-ops. **The most-played line is the most robust
-one, not the best one** — cluster 2 has the highest original scores ($132,032
-median against cluster 1's $78,510) and collapses hardest.
+开环录音无法迁移：不同的杂草和不同的对手会把它的动作变成静默空操作。
+**跑的人最多的那条线是最耐操的，不是最强的** —— 簇 2 的原始分最高（中位 $132,032，
+簇 1 是 $78,510），塌得也最狠。
 
-And in a 3,072-episode round robin a raw recording scores **0.0%** against every
-agent that wraps a plan in an adaptive layer:
+而在 3,072 局的循环赛里，原始录音对每一个把剧本包起来的 agent 都是 **0.0%**：
 
-| | win rate |
+| | 胜率 |
 |---|---|
 | `closer_cleo` | 92.7% |
 | `slotter_silas` | 73.8% |
 | `ledger_lena` | 54.1% |
 | `broker_bea` | 29.3% |
-| raw recording | **0.0%** |
+| 原始录音 | **0.0%** |
 
-**What the wrapper actually is.** `closer_cleo`'s `agent()` rewrites only
-`action["market"]` — `farmer` and `hands` come straight from the plan, untouched,
-except for a controller that takes over the last few turns. It is a market layer:
-a supply table measured over self-play, front-running a detected clone's glut,
-and terminal liquidation. It is *not* micro-optimised movement or exception
-handling; there is nothing to handle, since seeds and animals are fixed-price and
-unlimited (`BUY_SEED` never touches `market["inventory"]`) and a purchase that
-fails aborts only that one order.
+**那层外包装到底是什么。** `closer_cleo` 的 `agent()` **只重写 `action["market"]`** ——
+`farmer` 和 `hands` 原封不动来自剧本，只有最后几个回合被一个控制器接管。它是一层
+**市场层**：一张自对弈跑出来的供给表、对检测到的克隆体抢先卖出、终局清仓。
+它**不是**微观动作优化，也不是异常处理 —— 这个引擎里没有异常可处理：种子和牲畜是
+固定价、无限供应的（`BUY_SEED` 根本不碰 `market["inventory"]`），而一次失败的购买
+只中止那一条订单。
 
-## 5. So why did the score jump
+## 5. 所以分数为什么会跳
 
-Two things, in this order.
+两件事，按这个顺序。
 
-**Submitting `closer_cleo` unmodified** as a baseline, on the owner's explicit
-instruction to prioritise ladder position. 838 → 1287. Its `_TRACE` is not
-licensed by the dataset author (`agents/ref/NOTICE`: "reconstructible from public
-replay data by anyone who wants it, and it reaches you on whatever terms the
-competition's own rules provide"), so the question it raises is a competition
-rules question, not a code-licensing one. **The snapshot carries LICENSE and
-NOTICE beside it** and `docs/RUNS.md` records why it was sent.
+**原样提交 `closer_cleo`** 当基线，因为项目负责人明确指示优先拿排行榜位置。838 → 1287。
+它内嵌的 `_TRACE` 不受数据集作者的授权覆盖（`agents/ref/NOTICE`：「任何人都能从公开
+回放数据重建它，它以比赛规则自身规定的条款抵达你手中」），所以这引出的是**比赛规则
+问题**，不是代码授权问题。**快照里带着 LICENSE 和 NOTICE**，`docs/RUNS.md` 记录了
+为什么发它。
 
-**One line on top of it.** `closer_cleo` overrides its plan for the last three
-turns with `_terminal_action`, an observation-driven harvest/drop/sell
-controller. Its plan spends 8.8% of the last twenty turns watering — a day-29
-watering ticks after the final turn and can never be harvested — and leaves 13
-units standing in the field at the close. Sweeping the threshold, 384 seeds,
-10,800 episodes an arm:
+**在它之上改一行。** `closer_cleo` 在最后三个回合用 `_terminal_action` 覆盖剧本 ——
+那是一个读盘面的收割/搬运/抛售控制器。而它的剧本在最后二十个回合里有 8.8% 的动作是
+浇水 —— 第 29 天浇的水在最后一回合之后才结算，永远收不到 —— 而且季末还有 13 单位
+留在地里。扫描这个阈值，384 个种子，每臂 10,800 局：
 
-| controller starts | turns covered | win rate |
+| 控制器启动点 | 覆盖回合 | 胜率 |
 |---|---|---|
 | step 704 | 16 | 91.9% |
 | step 708 | 12 | 97.7% |
 | **step 710–714** | **6–10** | **98.1%** |
 | step 716 | 4 | 94.7% |
-| step 717 — unchanged | 3 | 95.2% |
+| step 717 —— 原版 | 3 | 95.2% |
 
-`step 714` is the smallest change reaching the plateau. Local: **+2.9 points**.
-Ladder: **1287.2 → 1363.7, +76.5**. First time a change has been same-signed on
-both.
+`step 714` 是达到平台的最小改动。本地：**+2.9 分**。排行榜：**1287.2 → 1363.7，+76.5**。
+这是第一次有一个改动在两边同号。
 
-## 6. What our own engine was worth
+## 6. 我们自己的引擎值多少
 
-Eleven landed engine changes moved it from 623 to 857 over ten days. Today's two
-findings are worth listing because they are the shape of everything left:
+十一个落地的引擎改动，十天里把它从 623 推到 857。今天这两个发现值得单独列出，
+因为它们是剩下所有工作的形状：
 
-* **The seed freeze is a trade, not a deadlock.** The engine buys one round of
-  seed on day 0 and nothing until day 11, sitting on $109–$435. Removing the
-  cash floor that causes it *loses*, monotonically: 47.57% → 39.27% → 33.24% over
-  137,664 episodes. The cash was going to livestock, which is worth more.
-* **We were dismissing the workforce on the most valuable day.** Hands are a
-  daily rental and the hiring block sat inside `if not endgame:`, so on the
-  liquidation day twelve units became one, and 84 units of produce were left
-  standing in the field. +1.66 points on `bench3`, +4.55 on the ghosts. Landed.
+* **种子冻结是一笔交易，不是死锁。** 引擎在 day 0 买一轮种子，然后到 day 11 之前
+  什么都不买，现金停在 $109–$435。移除造成这个现象的现金下限**会输**，而且是单调的：
+  137,664 局下 47.57% → 39.27% → 33.24%。那些现金流向了牲畜，而牲畜更值钱。
+* **我们在最值钱的那一天把工人全遣散了。** 雇工是按天租的，而雇工代码在
+  `if not endgame:` 里面，所以清仓日十二个单位变成一个，84 单位产出烂在地里。
+  `bench3` +1.66 分，幽灵场地 +4.55 分。已落地。
 
-Both were found by instrumenting a *losing* experiment, not by reasoning.
+**两个都是从一个失败的实验的诊断数据里挖出来的，不是推理出来的。**
 
-## 7. The roads, with what is known now
+## 7. 各条路线，以及现在已知的情况
 
-### A. Keep tuning our engine — **ceiling ~900**
-Eleven landed changes and seventeen rejections say this is finished. Our engine
-wins 54–61% of the reference fields; `closer_cleo` wins 99%. This is not a
-tuning gap.
+### A. 继续调我们的引擎 —— **天花板约 900**
+十一个落地改动和十七次否决说明这条路已经走完。我们的引擎赢参考场地 54–61%，
+`closer_cleo` 赢 99%。**这不是调参的差距。**
 
-### B. Counter the monoculture — **dead**
-0 wins in 384 against the meta agents. Countering an opponent we never beat is
-not a lever.
+### B. 针对单一栽培做反制 —— **死路**
+对 meta agent 是 0 胜 384 负。反制一个从没赢过的对手不是杠杆。
 
-### C. Build our own full-season plan — **the only road with a top-10 ceiling**
-The top is a plan plus a wrapper, so matching it means having both. Compute is
-not the constraint: 0.375 episodes per core-second, ~2M episodes an hour on 1,536
-cores, so a candidate evaluated on 8 seeds × 3 opponents costs 24 episodes and
-~86,000 candidates fit in an hour.
+### C. 自己造一整季的剧本 —— **唯一还有前 10 天花板的路**
+顶端是「剧本 + 外包装」，所以要追平就得两样都有。算力不是瓶颈：每核每秒 0.375 局，
+1,536 核上约每小时 200 万局，一个候选按 8 个种子 × 3 个对手评估就是 24 局，
+一小时能装下约 86,000 个候选。
 
-The constraints are elsewhere, and §4 names them: an open-loop plan tuned on one
-seed sees different weeds on the next, because weeds and the shop unlock share
-one RNG and weed draws scale with **both** farms' empty tiles. Cluster 2 is what
-that failure looks like — best original scores, 11.8% on transfer. Any search has
-to evaluate across many seeds *and* many opponents, and the deliverable is a plan
-**plus a market wrapper**, because the wrapper is where the measured value is.
+**瓶颈在别处，而 §4 已经点名了**：一个在某个种子上调出来的开环剧本，换个种子看到的
+是不同的杂草 —— 因为杂草和商店解锁共用一个 RNG，而且杂草抽取次数正比于**双方**农场的
+空地数。簇 2 就是这种失败的样子：原始分最高，迁移后只剩 11.8%。任何搜索都必须
+**跨多种子且跨多对手**评估，而且交付物是**剧本 + 市场外包装**，因为实测的价值在外包装上。
 
-### D. Hybrid opening — **dead** (§2)
+### D. 混合开局 —— **死路**（见 §2）
 
-## 8. Where the measurement stack is now
+## 8. 测量工具链现在的状态
 
-Both reference fields have saturated at the top. Eight variants of a
-`closer_cleo`-class agent score 99.4% on the ghosts and cannot be separated;
-`bench3` puts the same arms at 92–98%. Those fields were built to rank our
-engine, which wins 54–61% of them.
+**两个参考场地都已经在顶端饱和。** 八个 `closer_cleo` 量级的变体在幽灵场地上打出
+99.4%，完全分不开；`bench3` 把同样这批放在 92–98%。那些场地是为了给**我们的引擎**
+排序而建的，而我们的引擎赢它们 54–61%。
 
-The field that still discriminates at this level is **the wrapped agents against
-each other** — 92.7 / 73.8 / 54.1 / 29.3, clean spacing, neither end saturated.
-Use it for anything at this level, and read median money as a secondary signal
-when win rate saturates: it ordered the terminal-window sweep correctly while the
-ghost win rates were all identical.
+在这个层级唯一还有分辨率的场地，是**带外包装的 agent 互相打** —— 92.7 / 73.8 / 54.1
+/ 29.3，间距干净，两端都不饱和。这个层级的任何测量都用它，并且在胜率饱和时读中位收入：
+在终局窗口扫描里，幽灵胜率八个臂完全相同，而中位收入把它们正确排了序。
 
-`docs/EVALUATION.md` §6 has the full rule, including the opposite failure —
-`dairy` was cut from `bench3` after being beaten by every candidate in every one
-of 7,296 episodes.
+`docs/EVALUATION.md` §6 有完整规则，包括反方向的失败 —— `dairy` 在被十个候选于
+7,296 局中**每一局**打败之后，被从 `bench3` 里剔除了。
 
-## 9. What to do next
+## 9. 接下来做什么
 
-1. **Refresh the ghost pool.** The current 156 were pulled when we were at 838
-   and they no longer separate anything at 1364. `bash tools/fetch_fields.sh
-   ghosts 120` and re-cluster with `tools/lines.py`.
-2. **Road C, and only C.** Seed a search from a recorded line rather than from
-   noise, evaluate across seeds and opponents, and budget as much effort for the
-   market wrapper as for the plan.
-3. **Do not submit a copy of a public line as the final answer.** It gets the
-   cluster's rating and nothing above it — 104 teams already run one, and the
-   prize is top 10 among them. It is a baseline and a measuring stick, which is
-   what it is being used as here.
+1. **刷新幽灵池。** 现有的 156 条是我们还在 838 分时拉的，在 1364 这个高度已经分不出
+   任何东西。`bash tools/fetch_fields.sh ghosts 120`，然后用 `tools/lines.py` 重新聚类。
+2. **走路线 C，而且只走 C。** 从一条录制的线出发做搜索，而不是从噪声出发；跨种子和
+   跨对手评估；给市场外包装的投入要和给剧本的一样多。
+3. **不要把公开线的副本当成最终答案提交。** 它只能拿到那个克隆集群的评分，不会更高 ——
+   已经有 104 个队伍在跑同一条，而奖金是在他们中间取前 10。它是一个基线和一把尺子，
+   这里也正是这么用的。
 
-The competition runs to 2026-09-30. There is time for exactly one project of C's
-size, and choosing the right one matters more than starting early.
+比赛到 2026-09-30 结束。时间刚好够做一个 C 这种规模的项目，**选对比早开始更重要**。

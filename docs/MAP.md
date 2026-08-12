@@ -1,182 +1,182 @@
-# What is written where
+# 什么写在哪里
 
-Which file to open for a given question, and which document explains it. Every
-claim in the docs traces to a run in `data/arena.sqlite`; every behaviour in the
-docs traces to a line in `agents/_engine.py`.
+给定一个问题该打开哪个文件、由哪份文档解释。文档里的每一条主张都能追溯到
+`data/arena.sqlite` 里的一次跑数；每一个行为都能追溯到 `agents/_engine.py` 里的一行。
 
-Start at `README.md`, then `docs/ONBOARDING.md`. This page is the index for
-everything after that.
+从 `README.md` 开始，然后 `docs/ONBOARDING.md`。这一页是之后所有东西的索引。
 
 ---
 
-## By question
+## 按问题查
 
-| If you want to know… | Read | Which is produced by |
+| 你想知道… | 读 | 由什么产生 |
 |---|---|---|
-| what the game actually rewards | `docs/GAME_ECONOMICS.md` | `reference/engine/kaggriculture.py` |
-| what real opponents do, and why our own field misled us | `docs/LADDER_FIELD.md` | `tools/ladder.py` → `ladder_episodes` |
-| how to measure against the **top** of the ladder locally | `docs/GHOSTS.md` | `tools/topeps.py`, `tools/ghost.py` |
-| **how much of the season the opening decides** | `docs/ROADMAP.md` §3 D | `tools/hybrid.py` → `data/shards/handover*` |
-| every change made to the agent and what it measured | `docs/ENGINE_CHANGES.md` | shard JSONL under `data/shards/` |
-| **is my agent actually better** | `docs/VALIDATING.md` | `tools/fetch_fields.sh`, `slurm/tournament_array.sh` |
-| how to produce a number that survives scrutiny | `docs/EVALUATION.md` | — |
-| **why the score jumped from 838 to 1364** | `docs/ROADMAP.md` §5 | `tools/hybrid.py`, `tools/lines.py` |
-| which distinct plans the ladder actually plays | `docs/ROADMAP.md` §3 | `tools/lines.py` |
-| what each atom option is worth | `docs/ATOM_EFFECTS.md` *(superseded in part)* | runs #1–#2 |
-| the atom taxonomy and boundary cases | `docs/STRATEGY_LIBRARY.md` | `tools/registry.py` |
-| provenance for any single number | `docs/RUNS.md` | `runs` table |
-| what every script does | `docs/TOOLS.md` | — |
-| conventions, and how to submit | `docs/CONTRIBUTING.md` | — |
-| **running on the Vulcan cluster** *(optional -- skip if you have no account)* | `docs/CLUSTER.md` | `slurm/*.sh` |
-| the current ranking | `docs/LEADERBOARD.md` *(generated)* | `tools/leaderboard.py` |
+| 这个项目走到哪、为什么 | `docs/ROADMAP.md` | `tools/hybrid.py`、`tools/lines.py` |
+| **我的改动是真的吗** | `docs/VALIDATING.md` | `tools/fetch_fields.sh` |
+| 这个游戏实际奖励什么 | `docs/GAME_ECONOMICS.md` | `reference/engine/kaggriculture.py` |
+| 真实对手在做什么，我们自己的场地为什么误导了我们 | `docs/LADDER_FIELD.md` | `tools/ladder.py` → `ladder_episodes` |
+| 怎么在本地对着天梯**顶端**测量 | `docs/GHOSTS.md` | `tools/topeps.py`、`tools/ghost.py` |
+| **天梯实际在跑哪几条不同的剧本** | `docs/ROADMAP.md` §3 | `tools/lines.py` |
+| **开局决定了这一季的多少** | `docs/ROADMAP.md` §2 | `tools/hybrid.py` → `data/shards/handover*` |
+| **分数为什么从 838 跳到 1364** | `docs/ROADMAP.md` §5 | 同上 |
+| 对 agent 的每一次改动，以及它测出了什么 | `docs/ENGINE_CHANGES.md` | `data/shards/` 下的分片 JSONL |
+| 怎么产出一个经得起追问的数字 | `docs/EVALUATION.md` | — |
+| 每个原子选项值多少 | `docs/ATOM_EFFECTS.md` *(部分已被取代)* | 跑数 #1–#2 |
+| 原子分类法和边界情况 | `docs/STRATEGY_LIBRARY.md` | `tools/registry.py` |
+| 任意单个数字的溯源 | `docs/RUNS.md` | `runs` 表 |
+| 每个脚本做什么 | `docs/TOOLS.md` | — |
+| 约定，以及怎么提交 | `docs/CONTRIBUTING.md` | — |
+| 什么时候提交、提交什么 | `docs/SUBMISSION_POLICY.md` | — |
+| **在 Vulcan 集群上跑**（可选，没账号可跳过） | `docs/CLUSTER.md` | `slurm/*.sh` |
+| 当前排名 | `docs/LEADERBOARD.md` *(生成物)* | `tools/leaderboard.py` |
 
 ---
 
-## By source file
+## 按源文件查
 
-### `agents/_engine.py` — the single execution path
+### `agents/_engine.py` —— 唯一的执行路径
 
-Every generated strategy is this file with a different `CONFIG` block, so a
-change here moves the whole library. The behaviours worth knowing, and where
-each is justified:
+每个生成的策略都是这个文件配上不同的 `CONFIG` 块，所以改这里会一次移动整个库。
+值得知道的行为，以及各自的依据：
 
-| Region | Behaviour | Justified in |
+| 区域 | 行为 | 依据在 |
 |---|---|---|
-| `CONFIG` block | replaced by the generator; never hand-edit | `docs/STRATEGY_LIBRARY.md` |
-| `_TO_FLOOR` | units to drive each product to the $1 floor, computed once | `docs/GAME_ECONOMICS.md` §market |
-| `_town_drain` | what the town removes per step, given the shop draw | `docs/LADDER_FIELD.md` §2 |
-| `shopwise` herd re-weighting | herd follows the shop draw, not the plan | `docs/ENGINE_CHANGES.md` §6 |
-| `feed_reserve` / `feed_solvent` | one number for buyer, gate and seller | `docs/ENGINE_CHANGES.md` §1 |
-| hiring `want_hands` | hire to the work, not to the plan | `docs/ENGINE_CHANGES.md` §5 |
-| the *here-pass* | work the tile you are standing on | `docs/ENGINE_CHANGES.md` §3 |
-| `held_tiles` | reserve a tile's remaining work for that unit | `docs/ENGINE_CHANGES.md` §4 |
-| ongoing-crop watering | alternate days, except on production ticks | `docs/ENGINE_CHANGES.md` §2 |
-| `FERTILIZE` scheduling | only on watered tiles, within a tick's reach | `docs/ENGINE_CHANGES.md` §2–3 |
-| fertilizer price gate | stop collecting below $30 | `docs/ENGINE_CHANGES.md` §4 |
-| `LIQUIDATE_DAY = 29` | the last day of the season | `docs/ENGINE_CHANGES.md` |
-| the assignment loop | greedy, task-picks-unit — **eleven alternatives lost** | `docs/ENGINE_CHANGES.md` §rejections |
+| `CONFIG` 块 | 由生成器替换；永不手编辑 | `docs/STRATEGY_LIBRARY.md` |
+| `_TO_FLOOR` | 把每个产品压到 $1 地板价所需的单位数，只算一次 | `docs/GAME_ECONOMICS.md` §market |
+| `_town_drain` | 给定商店抽样，城镇每步移走多少 | `docs/LADDER_FIELD.md` §2 |
+| `shopwise` 畜群再加权 | 畜群跟着商店抽样走，不跟计划走 | `docs/ENGINE_CHANGES.md` §5 |
+| `feed_reserve` / `feed_solvent` | 买方、门禁、卖方共用一个数 | `docs/ENGINE_CHANGES.md` §1 |
+| 雇工 `want_hands` | 按活儿雇人，不按计划雇人 | `docs/ENGINE_CHANGES.md` §5 |
+| **雇工不受 `endgame` 限制** | 雇工是按天租的；清仓日照常雇 | `docs/ENGINE_CHANGES.md` §6 |
+| the here-pass | 先干你脚下这一格的活 | `docs/ENGINE_CHANGES.md` §3 |
+| `held_tiles` | 把一格剩下的活留给站在上面的那个单位 | `docs/ENGINE_CHANGES.md` §4 |
+| ongoing 作物浇水 | 隔日浇，产出结算日例外 | `docs/ENGINE_CHANGES.md` §2 |
+| `FERTILIZE` 调度 | 只施在已浇水、且在产出结算三天覆盖内的地块 | `docs/ENGINE_CHANGES.md` §2–3 |
+| 肥料价格门禁 | 低于 $30 就不收 | `docs/ENGINE_CHANGES.md` §4 |
+| `LIQUIDATE_DAY = 29` | 一季的最后一天 | `docs/ENGINE_CHANGES.md` |
+| 派工循环 | 贪心，任务挑单位 —— **十一个替代方案全输** | `docs/ENGINE_CHANGES.md` §拒绝 |
 
-### `tools/registry.py` — what a strategy *is*
+### `tools/registry.py` —— 一个「策略」是什么
 
-Seven orthogonal axes; the name is the definition. Composition plans:
+七条正交轴；名字就是定义。组合方案：
 
-| Plan | Materialises | Used for |
+| 方案 | 生成什么 | 用于 |
 |---|---|---|
-| `all` | the deduplicated union | the standing library |
-| `bench` | the **standard reference field** | `--panel` in screens, fixed opponents in ablations |
-| `ladder` | opponents reconstructed from real replays | keeping the field honest |
-| `factorial` | produce × land × muck × market, balanced | main effects that are not confounded |
-| `crop`, `refine`, `labour`, `recheck` | one-axis sweeps around the incumbent | re-measuring after an engine change |
+| `all` | 去重后的全集 | 常备策略库 |
+| `bench` | **标准参考场地** | 筛选时的 `--panel`，消融实验的固定对手 |
+| `ladder` | 从真实回放重建的对手 | 保持场地诚实 |
+| `factorial` | produce × land × muck × market，平衡设计 | 不被混杂的主效应 |
+| `crop`、`refine`、`labour`、`recheck` | 围绕在位者的单轴扫描 | 引擎改动后重新测量 |
 
-**Regenerate `bench` whenever a candidate beats it above ~90%.** It has saturated
-twice; a reference that loses to everything ranks nothing.
+**候选打到 90% 以上就重建 `bench`。** 它已经饱和过两次；一个什么都输的参考排不了任何序。
+**而且现在两端都可能饱和** —— 见 `docs/VALIDATING.md` §1。
 
-### `tools/tournament.py` — how a number is produced
+### `tools/tournament.py` —— 一个数字是怎么产生的
 
-`panel` is O(n) screening, `roundrobin` is O(n²) confirmation, `ingest` folds
-shard JSONL into one run. Array tasks never touch SQLite.
+`panel` 是 `O(n)` 筛选，`roundrobin` 是 `O(n²)` 确认，`ingest` 把分片 JSONL 折进一次跑数。
+分片任务永不碰 SQLite。
 
-**Ablations read shard JSONL directly and key on the directory**, because
-`short(path)` is the basename and two builds of the same strategy from different
-directories merge silently into one row.
+**消融实验直接读分片 JSONL 并按目录分组**，因为 `short(path)` 取的是文件名，
+两个来自不同目录的同名构建会静默合并成一行。
 
-### `tools/topeps.py` and `tools/ghost.py` — the top of the ladder, locally
+### `tools/topeps.py`、`tools/ghost.py`、`tools/lines.py` —— 天梯顶端，在本地
 
-`topeps.py` digests Kaggle's daily dumps of the highest-scoring episodes — games
-between players rated ~3,100 that we will never be matched into. Its digest
-carries the **action histogram**, because that is where the difference lives:
-they work 40.6% of their actions and spend 1.09 movement actions per action that
-works; we were at 21-27% and 1.85.
+`topeps.py` 消化 Kaggle 每日发布的最高分对局 —— 评分约 3,100 的选手之间的对局，
+我们永远不会被匹配进去。它的摘要带**动作直方图**，因为差别就在那里。
 
-`ghost.py` turns those trajectories into opponents. A ghost is 11 KB — the
-recorded action sequence of one player, replayed on the seed and seat it played.
-Nothing is fitted. `verify` measures how much of its original score it still
-reaches (median 114%) before the set is trusted.
+`ghost.py` 把那些轨迹变成对手。一个幽灵是 11 KB —— 一个选手录下来的动作序列，
+在它打过的种子和座位上重放。没有任何拟合成分。
 
-Our win rate: **96% against our own field, 42% against ghosts, 50-58% on the
-ladder.** The ghost number is the one that tracks reality.
+`lines.py` 把那些轨迹聚类成它们实际在跑的**线**。关键在于**先做 ±8 回合对齐**：
+同一套剧本错开一个回合，逐格比对就毫无重合；没有对齐的话，156 条录音看起来像
+156 种不同策略。
 
-### `tools/ladder.py` — the opponents matched to *our* rating
+### `tools/hybrid.py` —— 开局值多少钱
 
-Pulls our own ladder episodes, keeps a ~1.4 KB digest, deletes the 19 MB replay.
-The seat is *determined* by the 403 on the opponent's logs, never guessed.
+把录制的开局拼接到我们的引擎前面，交接日可调，于是"开局决定了多少"变成可测量的。
+产出的是**测量仪器，不是提交物** —— 见 `docs/ROADMAP.md` §9.3。
 
-Two things it found that nothing else could: the melon trap
-(`docs/LADDER_FIELD.md` §2) and the action histogram that produced the largest
-single change in the project (`docs/ENGINE_CHANGES.md` §3).
+### `tools/ladder.py` —— 匹配到**我们这个评分**的对手
+
+拉取我们自己的天梯对局，留约 1.4 KB 摘要，删掉 19 MB 回放。座位是靠对手日志返回 403
+**确定**的，从不靠猜。
+
+它找到了两件别的工具找不到的事：西瓜陷阱（`docs/LADDER_FIELD.md` §2），以及那个
+产生了项目里最大单次改动的动作直方图（`docs/ENGINE_CHANGES.md` §3）。
 
 ---
 
-## What a fresh clone does not have
+## 新克隆没有的东西
 
-Two opponent fields are git-ignored — one is third-party code, the other is 150+
-generated files — and **both are load-bearing**. A bench without them measures
-our own family against itself, which is the mistake that cost this project a
-week.
+**`agents/` 目录整个是 git-ignored 的**，所以新克隆下来一个对手都没有。
+一个没有参考 agent 的场地，测的是我们自己家族内部互殴 —— 这个错误让项目损失了一周。
 
 ```bash
-bash tools/fetch_fields.sh            # both
-bash tools/fetch_fields.sh ghosts 60  # just ghosts, 60 of them
+bash tools/fetch_fields.sh            # 全部
+bash tools/fetch_fields.sh ghosts 60  # 只要幽灵，60 个
 ```
 
-| directory | what | why it is not committed |
+| 目录 | 是什么 | 为什么不提交 |
 |---|---|---|
-| `agents/ref/` | the public teaching ladder, tiers 0–9; tiers 6–9 replay the shared meta line | third-party (MIT + a NOTICE with a real scope carve-out); one command to fetch |
-| `agents/ghosts/` | 11 KB opponents replaying top-player trajectories | reconstructible from public replay data; ~90 s each to build |
-| `agents/bench3/` | the standard reference field | generated: `registry.py gen --plan bench`, plus the tier 4–9 agents |
+| `agents/ref/` | 公开的教学梯队，tier 0–9；tier 6–9 重放共享的 meta 线 | 第三方（MIT + 一份有实质范围豁免的 NOTICE）；一条命令就能取 |
+| `agents/ghosts/` | 11 KB 的对手，重放榜首选手的轨迹 | 可从公开回放数据重建；每个约 90 秒 |
+| `agents/lines/` | 天梯上每条不同剧本的一个代表 | 由 `tools/lines.py` 从幽灵聚类得出 |
+| `agents/bench3/` | 标准参考场地 | 生成：`registry.py gen --plan bench`，再加上 tier 4–9 和 `line1` |
+| `agents/lib/` | 全量策略库 | 生成：`registry.py gen --plan all` |
 
-## The measurement chain
+## 测量链条
 
 ```
-reference/engine/kaggriculture.py     ground truth, re-diffed after upgrades
+reference/engine/kaggriculture.py     真值，每次升级后重新 diff
             │
             ▼
 tools/registry.py  +  agents/_engine.py
-            │  gen --plan <name> --out agents/<dir>
+            │  gen --plan <名字> --out agents/<目录>
             ▼
-agents/<dir>/*.py                     one file per strategy, submittable as-is
-            │  sbatch slurm/tournament_array.sh   (48 x 32 cores)
+agents/<目录>/*.py                    每个策略一个文件，可直接提交
+            │  tools/tournament.py  （大规模时分片跑）
             ▼
-data/shards/<label>/shard-NNN.jsonl   append-only, one file per array task
-            │  tournament.py ingest              (single writer)
+data/shards/<label>/shard-NNN.jsonl   只追加，每个分片任务一个文件
+            │  tournament.py ingest              （单一写入者）
             ▼
-data/arena.sqlite                     32 runs, 1,228,544 episodes, 184 real
+data/arena.sqlite                     全部对局
             │
             ├── tools/leaderboard.py  → docs/LEADERBOARD.md, site/
-            └── ad-hoc queries        → docs/ENGINE_CHANGES.md, docs/RUNS.md
+            └── 临时查询               → docs/ENGINE_CHANGES.md, docs/RUNS.md
 ```
 
-The ladder loop runs alongside it and is what corrects the local one:
+天梯循环在旁边同时跑，它才是纠正本地循环的那一环：
 
 ```
-kaggle submit  →  ~10 episodes/hour  →  tools/ladder.py pull
+kaggle submit  →  约 10 局/小时  →  tools/ladder.py pull
                                               │
                                               ▼
-                                     ladder_episodes (digests)
+                                     ladder_episodes（摘要）
                                               │
                      ┌────────────────────────┴─────────────────┐
                      ▼                                          ▼
-        reconstruct opponents into                  read the action histogram
-        tools/registry.py `ladder` plan             from one full replay
+        把对手重建进 registry.py                  从一份完整回放读
+        的 `ladder` 方案                          动作直方图
                      │                                          │
                      └──────────────► docs/LADDER_FIELD.md ◄────┘
 ```
 
 ---
 
-## Three traps this repo has fallen into
+## 这个仓库掉进去过的四个坑
 
-Each is recorded where it bites, and each cost real work:
+每一个都记录在它会咬人的地方，每一个都造成过实际损失：
 
-1. **A saturated reference field ranks nothing.** When every candidate beats the
-   anchors 97-100%, 99.2% and 100.0% are the same measurement. Rebuild `bench`.
-   → `docs/EVALUATION.md`
-2. **Four seeds point the wrong way.** Four separate changes read positive over
-   four seeds and were 21-44 points behind over 2,304 episodes an arm. A smoke
-   test is a syntax check. → `docs/EVALUATION.md`
-3. **Agents are keyed by filename.** Two builds of the same strategy from
-   different directories merge into one row and one Bradley-Terry node.
-   → `docs/TOOLS.md`
+1. **饱和的参考场地排不了序。** 当每个候选都以 97–100% 打败锚点时，99.2% 和 100.0%
+   是同一个测量。**两端都会饱和**：`dairy` 被十个候选于 7,296 局中每一局打败，
+   而八个高水平变体在幽灵场地上并列 99.4%。→ `docs/VALIDATING.md`
+2. **四个种子会指错方向。** 四个独立改动在四种子下读数为正，在每臂 2,304 局下落后
+   21–44 分。冒烟测试是语法检查。→ `docs/EVALUATION.md`
+3. **agent 是按文件名索引的。** 两个来自不同目录的同名构建会合并成一行、一个
+   Bradley-Terry 节点。→ `docs/TOOLS.md`
+4. **框架会静默地跑另一份代码。** `get_last_callable` 取模块字典里最后一个 callable；
+   包装一个 agent 会让框架加载**未包装**的那个，于是每个臂分数相同、而结论看起来很干净。
+   → `docs/VALIDATING.md` §4
 
-And the one that shaped everything else: **a ranking against a field we wrote is
-not evidence about the ladder.** → `docs/LADDER_FIELD.md`
+以及那个塑造了其余一切的：**一个针对我们自己写的场地做出的排名，不是关于天梯的证据。**
+→ `docs/LADDER_FIELD.md`
