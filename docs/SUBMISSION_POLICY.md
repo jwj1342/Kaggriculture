@@ -1,91 +1,85 @@
-# When to submit, and what
+# 什么时候提交，提交什么
 
-Five submissions a day, **only the latest two active**, and the ladder plays
-roughly ten episodes an hour per active agent. Those three numbers together mean
-a submission is not free and a *burst* of submissions is actively destructive.
+每天 5 次提交，**只有最新的两个是活跃的**，而排行榜每个活跃 agent 每小时约打 10 局。
+这三个数字放在一起意味着：一次提交不是免费的，而**连续提交是有破坏性的**。
 
-This file exists because that was learned the expensive way: six submissions in
-one afternoon left every one of them with 4–12 games. `55385995` read 837 at five
-games and 647 at ten, and neither number meant anything.
+这份文件的存在，是因为这条教训是花钱买来的：一个下午提交六次，结果每一个都只有
+4–12 局。`55385995` 在第 5 局读数 837，第 10 局读数 647，两个数字都毫无意义。
 
 ---
 
-## The rules
+## 规则
 
-**1. One submission per half-day. Two absolute maximum.**
-An agent needs **40+ episodes** before its score means anything, and that is four
-hours of ladder time. Submitting again inside that window throws away the
-measurement you were waiting for.
+**1. 每半天最多一次，绝对上限两次。**
+一个 agent 需要 **40 局以上**分数才有意义，那是四个小时的排行榜时间。在这个窗口内
+再次提交，等于把你正在等的那个测量扔掉。
 
-**2. Never submit without a completed local A/B.**
-The bar is a win rate against `agents/bench3` — which now contains the public
-meta agents — over **≥2,000 episodes an arm**, plus the ghost field. A four-seed
-smoke test has pointed the wrong way four separate times; it is a syntax check,
-not evidence.
+**2. 没有完成本地 A/B 就不要提交。**
+门槛是对 `agents/bench3`（现在包含公开 meta 那批 agent）的胜率，**每臂 ≥2,000 局**，
+外加幽灵场地。四种子冒烟测试已经四次指错方向；它是语法检查，不是证据。
 
-**3. Never submit two changes at once.**
-Two changes that are each correct can cancel: alternate-day watering and
-fertilizing were both right and together were worth nothing until the phase
-interaction was found. If two are ready, submit the larger and hold the other.
+**3. 绝不一次提交两个改动。**
+两个各自正确的改动可能互相抵消：隔日浇水和施肥都是对的，合在一起却毫无价值，直到
+找到那个相位干扰为止。如果两个都准备好了，提交大的那个，压住另一个。
 
-**4. The two active slots are an experiment, not a shop window.**
-Keep the incumbent in one slot and the challenger in the other, so they play the
-same field at the same time. Replacing both at once means the next comparison has
-no control.
+**4. 两个活跃槽位是一个实验，不是橱窗。**
+一个槽位放在位者，另一个放挑战者，这样它们在同一时间面对同一批对手。同时换掉两个，
+意味着下一次比较没有对照。
 
-**5. Snapshot before submitting, always.**
-`submissions/<date>-<name>/main.py`, byte-identical to what was uploaded, and a
-row in `docs/RUNS.md` with the local evidence that motivated it. A ladder entry
-has to stay traceable months later.
+**5. 提交前必须快照。**
+`submissions/<日期>-<名字>/main.py`，与上传的内容逐字节相同，并在 `docs/RUNS.md` 里
+写一行，附上促成这次提交的本地证据。一条排行榜记录必须在几个月后仍然可追溯。
 
-**6. Stress before submitting, always.**
-`python tools/stress.py <file> -j 14` must be 28/28. A crash forfeits an entire
-episode, and the ladder does not tell you it happened.
+**6. 提交前必须压力测试。**
+`python tools/stress.py <文件> -j 14` 必须 28/28。一次崩溃会让整局作废，而排行榜
+不会告诉你发生过。
 
 ---
 
-## The checklist
+## 检查表
 
 ```
-[ ] beats the incumbent over ≥2,000 episodes an arm against agents/bench3
-[ ] measured against the ghost field too (tools/tournament.py ghosts)
-[ ] exactly one substantive change since the incumbent
-[ ] 28/28 on tools/stress.py, worst turn well under 1,000 ms
-[ ] get_last_callable resolves to `agent`
-[ ] snapshotted under submissions/<date>-<name>/
-[ ] the incumbent has ≥40 ladder episodes, so its score is real
-[ ] a row written in docs/RUNS.md
+[ ] 对 agents/bench3 每臂 ≥2,000 局胜过在位者
+[ ] 也在幽灵场地测过 (tools/tournament.py ghosts)
+[ ] 相对在位者恰好只有一个实质改动
+[ ] tools/stress.py 28/28，最坏回合远低于 1,000 ms
+[ ] get_last_callable 解析到 `agent`
+[ ] 已快照到 submissions/<日期>-<名字>/
+[ ] 在位者有 ≥40 局排行榜对局，分数是真的
+[ ] docs/RUNS.md 里写了一行
 ```
 
-If the last box cannot be ticked, **wait**. The information you are about to
-overwrite is worth more than the hours you save.
+最后一格勾不上就**等**。你即将覆盖掉的信息，比你省下的几个小时值钱。
 
 ---
 
-## What to do with the waiting time
+## 等待期间做什么
 
-The wait is not idle time — it is when the local loop earns its keep:
+等待不是空闲时间 —— 那正是本地循环发挥价值的时候：
 
-* `tools/ladder.py pull` on the incumbent, then read the **action histogram**,
-  not just the digest. That is where the two largest improvements came from.
-* Re-measure against `agents/bench3` and the ghosts. Both saturate; regenerate
-  them when a candidate beats them above ~90%.
-* Re-run previously **rejected** changes. The field has changed three times, and
-  a rejection made against a weak field is not a fact about the game — the wheat
-  filler failed three times and then won.
+* 对在位者跑 `tools/ladder.py pull`，然后读**动作直方图**，不要只看摘要。这个项目
+  最大的两个改进都是从那里来的。
+* 重新对 `agents/bench3` 和幽灵场地测量。两者都会饱和；当候选打到 ~90% 以上时重建它们。
+* 重跑之前**被否决**的改动。场地已经变过三次，而在一个弱场地上做出的否决**不是关于
+  这个游戏的事实** —— 小麦填充失败了三次，然后赢了。
 
 ---
 
-## Quota mechanics
+## 额度机制
 
-Resets at **UTC midnight**. `kaggle competitions submission-limits kaggriculture`
-reports what is left. Watch for the reset rather than polling by hand:
+**UTC 午夜**重置。`kaggle competitions submission-limits kaggriculture` 报告剩余次数。
+用等待代替手工轮询：
 
 ```bash
 until [ "$(kaggle competitions submission-limits kaggriculture 2>/dev/null \
     | grep -oP 'Remaining today: \K\d+')" != "0" ]; do sleep 600; done
 ```
 
-Deactivation is by recency, not by score: submitting a third agent drops the
-oldest of the two active ones **even if it is the best**. Check which two are
-active before submitting, and be deliberate about which one you are retiring.
+**失活是按时间顺序，不是按分数**：提交第三个 agent 会挤掉两个活跃者中**较早的那个，
+即使它是最好的**。提交前先确认哪两个是活跃的，并且清楚你正在让哪一个退役。
+
+> 这条已经付过两次代价。2026-08-11 一次提交挤掉了 836.8 那份（当时最好的），
+> 2026-08-12 凌晨两次无描述的提交同时挤掉了 1363.7 和 1287.2，把排行榜上代表我们的
+> 分数从 1364 打回 759。**在多人协作的仓库里，这条尤其危险** —— 你的合作者不一定
+> 知道当前活跃的是什么。提交前先跑一次
+> `kaggle competitions submissions kaggriculture | head -5`。

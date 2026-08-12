@@ -1,54 +1,50 @@
-# Is my agent actually better? — the short version
+# 我的 agent 真的更好吗？—— 精简版
 
-Written because this project has now made the same mistake at both ends: a
-reference field that **everything beats**, and a reference field that
-**everything beats by the same amount**. Both produce confident numbers that mean
-nothing, and neither announces itself.
+写这份文档，是因为这个项目已经在两端各犯过一次同样的错：一个**什么都打得过**的参考场地，
+和一个**什么都以同样幅度打得过**的参考场地。两者都会产出自信满满、却毫无意义的数字，
+而且**都不会自己报错**。
 
-If you read one thing here, read §1.
+如果只读一节，读第 1 节。
 
 ---
 
-## 1. Pick the field that matches your agent's level
+## 1. 选一个和你的 agent 水平匹配的场地
 
-There are two, and using the wrong one wastes the run.
+有两个场地，用错了这一轮就白跑。
 
-| your agent wins… | use | why |
+| 你的 agent 能赢… | 用 | 为什么 |
 |---|---|---|
-| **50–70%** of `agents/bench3` | `agents/bench3/*.py` | engine level: shapes near yours, both ends open |
-| **95%+** of `agents/bench3` | `closer_cleo`, `slotter_silas`, `ledger_lena`, `broker_bea` | wrapped level: the only field that still separates |
+| `agents/bench3` 的 **50–70%** | `agents/bench3/*.py` | 引擎级：形状和你接近，两端都没饱和 |
+| `agents/bench3` 的 **95% 以上** | `closer_cleo`、`slotter_silas`、`ledger_lena`、`broker_bea` | 外包装级：唯一还能区分开的场地 |
 
-The second row is not a refinement, it is a different measurement. On
-2026-08-11, eight variants of a `closer_cleo`-class agent scored **99.4% on the
-ghost field and could not be told apart**; `bench3` put the same eight at 92–98%.
-Against each other the same four agents space out cleanly — 92.7 / 73.8 / 54.1 /
-29.3 over 3,072 episodes — because none of them is saturated against the others.
+第二行不是第一行的精细版，**是另一个测量**。2026-08-11 那天，八个 `closer_cleo` 量级的
+变体在幽灵场地上**全部打出 99.4%，完全分不出高下**；`bench3` 把同样八个放在 92–98%。
+而这四个 agent 互相打，间距干净 —— 3,072 局下 92.7 / 73.8 / 54.1 / 29.3 —— 因为它们
+相对彼此都没有饱和。
 
-Rebuild both with:
+两个场地都用这条命令重建：
 
 ```bash
-bash tools/fetch_fields.sh          # ref agents, ghosts, lines, bench3
+bash tools/fetch_fields.sh          # ref agents、ghosts、lines、bench3
 ```
 
-**Run it before your first measurement.** `agents/` is git-ignored in full, so a
-fresh clone has no opponents at all — and a bench without the reference agents
-measures our own family against itself, which is the mistake that cost this
-project a week (`docs/LADDER_FIELD.md`).
+**第一次测量之前先跑它。** `agents/` 整个目录是 git-ignored 的，所以新克隆下来一个
+对手都没有 —— 而一个没有参考 agent 的场地，测的是我们自己家族内部互殴，这个错误让这个
+项目损失了一周（`docs/LADDER_FIELD.md`）。
 
-## 2. How many episodes
+## 2. 要跑多少局
 
-| you are trying to resolve | episodes per arm |
+| 你想分辨出 | 每臂局数 |
 |---|---|
-| 10 points | 96 |
-| 5 points | 384 |
-| 3 points | ~2,000 |
-| an engine change you intend to submit | **≥2,000**, plus the ghost field |
+| 10 分 | 96 |
+| 5 分 | 384 |
+| 3 分 | 约 2,000 |
+| 一个准备提交的引擎改动 | **≥2,000**，外加幽灵场地 |
 
-**Four seeds resolve nothing.** Three separate changes read positive over four
-seeds and were 21 to 44 points *behind* over 2,304 episodes an arm. A smoke test
-is a syntax check.
+**四个种子分辨不出任何东西。** 三个独立的改动在四种子下读数为正，在每臂 2,304 局下却
+**落后 21 到 44 分**。冒烟测试是语法检查。
 
-Sizing on the cluster — 0.375 episodes per core-second with `KG_FAST_ENV=1`:
+集群上的规模换算 —— 带 `KG_FAST_ENV=1` 时每核每秒 0.375 局：
 
 ```bash
 sbatch --array=0-15 --cpus-per-task=32 --mem=40G --time=00:30:00 \
@@ -58,56 +54,48 @@ sbatch --array=0-15 --cpus-per-task=32 --mem=40G --time=00:30:00 \
 python tools/tournament.py ingest --shards data/shards/mylabel
 ```
 
-Short jobs start, long ones queue: the same work at `--time=03:00:00` with 64
-cores waited 78 minutes; at `--time=00:30:00` with 32 it started immediately
-across sixteen nodes.
+**短任务立刻开跑，长任务排队**：同样的工作量在 `--time=03:00:00` 加每任务 64 核下
+排了 78 分钟；在 `--time=00:30:00` 加 32 核下，十六个节点上立即开始。
 
-## 3. Reading the result
+## 3. 怎么读结果
 
-**Report two numbers, not one.** The wrapped reference agents are unbeatable for
-an engine-level agent (we win 0.2%). Averaging them into one headline adds a
-constant: three unbeatable opponents in fifteen depress every score by about 25
-points, which is how "43%" turned out to mean "73.5% against opponents we can
-contest, and 0% against three we cannot".
+**报两个数字，不是一个。** 那批带外包装的参考 agent 对引擎级的 agent 而言是打不过的
+（我们赢 0.2%）。把它们平均进一个总胜率里，只是加了一个常数：十五个对手里有三个打不过，
+等于给每个分数压了约 25 分 —— 所谓「43%」的真实含义是「对能打的对手 73.5%，对三个
+打不过的 0%」。
 
-**When win rate saturates, read median money.** In the terminal-window sweep the
-ghost win rates were identical across eight arms and the money ordered them
-correctly, agreeing with the un-saturated field.
+**胜率饱和时读中位收入。** 在终局窗口扫描里，八个臂的幽灵胜率完全相同，而中位收入把
+它们正确排了序，和那个没饱和的场地结论一致。
 
-**A non-monotone curve is not a result.** It means the variable you swept is not
-the variable that matters. The first terminal-window sweep gave 95.6 / 98.6 /
-89.8 / 94.1 / 85.1 — the dip in the middle was the signal to sweep finer, and the
-finer sweep found a clean plateau.
+**非单调的曲线不是结论。** 它说明你扫的那个变量不是真正起作用的变量。第一次终局窗口
+粗扫给出 95.6 / 98.6 / 89.8 / 94.1 / 85.1 —— 中间那个凹陷就是"该加密再扫"的信号，
+而加密后的扫描找到了一个干净的平台。
 
-**Check the mirror.** Run the candidate against itself. Scores roughly halve; if
-they more than halve, the agent depends on a passive opponent.
+**检查镜像对局。** 让候选和它自己打。分数大致减半；如果减得比一半还多，说明这个 agent
+依赖一个消极的对手。
 
-## 4. Two ways to get a confident wrong answer
+## 4. 两种「自信地得出错误答案」的方式
 
-**The harness silently ran different code.** `get_last_callable` returns
-`[v for v in env.values() if callable(v)][-1]` — the last *callable value* in the
-module dict. Wrapping an agent (`_INNER = agent`, then a new `def agent`) leaves
-`_INNER` last, so the framework loads the **unwrapped** agent; every arm then
-scores identically and the tidy conclusion is "the change is worth nothing". A
-helper `def` placed after `agent` does the same. Park callables in lists, `del`
-helper names, and **verify by asking the loaded function for a known answer** —
-compiling is not enough. `tools/hybrid.py:_verify` is the pattern.
+**框架静默地跑了另一份代码。** `get_last_callable` 返回的是
+`[v for v in env.values() if callable(v)][-1]` —— 模块字典里**最后一个 callable 值**。
+包装一个 agent（`_INNER = agent`，然后重新 `def agent`）会让 `_INNER` 排在最后，于是
+框架加载的是**未包装**的那个；这时每个臂分数完全相同，而漂亮的结论是"这个改动毫无价值"。
+在 `agent` 之后放一个辅助 `def` 会造成同样的后果。把 callable 存进列表、用 `del` 删掉
+辅助名字，然后**向加载出来的函数问一个你已知答案的问题来验证** —— 能编译不等于对。
+`tools/hybrid.py:_verify` 就是这个模式。
 
-**The engine was right and you read it backwards.** A probe showed the farm
-buying no seed for ten days on $109–$435 and it looked like a deadlock.
-"Fixing" it lost 8–14 points over 137,644 episodes: the cash was going to
-livestock, which is worth more. Nothing in the code said so — it fell out of a
-cash floor meeting a purchase-rate limit. **Before concluding an engine is
-broken, find out what it spent the resource on.**
+**引擎是对的，是你读反了。** 一个探针显示农场十天没买种子、现金只有 $109–$435，看起来
+像死锁。"修好"它在 137,644 局下损失 8–14 分：那些现金流向了牲畜，而牲畜更值钱。代码里
+没有任何地方写着这件事 —— 它是一个现金下限和一个购买速率限制撞在一起的产物。
+**在判定引擎坏掉之前，先查清楚它把资源花到哪去了。**
 
-## 5. Same-named builds
+## 5. 同名的构建
 
-`short(path)` is the **basename**, so two builds called
-`smallhold-crew-mgtight-…` from different directories merge into one ratings row
-in the database. Two runs were corrupted this way.
+`short(path)` 取的是**文件名**，所以两个都叫 `smallhold-crew-mgtight-…` 但来自不同
+目录的构建，会在数据库里合并成同一行评分。已经有两次跑数因此报废。
 
-For an A/B where the arms share names — every engine ablation — read the shard
-JSONL directly and key on the full path. Do not ingest:
+对于臂之间同名的 A/B —— 所有引擎消融实验都是这样 —— 直接读分片 JSONL 并按完整路径分组，
+**不要 ingest**：
 
 ```python
 import glob, json, collections, os
@@ -117,24 +105,22 @@ for s in glob.glob("data/shards/<label>/shard-*.jsonl"):
         r = json.loads(line)
         for i, side in enumerate(("left", "right")):
             a = r[side]
-            if "/bench3/" in a or "/ref/" in a:      # panel, not candidate
+            if "/bench3/" in a or "/ref/" in a:      # 这是陪练，不是候选
                 continue
-            g[a] += 1                                 # full path, not basename
+            g[a] += 1                                 # 完整路径，不是文件名
             w[a] += (r["money"][i] > r["money"][1-i]) or \
                     0.5 * (r["money"][i] == r["money"][1-i])
 for a in sorted(g, key=lambda k: -w[k]/g[k]):
     print(f"{100*w[a]/g[a]:5.1f}%  {a}")
 ```
 
-## 6. Before you submit
+## 6. 提交之前
 
-`docs/SUBMISSION_POLICY.md` is the full checklist. The three that get skipped:
+`docs/SUBMISSION_POLICY.md` 是完整检查表。最常被跳过的三条：
 
-* **`python tools/stress.py <file> -j 14` must be 28/28.** A crash forfeits the
-  whole episode and the ladder does not tell you it happened.
-* **Exactly one substantive change.** Two correct changes can cancel — alternate
-  day watering and fertilising were both right and together worth nothing until
-  the phase interaction was found.
-* **Deactivation is by recency, not score.** Submitting a third agent drops the
-  *older* of the two active ones even if it is your best. This has already cost
-  a 1363.7 and a 1287.2 in one night.
+* **`python tools/stress.py <文件> -j 14` 必须 28/28。** 一次崩溃让整局作废，而排行榜
+  不会告诉你发生过。
+* **恰好一个实质改动。** 两个正确的改动可能抵消 —— 隔日浇水和施肥都是对的，合在一起
+  却毫无价值，直到找到那个相位干扰。
+* **失活是按时间顺序，不是按分数。** 提交第三个 agent 会挤掉两个活跃者里**较早的那个**，
+  即使它是你最好的。这已经在一夜之间让我们损失了 1363.7 和 1287.2 两份。

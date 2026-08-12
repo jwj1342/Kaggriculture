@@ -1,89 +1,81 @@
-# Onboarding — your first hour
+# 上手指南 —— 你的第一个小时
 
-For someone joining this repo cold. Follow it top to bottom; it takes about an
-hour and ends with you having run a real tournament and read a real result.
-
----
-
-## 0. What this project is, in five sentences
-
-Kaggriculture is a Kaggle **simulation** competition: you submit a *program*, not
-predictions, and it plays 720-turn farming seasons head-to-head against other
-people's programs. The prize is ten equal $5,000 places, so the target is **top
-10**, not first. Ranking is win/loss only — the coin margin never enters — and
-the final leaderboard is a single Bradley-Terry fit over the last two weeks of
-episodes.
-
-This repo holds a **composable strategy library** (594 generated agents from six
-orthogonal atoms), a **local tournament system** that has run 85,064 episodes into
-SQLite, and the analysis derived from it. One agent is live on the ladder.
+写给零基础加入这个仓库的人。从上到下照做，大约一小时，读完你会跑过一次真实的锦标赛，
+并读懂一个真实的结果。
 
 ---
 
-## 1. Set up (10 minutes)
+## 0. 这个项目是什么，五句话
 
-**This project runs on the Vulcan cluster and on an ordinary laptop.** Everything
-except Slurm works identically; `bootstrap.sh` and `setup_env.sh` detect which
-one they are on.
+Kaggriculture 是一个 Kaggle **仿真类**比赛：你提交的是一个**程序**，不是预测结果，
+它会和别人的程序一对一打 720 回合的农场季。奖金是十个等额的 $5,000 名额，所以目标是
+**前 10**，不是第一。排名只看胜负 —— 金额差距完全不计入 —— 最终排行榜是对最后两周
+所有对局做一次 Bradley-Terry 拟合。
 
-You need Python 3.9+ (3.11 matches the cluster and Kaggle's own runtime) and
-your own Kaggle API credentials.
+这个仓库包含一个**可组合的策略库**（七个正交原子生成的 agent）、一个已经把
+130 万局写进 SQLite 的**本地锦标赛系统**，以及由此得出的全部分析。
+
+---
+
+## 1. 环境搭建（10 分钟）
+
+**这个项目在 Vulcan 集群和普通笔记本上都能跑。** 除了 Slurm 以外一切行为一致；
+`bootstrap.sh` 和 `setup_env.sh` 会自动检测所处环境。
+
+你需要 Python 3.9+（3.11 与集群和 Kaggle 自身运行时一致），以及你**自己的**
+Kaggle API 凭据。
 
 ```bash
-git clone <repo> Kaggriculture      # on the cluster, put it under $SCRATCH
+git clone <repo> Kaggriculture      # 在集群上请放到 $SCRATCH 下面
 cd Kaggriculture
 
-bash tools/bootstrap.sh             # builds venv/, verifies with a real episode
+bash tools/bootstrap.sh             # 建立 venv/，并用一局真实对局验证
 ```
 
-On the cluster this loads `module python/3.11.5` and takes `numpy`/`pandas` from
-the Compute Canada wheelhouse. On a laptop it uses whatever `python3` is on
-`PATH` (override with `PYTHON=/path/to/python3.11`) and installs everything from
-PyPI. Same environment either way.
+在集群上它会 `module python/3.11.5`，并从 Compute Canada 的 wheelhouse 取
+`numpy`/`pandas`。在笔记本上它使用 `PATH` 里的 `python3`（可用
+`PYTHON=/path/to/python3.11` 覆盖），全部从 PyPI 安装。两边环境一致。
 
-Then put **your own** Kaggle credentials in `.kaggle/`:
+然后把**你自己的** Kaggle 凭据放进 `.kaggle/`：
 
 ```bash
-# either of these works; get them from https://www.kaggle.com/settings/api
+# 两种任选其一；从 https://www.kaggle.com/settings/api 获取
 printf '{"username":"YOU","key":"..."}' > .kaggle/kaggle.json
 echo 'KGAT_...'                             > .kaggle/access_token
 chmod 600 .kaggle/*
 ```
 
-They stay in this directory — `setup_env.sh` points `KAGGLE_CONFIG_DIR` here, so
-copies under `$HOME` are never used, deliberately.
+它们只留在这个目录里 —— `setup_env.sh` 把 `KAGGLE_CONFIG_DIR` 指向这里，所以
+`$HOME` 下的副本**永远不会被使用**，这是有意为之（一台机器上可以放多个账号）。
 
 ```bash
-source setup_env.sh                         # every session, from anywhere
-kaggle competitions list -s kaggriculture   # confirms auth works
+source setup_env.sh                         # 每次会话，任意目录下
+kaggle competitions list -s kaggriculture   # 确认认证可用
 
-python tools/registry.py gen --plan all --out agents/lib   # 594 strategies
+python tools/registry.py gen --plan all --out agents/lib   # 生成策略库
 ```
 
-`agents/lib/` is **generated and git-ignored** — 594 files derived from
-`agents/_engine.py` plus `tools/registry.py`. Regenerate it rather than editing
-it, and regenerate after touching either source.
+`agents/lib/` 是**生成的、且 git-ignored** —— 由 `agents/_engine.py` 加
+`tools/registry.py` 派生。要改就重新生成，不要手编辑；改动任一源文件后也要重新生成。
 
-`data/arena.sqlite` (136 MB, 85,064 episodes) is also git-ignored, because it is
-too large for git and is regenerable. Copy it rather than re-earning it — it
-represents about three hours of 32-core compute:
+`data/arena.sqlite` 同样 git-ignored，因为它对 git 来说太大而且可重建。请**拷贝**
+而不是重跑 —— 它代表数小时的 32 核算力：
 
 ```bash
-# whoever has it exports a snapshot -- 4.6 MB, not 136 MB
+# 有它的人导出一份快照
 python tools/sync.py export --full        # -> dist/arena-full.sqlite.xz
 
-# you install it
+# 你来安装
 python tools/sync.py import dist/arena-full.sqlite.xz
 
-# or just the rankings, 36 KB, if you only want to read results
+# 或者只要排名，几十 KB，如果你只想读结果
 python tools/sync.py export               # -> dist/arena-meta.sqlite.xz
 ```
 
-Without it every tool still works; `tools/db.py` creates an empty database and
-you start accumulating your own runs.
+没有它所有工具照样能用；`tools/db.py` 会建一个空库，你从零开始积累自己的跑数。
 
-**Or skip the file entirely.** Every tier is mirrored to Cloudflare D1, so with
-the `*.secret` credentials you can query all 85,064 episodes directly:
+**或者干脆不要这个文件。** 每一层都镜像到了 Cloudflare D1，带上 `*.secret` 凭据就能
+直接查询全部对局：
 
 ```bash
 python tools/d1.py check
@@ -92,86 +84,82 @@ python tools/d1.py query "SELECT json_extract(a.atoms,'\$.labour') labour,
     COUNT(*) n, ROUND(AVG(r.winrate)*100,1) winpct
   FROM ratings r JOIN agents a ON a.name=r.agent
   WHERE r.run_id=1 GROUP BY labour ORDER BY winpct DESC"
-python tools/d1.py mirror local.sqlite    # or pull it down as a file
+python tools/d1.py mirror local.sqlite    # 或者把它拉成一个本地文件
 ```
 
-**Why bootstrap exists rather than a plain `pip install -r`:** `kaggle-environments`
-declares `open_spiel`, which builds from source and fails on this cluster. It is
-installed `--no-deps` on purpose, with `numpy`/`pandas` taken from the Compute
-Canada wheelhouse. Import errors for *other* environments (`lux_ai_s3`, `halite`,
-`open_spiel_env`) print to stderr and are expected.
+**为什么需要 bootstrap 而不是直接 `pip install -r`：** `kaggle-environments` 声明依赖
+`open_spiel`，那个包要从源码编译，在这个集群上会失败。所以它是**故意**用 `--no-deps`
+安装的，`numpy`/`pandas` 从 Compute Canada wheelhouse 取。**其他**环境
+（`lux_ai_s3`、`halite`、`open_spiel_env`）的导入错误会打到 stderr，这是预期内的。
 
 ---
 
-## 2. Run one episode and look at it (10 minutes)
+## 2. 跑一局并看看它（10 分钟）
 
 ```bash
 python tools/trace.py agents/barnyard.py starter
 ```
 
-You get a day-by-day table: money, hands, land, tile composition, shed contents,
-market prices. **This is the most important tool in the repo.** Illegal actions
-in this engine are *silent no-ops* — no error, no cost — so bugs look exactly
-like bad strategy. Every five-figure bug found here was found by reading a trace,
-never by staring at a final score.
+你会得到一张逐日的表：现金、雇工、地块、地块构成、棚内库存、市场价格。
+**这是这个仓库里最重要的工具。** 这个引擎里的非法动作是**静默空操作** —— 不报错、
+不扣钱 —— 所以 bug 看起来和"策略差"一模一样。这里找到的每一个五位数级别的缺陷，
+都是靠读 trace 找到的，**从来不是**靠盯着最终分数。
 
-Then check the agent survives abuse:
+然后确认 agent 扛得住折腾：
 
 ```bash
 python tools/stress.py agents/barnyard.py -j 8
 ```
 
-28 pathological configurations (zero money, a 4×4 board, a shed that holds one
-item, one turn per day, free hands). A crash forfeits an entire episode, so this
-runs before anything else.
+28 个病态配置（零现金、4×4 棋盘、只能放一件东西的棚子、一天只有一回合、免费雇工）。
+一次崩溃会让整局作废，所以这一步在所有事情之前跑。
 
 ---
 
-## 3. Understand the naming (5 minutes)
+## 3. 理解命名（5 分钟）
 
-A strategy's name **is** its definition — six atoms, always in the same order:
+一个策略的名字**就是**它的定义 —— 七个原子，顺序固定：
 
 ```
-land - labour - produce - market - intel - muck
+land - labour - produce - market - intel - muck - adapt
 
-estate-crew-mixedfarm-metered-blind-muck
-  │      │        │        │       │     └ collect the free daily fertilizer
-  │      │        │        │       └ ignore the opponent
-  │      │        │        └ hold sales below a price floor
-  │      │        └ melon + strawberry + wheat + cows + sheep + geese
-  │      └ up to 11 hands/day, ≤6% of cash on payroll
-  └ three of the four 5×5 quadrants
+estate-crew-mixedfarm-metered-blind-muck-shopwise
+  │      │        │        │       │      │      └ 畜群随商店抽样调整
+  │      │        │        │       │      └ 收集每日免费肥料
+  │      │        │        │       └ 忽略对手
+  │      │        │        └ 价格低于下限时压住不卖
+  │      │        └ 西瓜 + 草莓 + 小麦 + 牛 + 羊 + 鹅
+  │      └ 每天最多 11 个雇工，工资不超过现金的 6%
+  └ 四个 5×5 象限里的三个
 ```
 
-**No version numbers, ever.** Two identical configurations cannot end up with
-different names, and a name tells you what the agent does without opening it.
+**永远不要版本号。** 两个相同的配置不可能得到不同的名字，而看名字就知道这个 agent
+在做什么，不用打开文件。
 
 ```bash
-python tools/registry.py list          # the whole atom space
-ls agents/lib | head                   # the generated library
+python tools/registry.py list          # 整个原子空间
+ls agents/lib | head                   # 生成的库
 ```
 
-`agents/barnyard.py` is the one hand-written exception: the original agent, still
-the one on the ladder. `agents/legacy/` holds superseded ad-hoc agents, kept
-because published results cite them; its README maps old names onto atoms.
+`agents/barnyard.py` 是唯一手写的例外：最初那个 agent。`agents/legacy/` 存放被取代的
+临时 agent，保留是因为已发布的结果引用了它们；它的 README 把旧名字映射到原子上。
 
 ---
 
-## 4. Run a tournament (20 minutes)
+## 4. 跑一次锦标赛（20 分钟）
 
-**On the cluster** — never on the login node. One episode (~2.7 s) is fine; a
-tournament is not.
+**在集群上** —— 永远不要在登录节点跑。一局（约 2.7 秒）没问题，一场锦标赛不行。
 
 ```bash
 sbatch slurm/tournament.sh roundrobin \
     --agents agents/barnyard.py agents/lib/homestead-crew-orchardherd-flood-blind-muck.py starter \
     --seeds 24 --label "my-first-run"
 
-squeue -u $USER                    # wait for it
+squeue -u $USER                    # 等它
 tail -f logs/tourney-<jobid>.out
 ```
 
-**On a laptop** — the same runner, called directly, sized to your cores:
+**在笔记本上** —— 同一个 runner，直接调用，按你的核数调整：
 
 ```bash
 python tools/tournament.py roundrobin \
@@ -179,94 +167,101 @@ python tools/tournament.py roundrobin \
     --seeds 8 --label "my-first-run" -j $(python -c 'import os;print(os.cpu_count())')
 ```
 
-Budget realistically: one episode is ~2.7 s of one core. Eight cores give ~3
-episodes/s, so the three-agent run above (48 episodes) takes under a minute, but
-the full 594-strategy screen (57,000 episodes) would take about five hours.
-Screening the whole library is a cluster job; everything else is comfortable
-locally.
+**现实地估算预算**：一局约 2.7 秒单核。八个核约 3 局/秒，所以上面这个三 agent 的跑数
+（48 局）不到一分钟；但整个策略库的筛选（数万局）要几个小时。全库筛选是集群任务，
+其余在本地都很舒服。
 
-Every episode lands in `data/arena.sqlite`. Then:
+大规模跑数请分片，永远不要让 array 任务碰数据库：
 
 ```bash
-python tools/db.py stats                    # what has been run, ever
-python tools/db.py top --run latest         # the ranking
-python tools/leaderboard.py --run latest    # regenerates docs/LEADERBOARD.md + site/
+sbatch --array=0-15 --cpus-per-task=32 --mem=40G --time=00:30:00 \
+    slurm/tournament_array.sh panel --agents agents/mine/*.py \
+    --panel agents/bench3/*.py --seeds 96 --jobs 32 --label mine
+python tools/tournament.py ingest --shards data/shards/mine
 ```
 
-Throughput reference: ~9.8 episodes/s on 32 cores, so **~35,000 episodes/hour**.
-A properly powered A/B (384 episodes) costs about 40 seconds of a compute node.
-
----
-
-## 5. Read the knowledge, in this order (25 minutes)
-
-If you have been away for more than a few days, **start with `docs/ROADMAP.md`**
-— it is written for exactly that case and opens with what turned out to be wrong.
-
-1. `docs/ROADMAP.md` — where this went and why, with the arm size on every claim
-2. `docs/VALIDATING.md` — how to tell whether your change is real. Two fields for
-   two levels; using the wrong one wastes the run
-3. `docs/GAME_ECONOMICS.md` — what the game actually rewards
-4. `docs/ENGINE_CHANGES.md` — seven landed, five rejected, all with arm sizes
-5. `docs/LADDER_FIELD.md` — why a field we wrote ourselves misled us for a week
-6. `docs/SUBMISSION_POLICY.md` — before you touch the ladder
-7. `docs/EVALUATION.md` — the long form of §2 above
-
-`docs/MAP.md` routes any other question to the document that answers it.
-
-## 6. Five things that will bite you
-
-These are not hypotheticals; each one has already cost real work here.
-
-**Illegal actions fail silently.** No exception, no log, no cost. Wrong tile,
-empty inventory, full shed — all just no-ops. Always trace.
-
-**`FEED` takes wheat from the acting unit's inventory, not the shed.** And
-`PICKUP` only works on the four tiles beside the shed. Without explicitly routing
-hands back for feed, every unit stays busy watering and the entire herd starves.
-That single bug cost ~45k.
-
-**Seed-to-seed spread exceeds most tuning effects.** Early 3–4 seed sweeps in
-this repo produced *contradictory orderings on repeat runs*. The floor for a
-believable result is a few hundred episodes; see EVALUATION §5 for the table.
-
-**Common random numbers do not control this environment.** `_end_of_day` draws
-weeds and the shop unlock from one shared RNG, and weed draws scale with how many
-empty tiles *both* farms have — so changing your agent changes which shops
-unlock. Pairing on seed helps but cancels nothing.
-
-**The strategy space is non-transitive.** A measured rock-paper-scissors cycle
-exists: flood beats metered beats spite beats flood. Any ranking is a ranking
-*against its field*, and swapping the field reorders it. Two honest tournaments
-in this repo disagree for exactly this reason.
-
----
-
-## 7. Where things stand
-
-- `agents/barnyard.py` is live on the ladder (submission `55332339`), currently
-  ~623 rating. It ranks **14th of 38** in the local confirm tournament — beaten
-  by every `orchardherd` composition by ~21,000 median money.
-- 5 submissions per day; only the latest 2 stay active.
-- The highest-value open work is in `docs/IMPROVEMENTS.md`, and the single
-  clearest defect is the opening starvation described in `docs/ATOM_EFFECTS.md`.
-- **Nothing measured locally has been validated against the real ladder yet.**
-  Every local opponent is one we wrote, so a systematic bias is entirely
-  possible. Spending one submission to test whether local rank predicts ladder
-  rank is probably the best next experiment.
-
----
-
-## 8. Cluster etiquette
-
-Vulcan's login node is shared. One episode is fine; anything larger goes through
-Slurm. This workload is CPU-only — **never request a GPU**.
+然后：
 
 ```bash
-sbatch slurm/tournament.sh ...     # 32 cores, the default for real runs
+python tools/db.py stats                    # 有史以来跑过什么
+python tools/db.py top --run latest         # 排名
+python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md + site/
+```
+
+吞吐参考：带 `KG_FAST_ENV=1` 时每核每秒 0.375 局，32 核约 12 局/秒。一次有统计效力的
+A/B（每臂 384 局）大约花一个计算节点几十秒。
+
+---
+
+## 5. 按这个顺序读知识（25 分钟）
+
+如果你离开超过几天，**先读 `docs/ROADMAP.md`** —— 它就是为这种情况写的，开头就讲
+哪些结论后来被推翻了。
+
+1. `docs/ROADMAP.md` —— 这个项目走到哪、为什么，每条主张都附样本量
+2. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。两个场地对应两个水平层级，用错
+   这一轮就白跑
+3. `docs/GAME_ECONOMICS.md` —— 这个游戏实际奖励什么
+4. `docs/ENGINE_CHANGES.md` —— 七个落地、五个被否，全都附样本量
+5. `docs/LADDER_FIELD.md` —— 为什么我们自己写的场地误导了我们一周
+6. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读
+7. `docs/EVALUATION.md` —— 上面第 2 条的完整版
+
+`docs/MAP.md` 会把其他任何问题路由到回答它的那份文档。
+
+## 6. 会咬你的五件事
+
+这些都不是假设；每一条都已经在这里造成过实际损失。
+
+**非法动作静默失败。** 没有异常、没有日志、没有代价。错的地块、空的库存、满的棚子 ——
+全都只是空操作。永远要 trace。
+
+**`FEED` 从执行单位的库存里取小麦，不是从棚子里取。** 而 `PICKUP` 只在棚子旁边那四格
+才有效。不显式安排雇工回去取饲料，所有单位就会一直忙着浇水，整个畜群饿死。
+这一个 bug 值约 4.5 万。
+
+**种子间的方差大于大多数调参效果。** 这个仓库早期 3–4 个种子的扫描，**重复跑会得出
+互相矛盾的排序**。一个可信结果的下限是几百局；表格见 `EVALUATION.md` §5。
+
+**共同随机数在这个环境里不成立。** `_end_of_day` 用同一个 RNG 抽杂草和商店解锁，而
+杂草抽取次数正比于**双方**农场的空地数 —— 所以改你的 agent 会改变哪些商店解锁。
+按种子配对有帮助，但抵消不了任何东西。
+
+**策略空间是非传递的。** 存在实测到的石头剪刀布环：flood 胜 metered 胜 spite 胜 flood。
+任何排名都是**相对于它的场地**的排名，换个场地就重排。这个仓库里有两次诚实的锦标赛
+结论相反，原因正是这个。
+
+---
+
+## 7. 目前的状况（截至 2026-08-12）
+
+- **排行榜最高分 1363.7**，来自 `closer_cleo` 加一行改动（终局控制器从最后 3 回合
+  放宽到 6 回合）。我们自己引擎的历史最好是 **857.6**。为什么会跳，见
+  `docs/ROADMAP.md` §5。
+- **我们自己的引擎赢参考场地 54–61%，而 `closer_cleo` 赢 99%。** 这不是调参能补的差距。
+- 最重要的一条事实修正：**榜首跑的不是 `agents/ref/` 里那条线** —— 156 条真实榜首
+  轨迹里只有 8 条与之重合超过 30%。它们自己聚成 25 条线，最大一条 97 份、跨 38 个队伍。
+  见 `docs/ROADMAP.md` §3 和 `tools/lines.py`。
+- **价值在外包装，不在剧本本身。** 原始轨迹换个种子就塌（最好的那簇只剩 11.8%），
+  而对四个带外包装的 agent 是 0/3072。
+- 唯一还有天花板的路线是 **C：自己搜一整季的剧本 + 市场外包装**。见 `ROADMAP.md` §7。
+- 5 次提交/天，只有最新两个活跃，**失活按时间顺序不按分数** —— 这条已经让我们
+  在一夜之间损失了 1363.7 和 1287.2。
+
+---
+
+## 8. 集群礼仪
+
+Vulcan 的登录节点是共享的。一局没问题，比这更大的都走 Slurm。这个工作负载是纯 CPU 的
+—— **永远不要申请 GPU**。
+
+```bash
+sbatch slurm/tournament.sh ...     # 32 核，正式跑数的默认值
 salloc --account=aip-zhouyang --time=02:00:00 --cpus-per-task=16 --mem=32G
 ```
 
-`$SCRATCH` is 5 TB, **not backed up**, and purged after 60 days of inactivity
-(age = `min(atime, ctime)`). `data/arena.sqlite` is the one irreplaceable file
-here — copy it to `~/projects/` if it matters to you.
+**短任务立刻开跑，长任务排队。** 同样的工作量在 `--time=03:00:00` 加每任务 64 核下
+排了 78 分钟；在 `--time=00:30:00` 加 32 核下，十六个节点上立即开始。
+
+`$SCRATCH` 有 5 TB，**不备份**，60 天不活动会被清理（年龄取 `min(atime, ctime)`）。
+`data/arena.sqlite` 是这里唯一不可替代的文件 —— 如果你在意，拷一份到 `~/projects/`。
