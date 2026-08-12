@@ -412,6 +412,43 @@ nested directory breaks the imports. Verifies by unpacking, checking
 `get_last_callable` resolves to `agent`, and running a full episode. Single-file
 agents do not need it; submit the `.py` directly.
 
+### `tools/tracelib.py`
+Mines the daily top-episode dumps into a library of the **distinct plans** the
+ladder actually plays.
+
+```bash
+python tools/tracelib.py pull --dates 2026-08-07,2026-08-08 --per-date 200 -j 8
+python tools/tracelib.py stats
+python tools/tracelib.py emit --out agents/lines --top 12 --min-score 50000
+```
+
+Deduplication is the whole job: 959 episodes gave 1,894 trajectories and 201
+distinct plans, a ratio of 9:1. Every comparison sweeps shifts of +-8 turns
+first, because two farms running the same plan one turn apart agree on nothing
+index to index. The replay is deleted as soon as it is digested -- 29 MB in,
+~11 KB out -- so disk never holds more than `-j` of them.
+
+It refuses dates before the 1.32.6 rebalance (2026-08-06/07) on purpose: town
+demand halved and shop draws became with-replacement, so a plan tuned before it
+is playing a different game.
+
+**Three things this cost, all worth knowing before touching the Kaggle API:**
+
+* **`"429" in output` is not a rate-limit check.** Episode files are named after
+  their ids, so `91804729.json` matches it and a healthy 11 KB listing gets
+  discarded. Forty minutes of "backing off" here were a working API being
+  thrown away once every two minutes. Match `429 Client Error` *and* require
+  that the command produced nothing.
+* **A retry storm keeps itself locked out.** 151 retries eight seconds apart
+  never recovered; a single probe the moment they stopped succeeded instantly.
+  Every retry refreshes the limit that is blocking it. `-j 8` and few requests
+  beat `-j 64` and many, by a wide margin -- at 48 the download failure rate was
+  80%, at 64 the account was 429'd for minutes.
+* **The seed is in `info["seed"]`,** not in the first observation. Reading the
+  wrong place gives `None` for every episode and an open-loop trace without its
+  seed cannot be replayed on the board it was recorded on, which is most of its
+  value. A whole 959-episode pull had to be redone.
+
 ### `tools/lines.py`
 Clusters `agents/ghosts/` into the distinct *lines* the ladder actually plays,
 and writes one representative per cluster.
