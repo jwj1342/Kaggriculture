@@ -1,5 +1,12 @@
 # The real field, and why local rank did not predict it
 
+> **Still the right lesson, with a bigger version of it since.** This file is
+> about a field we wrote ourselves failing to predict the ladder. On 2026-08-11
+> the same failure reappeared one level up: `agents/ghosts`, built *from real
+> ladder replays* precisely to avoid this, saturated at 99.4% and could not rank
+> eight variants that `bench3` spread over 92-98%. **A field is only evidence
+> about the level it can still separate.** See `docs/VALIDATING.md` §1.
+
 Every opponent this project had measured itself against until now was one it had
 written. This document is what happened when we finally looked at the other kind.
 

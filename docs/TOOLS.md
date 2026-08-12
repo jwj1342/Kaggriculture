@@ -316,6 +316,56 @@ Output goes to `agents/hybrid/` (git-ignored). **These are instruments, not
 submissions** — see `docs/ROADMAP.md` §5.3 for why a copy of the public line
 cannot rank above the crowd that already runs it.
 
+### `tools/topeps.py`
+Digests Kaggle's daily dumps of the highest-scoring episodes -- games between
+players rated ~3,100 that we are never matched into.
+
+```bash
+python tools/topeps.py index      # what dumps exist
+python tools/topeps.py pull       # digest them into the database
+python tools/topeps.py stats
+```
+
+The digest carries the **action histogram** -- `move_frac`, `pass_frac`,
+`work_frac`, `steps_per_work`, `zero_move_frac` -- because that is where the
+difference lives, not in the farm layout.
+
+### `tools/ghost.py`
+Turns those trajectories into local opponents.
+
+```bash
+python tools/ghost.py make --limit 60 --per-team 2 --bands
+python tools/ghost.py balance
+python tools/ghost.py verify --limit 12
+```
+
+A ghost is 11 KB: one player's recorded 720-turn action sequence, gzip+base85
+encoded, replayed by step index. Nothing is fitted. Sampling is stratified on
+purpose -- at most two per team, score bands filled evenly, round-robin across
+days -- because a naive pull gave 12% of the field to one team and drew every
+episode from the same hour. `verify` measures how much of its original score
+each ghost still reaches before the set is trusted.
+
+**They are open-loop and they degrade off their recorded seed**: different
+weeds turn their actions into silent no-ops. That is a feature for an opponent
+and a trap for anything else -- see `docs/ROADMAP.md` §4.
+
+### `tools/fetch_fields.sh`
+Rebuilds every opponent field a fresh clone does not have. **Run it before your
+first measurement**; `agents/` is git-ignored in full.
+
+```bash
+bash tools/fetch_fields.sh            # ref agents, ghosts, lines, bench3
+bash tools/fetch_fields.sh ghosts 60  # just ghosts
+```
+
+### `tools/package.sh`
+Builds the tar.gz Kaggle expects from a multi-file agent, with every module at
+the **archive root** -- Kaggle unpacks into `/kaggle_simulations/agent/`, so a
+nested directory breaks the imports. Verifies by unpacking, checking
+`get_last_callable` resolves to `agent`, and running a full episode. Single-file
+agents do not need it; submit the `.py` directly.
+
 ### `tools/lines.py`
 Clusters `agents/ghosts/` into the distinct *lines* the ladder actually plays,
 and writes one representative per cluster.

@@ -3,7 +3,7 @@
 `agents/_engine.py` is the single execution path behind every generated
 strategy, so a change here moves the whole library at once. That is exactly why
 each one below is an A/B against a fixed set of opponents on the same seeds,
-with the arm size stated. **Seven landed and five were rejected**, and one of the
+with the arm size stated. **Nine landed, seven were rejected, and three sweeps confirmed the incumbent**, and one of the
 rejections turned out to be a bug in the change rather than a fact about the
 game — `compost` lost twice on good evidence before an interaction was found and
 it became the largest single win here.
@@ -237,6 +237,70 @@ A wider window is worse, not better, and the curve is not monotone — 704 loses
 3.3 points where 708 gains 2.4. Snapshot in
 `submissions/2026-08-11-closercleo-term714/`.
 
+### 8. Work the tile you are standing on -- *the here-pass*
+
+The one scheduler change that worked, and it came from looking at *when* the
+opponent's units move rather than how far.
+
+**50.1% of their actions that do work cost zero movement**, and 47% land on the
+same tile as that unit's previous action. That is what a tile affords: an animal
+takes FEED, then CARE, then COLLECT_FERTILIZER, then HARVEST — four turns
+without a step — and a plant takes WATER then FERTILIZE.
+
+Task-by-task assignment cannot see it. `claimed` is keyed on `(tile, op)`, so two
+units are cheerfully sent to the same animal for two different jobs and both walk
+there, while the unit already standing on it is sent somewhere else entirely.
+
+A pass now runs before everything and gives each unit whatever work is under its
+feet. It costs nothing, it is never wrong, and it is the first change to move the
+metric:
+
+| | steps per work action | movement | median $ |
+|---|---|---|---|
+| before | 2.36 | 50% | 66,722 |
+| after | **1.87** | **39%** | **76,439** |
+
+Measured over 1,920 episodes an arm on two shapes: `mgtight` 92.9% → **95.8%**,
+`mgtightwide` 91.8% → **97.2%**.
+
+**And it flipped a shape result that had failed three times.** Wheat as a filler
+crop lost on `smallhold`, lost again after the hiring ramp, and lost a third time
+on the tight base. With units able to chain work on a tile, `mgtightgrain`
+(16 strawberry, 8 melon, **14 wheat**) is now the best shape measured: 86.7%
+against the bench field and $75,727 median over 46,592 episodes, beating
+`mgtightwide` **58.8% [54.5%, 63.1%]** head to head.
+
+Four failures and then a win, because the thing that made it fail was somewhere
+else entirely.
+
+### 9. Reserve the rest of a tile's work for the unit standing on it
+
+A refinement of the one above, found by breaking our own zero-movement rate down
+by action type:
+
+| action | zero-movement | note |
+|---|---|---|
+| `CARE` | 54% | needs nothing carried |
+| `FERTILIZE` | 42% | |
+| `PLANT` / `HARVEST` | 35% / 29% | |
+| `WATER` | 18% | one per plant per day — inherently a step apart |
+| `COLLECT_FERTILIZER` | 16% | |
+| `FEED` | **11%** | |
+
+`CARE` chains and `FEED` does not, on the same animals. `claimed` is keyed on
+`(tile, op)`, so the global pass was sending other units across the farm for the
+*other* jobs on an animal a unit was already standing on — and by the next turn
+that unit had nothing left and walked away.
+
+Tiles worked in the here-pass are now held back from the global pass.
+**96.0% → 96.6%** over 7,680 episodes an arm — 2.7 standard errors, small but
+real, and free.
+
+The zero-movement rate is 27.5% against the opponent's 50.1%, so most of that gap
+is still open. `WATER` is the reason it cannot close much further with this
+approach: it is the largest single category and one watering per plant per day
+means consecutive waterings are always a step apart.
+
 ## Measured and rejected
 
 ### Sticky task targets, and idle units pre-positioning
@@ -320,42 +384,6 @@ the negative result stays reproducible.
 
 ---
 
-### Four sweeps around the two biggest levers, all confirming what is there
-
-Once the hiring ramp landed, the two settings it interacts with were swept
-rather than assumed. All four arms were 2,304–3,072 episodes each against the
-same fixed opponents.
-
-**The ramp shape.** `min(plan, 2 + plants/3 + animals/2)` was a first guess and
-turns out to sit on the optimum:
-
-| ramp | win rate | median $ |
-|---|---|---|
-| `2 + p/3 + a/2` (kept) | **89.2%** | **71,176** |
-| `2 + (p+a)/3` | 86.7% | 70,319 |
-| `3 + p/2 + a/2` | 84.1% | 68,900 |
-| `1 + p/4 + a/3` | 57.7% | 64,850 |
-
-**Daily watering, retried.** It had been neutral before the ramp, and the ramp
-frees actions, so it was worth re-running — changes interact, which is the whole
-lesson of the fertilizer episode above. It is not neutral now, it is much worse:
-**53.1% against 87.8%**. Watering only on tick days is right.
-
-**The carrying threshold.** An idle unit walks to the shed once it holds six
-units of produce, and the engine has *no carry limit at all* — `_inv_add` simply
-adds — so raising the threshold looked like free movement savings, and shed
-round trips are a large share of the 55% of actions spent walking.
-
-| threshold | win rate | median $ |
-|---|---|---|
-| 6 (kept) | **89.2%** | **71,176** |
-| 12 | 68.4% | 64,850 |
-| 20 / 30 | 67.8% | 64,718 |
-
-Produce in hand is produce not yet sellable. The delayed sales cost more than
-the walking saves, and the effect saturates by 12 — above that the trigger
-stops binding at all.
-
 ### Inverting the scheduler: let each unit pick its own task
 
 The clearest single number separating us from the top of the ladder, measured
@@ -412,125 +440,6 @@ base — and all three say the same thing. **The `PASS` is not spare capacity.**
 Work added at the edge of the farm costs more in walking than it returns, and the
 21-22% ceiling on productive actions holds whatever is planted.
 
-### Work the tile you are standing on
-
-The one scheduler change that worked, and it came from looking at *when* the
-opponent's units move rather than how far.
-
-**50.1% of their actions that do work cost zero movement**, and 47% land on the
-same tile as that unit's previous action. That is what a tile affords: an animal
-takes FEED, then CARE, then COLLECT_FERTILIZER, then HARVEST — four turns
-without a step — and a plant takes WATER then FERTILIZE.
-
-Task-by-task assignment cannot see it. `claimed` is keyed on `(tile, op)`, so two
-units are cheerfully sent to the same animal for two different jobs and both walk
-there, while the unit already standing on it is sent somewhere else entirely.
-
-A pass now runs before everything and gives each unit whatever work is under its
-feet. It costs nothing, it is never wrong, and it is the first change to move the
-metric:
-
-| | steps per work action | movement | median $ |
-|---|---|---|---|
-| before | 2.36 | 50% | 66,722 |
-| after | **1.87** | **39%** | **76,439** |
-
-Measured over 1,920 episodes an arm on two shapes: `mgtight` 92.9% → **95.8%**,
-`mgtightwide` 91.8% → **97.2%**.
-
-**And it flipped a shape result that had failed three times.** Wheat as a filler
-crop lost on `smallhold`, lost again after the hiring ramp, and lost a third time
-on the tight base. With units able to chain work on a tile, `mgtightgrain`
-(16 strawberry, 8 melon, **14 wheat**) is now the best shape measured: 86.7%
-against the bench field and $75,727 median over 46,592 episodes, beating
-`mgtightwide` **58.8% [54.5%, 63.1%]** head to head.
-
-Four failures and then a win, because the thing that made it fail was somewhere
-else entirely.
-
-### Reserve the rest of a tile's work for the unit standing on it
-
-A refinement of the one above, found by breaking our own zero-movement rate down
-by action type:
-
-| action | zero-movement | note |
-|---|---|---|
-| `CARE` | 54% | needs nothing carried |
-| `FERTILIZE` | 42% | |
-| `PLANT` / `HARVEST` | 35% / 29% | |
-| `WATER` | 18% | one per plant per day — inherently a step apart |
-| `COLLECT_FERTILIZER` | 16% | |
-| `FEED` | **11%** | |
-
-`CARE` chains and `FEED` does not, on the same animals. `claimed` is keyed on
-`(tile, op)`, so the global pass was sending other units across the farm for the
-*other* jobs on an animal a unit was already standing on — and by the next turn
-that unit had nothing left and walked away.
-
-Tiles worked in the here-pass are now held back from the global pass.
-**96.0% → 96.6%** over 7,680 episodes an arm — 2.7 standard errors, small but
-real, and free.
-
-The zero-movement rate is 27.5% against the opponent's 50.1%, so most of that gap
-is still open. `WATER` is the reason it cannot close much further with this
-approach: it is the largest single category and one watering per plant per day
-means consecutive waterings are always a step apart.
-
-### Eleven schedulers, and the greedy one wins
-
-`steps per action that does work` is the cleanest statement of the gap: the
-ladder's best opponent runs at **1.02**, we run at **2.36**. At 1.02 a unit is
-walking *through* its work — step, water, step, water — and no assignment rule
-tried here produces that.
-
-| scheduler | steps per work action | work % |
-|---|---|---|
-| **greedy: each task takes the globally nearest free unit** (kept) | **2.36** | **21%** |
-| sticky targets | — | — (63% → 44% win rate) |
-| each unit picks its own task, `prio*W + dist` | 2.4-ish | 21% (77% → 54%) |
-| two passes: urgent global, the rest nearest-first | 2.89 | 18% |
-| the same with the urgency cut at priority 4 | 2.99 | 18% |
-| static zones: each unit owns a band of tiles | 2.86 | 20% |
-
-Every alternative makes the ratio **worse**. Per-unit greedy in index order lets
-neighbouring units take each other's nearby work; static zones make a unit walk
-to its band and then idle in it while another band has three tasks waiting.
-
-Two hypotheses were checked and are not the answer: the geometry is symmetric
-(average distance to the shed is 4.00 whatever you own), and the engine
-deliberately allows movement onto `LOCKED` tiles with shed operations resolving
-before the lock guard, so routing across a locked quadrant is not a hidden cost.
-
-**The greedy scheduler is at a local optimum in scheduler-space as well as in
-parameter-space.** Whatever produces 1.02 is not a variation on assigning tasks
-to units one turn at a time — it is more likely a different action model
-entirely, such as planning a unit's route several turns ahead so that each step
-lands on the next piece of work.
-
-### Herd size, re-measured on the new scheduler and unchanged
-
-An animal is the most chainable tile in the game — FEED, CARE,
-COLLECT_FERTILIZER, HARVEST, four turns without a step — and about 85% of the
-ladder leader's zero-movement work comes from its thirteen animals against our
-ten. So a bigger herd should now pay where it did not before. It does not, and
-the sweep is monotone in both directions around the incumbent:
-
-| herd | vs `bench2` |
-|---|---|
-| **7 cow, 3 sheep** (kept) | **49.0%** |
-| 9 cow, 4 sheep | 44.3% / 36.3% |
-| 11 cow, 5 sheep | 24.1% |
-| 12 cow, 6 sheep | 23.1% |
-| 5 cow, 2 sheep | 17.8% |
-
-Chainable work is not the only thing an animal costs. Each one also needs feed
-bought and carried, a pasture built, and its product sold into a market that
-reaches the floor after 59-76 units.
-
-`mgtightgrain` — strawberry 16, melon 8, wheat 14, 7 cow, 3 sheep, two
-quadrants, `compost`, `shopwise`, hiring ramp, liquidate on 29 — is the best
-configuration measured, from four independent directions.
-
 ### The ten-day seed freeze is not a deadlock, it is a trade
 
 The clearest-looking defect found here, and the largest single rejection.
@@ -586,6 +495,103 @@ off the tiles before strawberry wants them:
 Under the unchanged engine the wheat target does not even bind: `mgboot` and
 `mgboot20` score identically to the dollar, because the reserve stops the second
 round of buying whatever the target says.
+
+## Measured and confirmed
+
+Sweeps that changed nothing. They are not rejections -- no change was proposed --
+and they are not wins. They are the reason the incumbent is still the incumbent,
+and they are here so nobody re-runs them.
+
+### Four sweeps around the two biggest levers, all confirming what is there
+
+Once the hiring ramp landed, the two settings it interacts with were swept
+rather than assumed. All four arms were 2,304–3,072 episodes each against the
+same fixed opponents.
+
+**The ramp shape.** `min(plan, 2 + plants/3 + animals/2)` was a first guess and
+turns out to sit on the optimum:
+
+| ramp | win rate | median $ |
+|---|---|---|
+| `2 + p/3 + a/2` (kept) | **89.2%** | **71,176** |
+| `2 + (p+a)/3` | 86.7% | 70,319 |
+| `3 + p/2 + a/2` | 84.1% | 68,900 |
+| `1 + p/4 + a/3` | 57.7% | 64,850 |
+
+**Daily watering, retried.** It had been neutral before the ramp, and the ramp
+frees actions, so it was worth re-running — changes interact, which is the whole
+lesson of the fertilizer episode above. It is not neutral now, it is much worse:
+**53.1% against 87.8%**. Watering only on tick days is right.
+
+**The carrying threshold.** An idle unit walks to the shed once it holds six
+units of produce, and the engine has *no carry limit at all* — `_inv_add` simply
+adds — so raising the threshold looked like free movement savings, and shed
+round trips are a large share of the 55% of actions spent walking.
+
+| threshold | win rate | median $ |
+|---|---|---|
+| 6 (kept) | **89.2%** | **71,176** |
+| 12 | 68.4% | 64,850 |
+| 20 / 30 | 67.8% | 64,718 |
+
+Produce in hand is produce not yet sellable. The delayed sales cost more than
+the walking saves, and the effect saturates by 12 — above that the trigger
+stops binding at all.
+
+### Eleven schedulers, and the greedy one wins
+
+`steps per action that does work` is the cleanest statement of the gap: the
+ladder's best opponent runs at **1.02**, we run at **2.36**. At 1.02 a unit is
+walking *through* its work — step, water, step, water — and no assignment rule
+tried here produces that.
+
+| scheduler | steps per work action | work % |
+|---|---|---|
+| **greedy: each task takes the globally nearest free unit** (kept) | **2.36** | **21%** |
+| sticky targets | — | — (63% → 44% win rate) |
+| each unit picks its own task, `prio*W + dist` | 2.4-ish | 21% (77% → 54%) |
+| two passes: urgent global, the rest nearest-first | 2.89 | 18% |
+| the same with the urgency cut at priority 4 | 2.99 | 18% |
+| static zones: each unit owns a band of tiles | 2.86 | 20% |
+
+Every alternative makes the ratio **worse**. Per-unit greedy in index order lets
+neighbouring units take each other's nearby work; static zones make a unit walk
+to its band and then idle in it while another band has three tasks waiting.
+
+Two hypotheses were checked and are not the answer: the geometry is symmetric
+(average distance to the shed is 4.00 whatever you own), and the engine
+deliberately allows movement onto `LOCKED` tiles with shed operations resolving
+before the lock guard, so routing across a locked quadrant is not a hidden cost.
+
+**The greedy scheduler is at a local optimum in scheduler-space as well as in
+parameter-space.** Whatever produces 1.02 is not a variation on assigning tasks
+to units one turn at a time — it is more likely a different action model
+entirely, such as planning a unit's route several turns ahead so that each step
+lands on the next piece of work.
+
+### Herd size, re-measured on the new scheduler and unchanged
+
+An animal is the most chainable tile in the game — FEED, CARE,
+COLLECT_FERTILIZER, HARVEST, four turns without a step — and about 85% of the
+ladder leader's zero-movement work comes from its thirteen animals against our
+ten. So a bigger herd should now pay where it did not before. It does not, and
+the sweep is monotone in both directions around the incumbent:
+
+| herd | vs `bench2` |
+|---|---|
+| **7 cow, 3 sheep** (kept) | **49.0%** |
+| 9 cow, 4 sheep | 44.3% / 36.3% |
+| 11 cow, 5 sheep | 24.1% |
+| 12 cow, 6 sheep | 23.1% |
+| 5 cow, 2 sheep | 17.8% |
+
+Chainable work is not the only thing an animal costs. Each one also needs feed
+bought and carried, a pasture built, and its product sold into a market that
+reaches the floor after 59-76 units.
+
+`mgtightgrain` — strawberry 16, melon 8, wheat 14, 7 cow, 3 sheep, two
+quadrants, `compost`, `shopwise`, hiring ramp, liquidate on 29 — is the best
+configuration measured, from four independent directions.
 
 ## The pattern in the rejections
 

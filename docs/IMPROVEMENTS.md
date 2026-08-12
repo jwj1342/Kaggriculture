@@ -1,4 +1,30 @@
-# Improvement backlog
+# Improvement backlog *(mostly done -- read the status table first)*
+
+> **This file is now largely a record of completed work.** It was written on
+> 2026-08-07 against `agents/barnyard.py`, which has not been on the ladder for
+> days. Six of its eleven items have landed, three are measured and dead, and one
+> became `tools/ghost.py` + `tools/lines.py`. **What to do next is
+> `docs/ROADMAP.md` §9, not this file.**
+>
+> | item | status |
+> |---|---|
+> | 0a. spend fertilizer on the crops (`compost`) | **landed** -- `ENGINE_CHANGES.md` §3 |
+> | 0b. stop building the plan around melon | **done** -- `mgtight` is 16 strawberry + 8 melon |
+> | 0c. back-port the two engine fixes | **landed** -- `ENGINE_CHANGES.md` §1 |
+> | 1. react to which shops unlocked (`shopwise`) | **landed** -- `ENGINE_CHANGES.md` §5 |
+> | 2. stop over-committing to melon | **done**, same as 0b |
+> | 3. fertilize the ongoing crops | **landed** -- `ENGINE_CHANGES.md` §2–3 |
+> | 4. front-run the opponent | **dead** -- 0 wins in 384 against the meta; `ROADMAP.md` §7 B |
+> | 5. route units instead of assigning greedily | **dead** -- eleven schedulers lost; `ENGINE_CHANGES.md` §confirmed |
+> | 6. size sales from marginal revenue | **open** |
+> | 7. one-day lookahead on market decisions | **open** |
+> | 8. imitation learning from the daily episode dataset | **became** `tools/ghost.py` + `tools/lines.py`; the surviving version is `ROADMAP.md` §7 C |
+>
+> The two still-open items are both about the **market layer**, which is where
+> the measured value turned out to be: `closer_cleo`'s wrapper rewrites only
+> `action["market"]` and that is the whole difference between 66.6% and 99.2%
+> (`ROADMAP.md` §4). That makes 6 and 7 more interesting now than when they were
+> written, not less.
 
 Ranked work not yet applied. Measured results live in `docs/ATOM_EFFECTS.md`;
 this file is what to do about them.

@@ -1,4 +1,15 @@
-# The enhanced baseline
+# The enhanced baseline *(historical)*
+
+> **`agents/enhanced/` is no longer the best agent and has not been submitted
+> since 2026-08-08.** It was superseded by the generated `mgtight` family
+> (857.6 on the ladder) and then by a wrapped-plan agent (1363.7). This file is
+> kept because the directory is still tracked, because it is the project's only
+> worked example of a **multi-file** agent, and because its reasoning is sound
+> even where its conclusions were overtaken.
+>
+> Read it for: how `tools/package.sh` builds a multi-file submission, and how an
+> opponent-aware market layer is put together. Do **not** read it for what to
+> build -- that is `docs/ROADMAP.md`.
 
 `agents/enhanced/` — an opponent-aware farm assembled from what 95,000 locally
 measured episodes actually showed. Every structural choice below traces to a

@@ -197,7 +197,7 @@ sqlite3 data/arena.sqlite "SELECT ..."
 
 20 seeds per pairing, both seats, **28,120 episodes**. The roster is the panel's
 top 8, the best carrier of every atom option, all eight boundary corners, plus
-`barnyard` (the agent on the ladder) and `starter`.
+`barnyard` (then the agent on the ladder) and `starter`.
 
 ```
  #   BT-Elo  win%   median $   strategy
@@ -214,7 +214,7 @@ top 8, the best carrier of every atom option, all eight boundary corners, plus
 11     +479  69.9%    48,094   smallhold-crew-mixedfarm-flood-blind-muck
 12     +445  68.8%    52,572   homestead-crew-orchardherd-vault-spite-muck
 13     +385  66.7%    46,129   homestead-crew-ranchmix-flood-blind-muck
-14     +288  63.1%    44,242   barnyard                    <- the ladder agent
+14     +288  63.1%    44,242   barnyard                    <- the ladder agent *then*
 15     +184  59.0%    36,304   estate-crew-dairy-adaptive-blind-muck
 16     +164  58.2%    51,654   estate-crew-berryherd-flood-blind-muck
 17     +104  55.7%    39,352   estate-crew-mixedfarm-metered-blind-muck
@@ -224,7 +224,7 @@ top 8, the best carrier of every atom option, all eight boundary corners, plus
 29     -759  22.4%     9,418   estate-solo-mixedfarm-adaptive-blind-muck
 ```
 
-**`barnyard`, our submitted agent, ranks 14th of 38** — beaten by every
+**`barnyard`, the submitted agent *at the time*, ranks 14th of 38** — beaten by every
 `orchardherd` composition. The gap is ~21,000 in median money and 36 points of
 win rate against the same field.
 

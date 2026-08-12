@@ -171,8 +171,19 @@ traceable back to source months later; the working tree will have moved on.
 `kaggle competitions submission-limits kaggriculture`.
 
 Then log it in `docs/RUNS.md` alongside the local result that motivated it, so
-the local-vs-ladder correlation can be checked later. That correlation is
-currently **unmeasured** and is the biggest open question in the project.
+the local-vs-ladder correlation can be checked later.
+
+**That correlation has since been measured, and it is weak.** `enhanced` beat
+`barnyard` 384 out of 384 locally and drew level with it on the ladder (49% vs
+47%); the whole `mgtight` family moved 623 → 857 while a third-party wrapped-plan
+agent scored 1364 out of the box. Local rank is worth something *within* a level
+and worth very little *across* levels -- which is what `docs/VALIDATING.md` §1
+is about. Log the local number anyway; it is how that was found out.
+
+**And before you submit, check what is currently active.** Deactivation is by
+recency, not score, so in a shared repo a submission from someone who does not
+know the current state drops the best agent. That has already cost a 1363.7 and
+a 1287.2 in one night: `kaggle competitions submissions kaggriculture | head -5`.
 
 ---
 

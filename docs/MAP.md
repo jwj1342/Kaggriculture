@@ -48,13 +48,13 @@
 | `feed_reserve` / `feed_solvent` | 买方、门禁、卖方共用一个数 | `docs/ENGINE_CHANGES.md` §1 |
 | 雇工 `want_hands` | 按活儿雇人，不按计划雇人 | `docs/ENGINE_CHANGES.md` §5 |
 | **雇工不受 `endgame` 限制** | 雇工是按天租的；清仓日照常雇 | `docs/ENGINE_CHANGES.md` §6 |
-| the here-pass | 先干你脚下这一格的活 | `docs/ENGINE_CHANGES.md` §3 |
-| `held_tiles` | 把一格剩下的活留给站在上面的那个单位 | `docs/ENGINE_CHANGES.md` §4 |
+| the here-pass | 先干你脚下这一格的活 | `docs/ENGINE_CHANGES.md` §8 |
+| `held_tiles` | 把一格剩下的活留给站在上面的那个单位 | `docs/ENGINE_CHANGES.md` §9 |
 | ongoing 作物浇水 | 隔日浇，产出结算日例外 | `docs/ENGINE_CHANGES.md` §2 |
 | `FERTILIZE` 调度 | 只施在已浇水、且在产出结算三天覆盖内的地块 | `docs/ENGINE_CHANGES.md` §2–3 |
 | 肥料价格门禁 | 低于 $30 就不收 | `docs/ENGINE_CHANGES.md` §4 |
 | `LIQUIDATE_DAY = 29` | 一季的最后一天 | `docs/ENGINE_CHANGES.md` |
-| 派工循环 | 贪心，任务挑单位 —— **十一个替代方案全输** | `docs/ENGINE_CHANGES.md` §拒绝 |
+| 派工循环 | 贪心，任务挑单位 —— **十一个替代方案全输** | `docs/ENGINE_CHANGES.md` §确认 |
 
 ### `tools/registry.py` —— 一个「策略」是什么
 
@@ -102,7 +102,7 @@
 **确定**的，从不靠猜。
 
 它找到了两件别的工具找不到的事：西瓜陷阱（`docs/LADDER_FIELD.md` §2），以及那个
-产生了项目里最大单次改动的动作直方图（`docs/ENGINE_CHANGES.md` §3）。
+产生了项目里最大单次改动的动作直方图（`docs/ENGINE_CHANGES.md` §8）。
 
 ---
 
