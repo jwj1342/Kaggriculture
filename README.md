@@ -299,7 +299,6 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 | [`docs/ATOM_EFFECTS.md`](docs/ATOM_EFFECTS.md) | 每个原子选项值多少 —— 部分已被取代，见开头提示 |
 | [`docs/STRATEGY_LIBRARY.md`](docs/STRATEGY_LIBRARY.md) | 原子分类法和边界情况 |
 | [`docs/ADVERSARIAL.md`](docs/ADVERSARIAL.md) | 能靠压制对手取胜吗？（部分能，但不是你想的那样） |
-| [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md) | 待办，附一份"已测并否决"清单 |
 | [`docs/ENHANCED_BASELINE.md`](docs/ENHANCED_BASELINE.md) | 那个基线 agent：每个选择都追溯到一次测量，外加一处更正 |
 | [`docs/TOOLS.md`](docs/TOOLS.md) | 每个脚本：做什么、读写什么、已知局限 |
 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | 约定、同步契约、加原子、提交 |

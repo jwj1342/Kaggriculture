@@ -399,8 +399,10 @@ Keep results and their evidence together. When you measure something:
 
 - Numbers that inform a decision go in `docs/ATOM_EFFECTS.md` with the sample
   size and the slice they came from.
-- **Negative results go in too.** `docs/IMPROVEMENTS.md` has a
-  "measured and rejected" table specifically so nobody retries a thing that has
+- **Negative results go in too.** `docs/ENGINE_CHANGES.md` has a
+  *Measured and rejected* section and a *Measured and confirmed* one, and both
+  earn their place: seventeen changes derived correctly from the rules still
+  lost, and a rejection made against a weak field is not a fact about the game.
   already been shown not to work. Two entries there were "obvious" improvements
   that measured worse.
 - If a published claim turns out wrong, correct the document rather than adding

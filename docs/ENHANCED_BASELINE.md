@@ -224,7 +224,7 @@ shed is invisible to it, because sheds are private.
 **The plan is still fixed.** Shops unlock randomly and with replacement, and they
 decide what the town actually buys — but the crop and herd targets are constants.
 Reading `unlocked_shops` to re-weight production is the largest remaining gap,
-and is item 1 in `docs/IMPROVEMENTS.md`.
+and landed as `shopwise` (`docs/ENGINE_CHANGES.md` §5).
 
 **No fertilizer is ever spent on plants.** Fertilizing an ongoing crop on a
 production day doubles that yield. All fertilizer is sold instead, which is right
