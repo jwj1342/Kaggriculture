@@ -44,18 +44,24 @@ bash tools/fetch_fields.sh          # ref agents、ghosts、lines、bench3
 **四个种子分辨不出任何东西。** 三个独立的改动在四种子下读数为正，在每臂 2,304 局下却
 **落后 21 到 44 分**。冒烟测试是语法检查。
 
-集群上的规模换算 —— 带 `KG_FAST_ENV=1` 时每核每秒 0.375 局：
+规模换算 —— 带 `KG_FAST_ENV=1` 时**每核每秒约 0.375 局**：
 
 ```bash
-sbatch --array=0-15 --cpus-per-task=32 --mem=40G --time=00:30:00 \
-    slurm/tournament_array.sh panel \
+export KG_FAST_ENV=1
+python tools/tournament.py panel \
     --agents agents/mine/*.py --panel agents/bench3/*.py \
-    --seeds 96 --jobs 32 --label mylabel
-python tools/tournament.py ingest --shards data/shards/mylabel
+    --seeds 96 --label mylabel -j $(python -c 'import os;print(os.cpu_count())')
 ```
 
-**短任务立刻开跑，长任务排队**：同样的工作量在 `--time=03:00:00` 加每任务 64 核下
-排了 78 分钟；在 `--time=00:30:00` 加 32 核下，十六个节点上立即开始。
+| | 8 核笔记本 |
+|---|---|
+| 一次 A/B（每臂 384 局） | 约 4 分钟 |
+| 一个 agent 对整个 `bench3`（约 3 千局） | 约 15 分钟 |
+| 一次十臂扫描（约 3 万局） | 约 3 小时 |
+
+**前两行在笔记本上完全可行。** 更大的跑数要么用集群（`docs/CLUSTER.md`），要么
+缩小场地 —— `tools/eval.py h2h` 只对一个对手，96 个种子一分钟出结果，足以分辨
+10 分的差距。
 
 ## 3. 怎么读结果
 
@@ -95,7 +101,7 @@ python tools/tournament.py ingest --shards data/shards/mylabel
 目录的构建，会在数据库里合并成同一行评分。已经有两次跑数因此报废。
 
 对于臂之间同名的 A/B —— 所有引擎消融实验都是这样 —— 直接读分片 JSONL 并按完整路径分组，
-**不要 ingest**：
+**不要 ingest**（分片文件由 `--shard` 模式产生，别人在集群上跑完给你的也是这个格式）：
 
 ```python
 import glob, json, collections, os

@@ -1,7 +1,7 @@
 # Kaggriculture
 
 Kaggle **Kaggriculture** 仿真比赛的工作仓库
-（<https://www.kaggle.com/competitions/kaggriculture>），运行在 Vulcan HPC 集群上。
+（<https://www.kaggle.com/competitions/kaggriculture>）。
 
 你提交的是一个**程序**，不是预测结果。它在实时天梯上和别人的程序一对一打 720 回合的
 农场季。排名只看胜负 —— 金额差距完全不计入。
@@ -21,8 +21,7 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
 
 ## 环境搭建
 
-在 Vulcan 集群**和普通笔记本**上都能跑 —— 唯一的硬性要求是 Python 3.9+。两个脚本
-都会自己检测平台。
+**一台普通笔记本就够了** —— 唯一的硬性要求是 Python 3.9+。
 
 ```bash
 bash tools/bootstrap.sh          # 建立 venv/，用一局真实对局验证
@@ -31,7 +30,7 @@ source setup_env.sh              # 每次会话，任意目录下都能用
 ```
 
 `setup_env.sh` 激活 `venv/` 并把**所有**凭据和缓存路径重定向到这个目录，所以这里的
-任何操作都不会碰你的主目录。在集群上它还会 `module python/3.11.5`；其他环境跳过这步。
+任何操作都不会碰你的主目录。
 
 依赖放在 `requirements/`，按**安装语义**而不是按用途拆分，因为一个扁平文件表达不了：
 
@@ -43,8 +42,11 @@ source setup_env.sh              # 每次会话，任意目录下都能用
 
 用 `bash tools/bootstrap.sh --freeze` 重新生成 lock。
 
-> 在集群上，`$SCRATCH` **不备份**，60 天不活动会被清理。`data/arena.sqlite` 是唯一
-> 不可替代的文件 —— 如果你在意，拷一份到 `~/projects/`。
+> `data/arena.sqlite` 是唯一不可替代的文件，而且是 git-ignored 的 —— 用
+> `tools/sync.py` 分享，不要重跑。
+>
+> 有 Vulcan 集群账号的人另见 [`docs/CLUSTER.md`](docs/CLUSTER.md)；**其余文档都不
+> 假设你有集群**。
 
 ## 日常命令
 
@@ -56,16 +58,15 @@ python tools/registry.py gen --plan all --out agents/lib
 python tools/db.py stats                                # 有史以来跑过什么
 python tools/sync.py export --full                      # 可分享的压缩快照
 
-# 锦标赛：集群上走 Slurm，其他机器直接用 -j 调 runner
-sbatch slurm/tournament.sh panel --lib agents/lib --seeds 8
-sbatch slurm/tournament.sh roundrobin --from-run latest --top 24 --seeds 24
-python tools/tournament.py roundrobin --agents a.py b.py --seeds 8 -j 8
+# 锦标赛：-j 给多少核就用多少（集群上走 Slurm，见 docs/CLUSTER.md）
+export KG_FAST_ENV=1                                    # 结果相同，快 17%
+python tools/tournament.py roundrobin --agents a.py b.py --seeds 96 -j 8
+python tools/tournament.py panel --lib agents/lib --panel agents/bench3/*.py --seeds 8 -j 8
 
 python tools/leaderboard.py --run latest                # 重新生成排行榜
 ```
 
-`slurm/` 只在集群上有意义；那里的每个脚本都是薄封装，调用同一个工具并带上
-`-j $SLURM_CPUS_PER_TASK`。
+`slurm/` 只在 Vulcan 上有意义；那里的每个脚本都是薄封装，调用上面同一批工具。
 
 ---
 
@@ -89,9 +90,9 @@ smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
 循环赛（`O(n²)`），把每一局持久化到 SQLite，并拟合 **Bradley-Terry** 强度 ——
 和 Kaggle 用于最终排行榜的是同一个估计量。
 
-每一局都落进集群上的 `data/arena.sqlite`，并镜像到 **Cloudflare D1**，所以协作者
-不需要集群账号也不需要下载文件就能查询。同步是单向的，本地到远端；见
-`docs/CONTRIBUTING.md` 的 "The sync contract"。
+每一局都落进 `data/arena.sqlite`，并镜像到 **Cloudflare D1**，所以协作者不需要
+下载文件就能查询全部证据。同步是单向的，本地到远端；见 `docs/CONTRIBUTING.md`
+的 "The sync contract"。
 
 ---
 
@@ -109,7 +110,7 @@ smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
                 agents/spar/*.py           从真实天梯回放重建的对手 —— 每个场地都要带上
                 agents/lib/manifest.json   名字、原子、源码哈希
                         │
-                        │  sbatch slurm/tournament_array.sh
+                        │  tools/tournament.py  (集群上分片跑)
                         ▼
   证据层        data/arena.sqlite          有史以来的每一局
                   agents    名字、原子、源码哈希
@@ -170,7 +171,7 @@ reference/
   docs/            比赛数据集里的官方 README.md 和 AGENTS.md
 requirements/      base.txt、nodeps.txt、lock.txt —— 按安装语义拆分
 submissions/       每一份发给 Kaggle 的文件的精确快照
-slurm/             集群专用封装
+slurm/             Vulcan 专用封装（可选，见 docs/CLUSTER.md）
 site/              生成的排行榜页面
 ```
 
@@ -236,8 +237,10 @@ bash tools/fetch_fields.sh           # 对手 —— 新克隆一个都没有
 | 会不会崩 | `python tools/stress.py <agent>.py -j 8` |
 | 一局，逐日 | `python tools/trace.py <agent>.py starter` |
 | A 是否优于 B | `python tools/eval.py h2h a.py b.py --seeds 96 -j 32` |
-| 对整个场地 | `sbatch --array=0-15 --cpus-per-task=32 --mem=40G --time=00:30:00 slurm/tournament_array.sh panel --agents <agent>.py --panel agents/bench3/*.py --seeds 96 --jobs 32 --label mine` |
-| 把分片汇总进库 | `python tools/tournament.py ingest --shards data/shards/mine` |
+| 对整个场地 | `python tools/tournament.py panel --agents <agent>.py --panel agents/bench3/*.py --seeds 96 -j 8 --label mine` |
+
+八核笔记本上，最后一行约 15 分钟。更大的跑数见 [`docs/CLUSTER.md`](docs/CLUSTER.md)，
+或者直接拿别人跑好的数据库。
 
 **不要手写策略文件。** 在 `tools/registry.py` 里加一个原子选项然后重新生成 ——
 名字就是定义，而且所有生成的策略共用一条执行路径，比较才公平。
@@ -291,6 +294,7 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 | [`docs/LADDER_FIELD.md`](docs/LADDER_FIELD.md) | 真实对手在做什么，以及本地排名为什么没预测到 |
 | [`docs/ENGINE_CHANGES.md`](docs/ENGINE_CHANGES.md) | 对 agent 的每一次改动、它测出了什么、以及被否决的那些 |
 | [`docs/GHOSTS.md`](docs/GHOSTS.md) | 怎么在本地对着天梯**顶端**测量 |
+| [`docs/CLUSTER.md`](docs/CLUSTER.md) | Vulcan 集群专用 —— 没有账号可以完全跳过 |
 | [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) | 什么时候提交、提交什么，以及额度机制 |
 | [`docs/ATOM_EFFECTS.md`](docs/ATOM_EFFECTS.md) | 每个原子选项值多少 —— 部分已被取代，见开头提示 |
 | [`docs/STRATEGY_LIBRARY.md`](docs/STRATEGY_LIBRARY.md) | 原子分类法和边界情况 |

@@ -27,6 +27,7 @@ everything after that.
 | provenance for any single number | `docs/RUNS.md` | `runs` table |
 | what every script does | `docs/TOOLS.md` | — |
 | conventions, and how to submit | `docs/CONTRIBUTING.md` | — |
+| **running on the Vulcan cluster** *(optional -- skip if you have no account)* | `docs/CLUSTER.md` | `slurm/*.sh` |
 | the current ranking | `docs/LEADERBOARD.md` *(generated)* | `tools/leaderboard.py` |
 
 ---

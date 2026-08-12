@@ -19,22 +19,23 @@ Kaggriculture 是一个 Kaggle **仿真类**比赛：你提交的是一个**程�
 
 ## 1. 环境搭建（10 分钟）
 
-**这个项目在 Vulcan 集群和普通笔记本上都能跑。** 除了 Slurm 以外一切行为一致；
-`bootstrap.sh` 和 `setup_env.sh` 会自动检测所处环境。
-
-你需要 Python 3.9+（3.11 与集群和 Kaggle 自身运行时一致），以及你**自己的**
+**一台普通笔记本就够了。** 这份指南全程假设你在笔记本上，不需要任何集群账号。
+唯一的硬性要求是 Python 3.9+（3.11 与 Kaggle 自身运行时一致），加上你**自己的**
 Kaggle API 凭据。
 
 ```bash
-git clone <repo> Kaggriculture      # 在集群上请放到 $SCRATCH 下面
+git clone <repo> Kaggriculture
 cd Kaggriculture
 
 bash tools/bootstrap.sh             # 建立 venv/，并用一局真实对局验证
 ```
 
-在集群上它会 `module python/3.11.5`，并从 Compute Canada 的 wheelhouse 取
-`numpy`/`pandas`。在笔记本上它使用 `PATH` 里的 `python3`（可用
-`PYTHON=/path/to/python3.11` 覆盖），全部从 PyPI 安装。两边环境一致。
+它使用 `PATH` 里的 `python3`（可用 `PYTHON=/path/to/python3.11` 覆盖），
+从 PyPI 安装全部依赖。
+
+> 如果你**确实**有 Vulcan 集群账号，同一个脚本会自动检测并改走 `module load` 和
+> Compute Canada 的 wheelhouse，两边环境等价。集群相关的一切都收在
+> `docs/CLUSTER.md` 里，其余文档都不假设你有集群。
 
 然后把**你自己的** Kaggle 凭据放进 `.kaggle/`：
 
@@ -59,7 +60,7 @@ python tools/registry.py gen --plan all --out agents/lib   # 生成策略库
 `tools/registry.py` 派生。要改就重新生成，不要手编辑；改动任一源文件后也要重新生成。
 
 `data/arena.sqlite` 同样 git-ignored，因为它对 git 来说太大而且可重建。请**拷贝**
-而不是重跑 —— 它代表数小时的 32 核算力：
+而不是重跑 —— 它代表几十小时的算力：
 
 ```bash
 # 有它的人导出一份快照
@@ -87,10 +88,10 @@ python tools/d1.py query "SELECT json_extract(a.atoms,'\$.labour') labour,
 python tools/d1.py mirror local.sqlite    # 或者把它拉成一个本地文件
 ```
 
-**为什么需要 bootstrap 而不是直接 `pip install -r`：** `kaggle-environments` 声明依赖
-`open_spiel`，那个包要从源码编译，在这个集群上会失败。所以它是**故意**用 `--no-deps`
-安装的，`numpy`/`pandas` 从 Compute Canada wheelhouse 取。**其他**环境
-（`lux_ai_s3`、`halite`、`open_spiel_env`）的导入错误会打到 stderr，这是预期内的。
+**为什么需要 bootstrap 而不是直接 `pip install -r`：** `kaggle-environments` 声明了
+19 个依赖，其中 `open_spiel` 要从源码编译、在多数机器上会失败，而 Kaggriculture 实际
+只用到三个。所以它是**故意**用 `--no-deps` 安装的。**其他**环境（`lux_ai_s3`、
+`halite`、`open_spiel_env`）的导入错误会打到 stderr，这是预期内的。
 
 ---
 
@@ -148,37 +149,25 @@ ls agents/lib | head                   # 生成的库
 
 ## 4. 跑一次锦标赛（20 分钟）
 
-**在集群上** —— 永远不要在登录节点跑。一局（约 2.7 秒）没问题，一场锦标赛不行。
-
 ```bash
-sbatch slurm/tournament.sh roundrobin \
-    --agents agents/barnyard.py agents/lib/homestead-crew-orchardherd-flood-blind-muck.py starter \
-    --seeds 24 --label "my-first-run"
+export KG_FAST_ENV=1               # 跳过 schema 校验，结果相同，快 17%
 
-squeue -u $USER                    # 等它
-tail -f logs/tourney-<jobid>.out
-```
-
-**在笔记本上** —— 同一个 runner，直接调用，按你的核数调整：
-
-```bash
 python tools/tournament.py roundrobin \
     --agents agents/barnyard.py agents/lib/homestead-crew-orchardherd-flood-blind-muck.py starter \
     --seeds 8 --label "my-first-run" -j $(python -c 'import os;print(os.cpu_count())')
 ```
 
-**现实地估算预算**：一局约 2.7 秒单核。八个核约 3 局/秒，所以上面这个三 agent 的跑数
-（48 局）不到一分钟；但整个策略库的筛选（数万局）要几个小时。全库筛选是集群任务，
-其余在本地都很舒服。
+**现实地估算预算**：每核每秒约 0.375 局。八个核约 3 局/秒：
 
-大规模跑数请分片，永远不要让 array 任务碰数据库：
+| 你想跑 | 8 核笔记本 |
+|---|---|
+| 上面这个三 agent 的跑数（48 局） | 十几秒 |
+| 一次有统计效力的 A/B（每臂 384 局） | 约 4 分钟 |
+| 对整个 `bench3` 场地筛一个 agent（约 3 千局） | 约 15 分钟 |
+| 整个策略库的全量筛选（数万局） | 几小时 |
 
-```bash
-sbatch --array=0-15 --cpus-per-task=32 --mem=40G --time=00:30:00 \
-    slurm/tournament_array.sh panel --agents agents/mine/*.py \
-    --panel agents/bench3/*.py --seeds 96 --jobs 32 --label mine
-python tools/tournament.py ingest --shards data/shards/mine
-```
+**前三行在笔记本上完全可行**，只有最后一行值得动用集群（`docs/CLUSTER.md`）。
+另一个办法是直接拿别人跑好的证据：`python tools/sync.py import dist/arena-full.sqlite.xz`。
 
 然后：
 
@@ -187,9 +176,6 @@ python tools/db.py stats                    # 有史以来跑过什么
 python tools/db.py top --run latest         # 排名
 python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md + site/
 ```
-
-吞吐参考：带 `KG_FAST_ENV=1` 时每核每秒 0.375 局，32 核约 12 局/秒。一次有统计效力的
-A/B（每臂 384 局）大约花一个计算节点几十秒。
 
 ---
 
@@ -250,18 +236,19 @@ A/B（每臂 384 局）大约花一个计算节点几十秒。
 
 ---
 
-## 8. 集群礼仪
+## 8. 保住证据
 
-Vulcan 的登录节点是共享的。一局没问题，比这更大的都走 Slurm。这个工作负载是纯 CPU 的
-—— **永远不要申请 GPU**。
+`data/arena.sqlite` 是这里唯一不可替代的文件 —— 它是 130 万局的记录，所有文档里的
+数字都追溯到它。它是 git-ignored 的（对 git 来说太大），所以**它只存在于跑过它的那台
+机器上**。
+
+拿到它 / 分享它：
 
 ```bash
-sbatch slurm/tournament.sh ...     # 32 核，正式跑数的默认值
-salloc --account=aip-zhouyang --time=02:00:00 --cpus-per-task=16 --mem=32G
+python tools/sync.py export --full      # 有它的人导出，几 MB
+python tools/sync.py import <文件>       # 你安装
+python tools/d1.py top -n 20            # 或者不下载，直接查远端镜像
 ```
 
-**短任务立刻开跑，长任务排队。** 同样的工作量在 `--time=03:00:00` 加每任务 64 核下
-排了 78 分钟；在 `--time=00:30:00` 加 32 核下，十六个节点上立即开始。
-
-`$SCRATCH` 有 5 TB，**不备份**，60 天不活动会被清理（年龄取 `min(atime, ctime)`）。
-`data/arena.sqlite` 是这里唯一不可替代的文件 —— 如果你在意，拷一份到 `~/projects/`。
+如果你在 Vulcan 集群上工作，还有几条集群专属的注意事项 —— 全都收在
+`docs/CLUSTER.md`，其余文档都不假设你有集群。
