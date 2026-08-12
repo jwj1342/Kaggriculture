@@ -30,6 +30,9 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db as DB  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from stats import bradley_terry
+
 # Anchors span the strategy space so a panel score is informative: a strong
 # metered farm, a flooder, a hoarder, a land-light farm, and two weak controls.
 # The public reference agents (agents/ref/, MIT — see agents/ref/NOTICE). Tiers
@@ -150,23 +153,6 @@ def _play(job):
                 "status": ["ERROR", "ERROR"], "shops": [], "prices": {},
                 "digest": [{}, {}], "wall": time.perf_counter() - t0,
                 "error": repr(e)[:200]}
-
-
-def bradley_terry(wins, games, names, iters=2000, tol=1e-11):
-    p = {n: 1.0 for n in names}
-    for _ in range(iters):
-        new = {}
-        for i in names:
-            num = sum(wins.get((i, j), 0.0) for j in names if j != i)
-            den = sum(games.get((i, j), 0) / (p[i] + p[j]) for j in names
-                      if j != i and games.get((i, j), 0))
-            new[i] = num / den if den > 0 else p[i]
-        tot = sum(new.values()) or 1.0
-        new = {k: max(v, 1e-12) / tot * len(names) for k, v in new.items()}
-        if max(abs(new[k] - p[k]) for k in names) < tol:
-            return new
-        p = new
-    return p
 
 
 def short(path):

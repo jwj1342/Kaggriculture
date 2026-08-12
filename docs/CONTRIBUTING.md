@@ -187,6 +187,31 @@ a 1287.2 in one night: `kaggle competitions submissions kaggriculture | head -5`
 
 ---
 
+## Tests
+
+There is one test file and it covers `tools/stats.py`:
+
+```bash
+python tests/test_stats.py
+```
+
+That is not an oversight waiting to be fixed everywhere. Most of this codebase
+is I/O against Kaggle, SQLite and a 720-turn simulator, and it is checked by
+harnesses that run the real thing -- `tools/stress.py` (28 pathological
+configurations), `ghost.py verify`, `package.sh` (unpacks the archive, resolves
+`get_last_callable`, plays a full episode), and `hybrid.py`'s `_verify`, which
+exists because a spliced agent can compile, load, and silently run the *wrong*
+function.
+
+`stats.py` is different: it is pure, it has no dependencies, and a drift in it
+would be invisible -- a wrong ranking looks exactly like a right one. **That is
+the test to write for: something whose failure mode is a plausible number.**
+If you add another pure module, give it a test file. If you add another Kaggle
+or simulator wrapper, give it a verification step that runs the real thing
+instead.
+
+---
+
 ## What goes in the database, and what does not
 
 `data/arena.sqlite` holds every episode ever run: result, status, shop draw,

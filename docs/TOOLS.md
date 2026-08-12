@@ -316,6 +316,27 @@ Output goes to `agents/hybrid/` (git-ignored). **These are instruments, not
 submissions** — see `docs/ROADMAP.md` §5.3 for why a copy of the public line
 cannot rank above the crowd that already runs it.
 
+### `tools/stats.py`
+The two estimators every ranking here depends on, and the only pure module in
+the repo: `bradley_terry`, `wilson`, `resolved`, `elo`. No database, no
+filesystem, no network.
+
+It exists because `bradley_terry` lived in both `league.py` and
+`tournament.py` and the copies had already drifted on their convergence settings
+(1,000 iterations at 1e-10 against 2,000 at 1e-11). They agreed to 1.7e-10 on a
+twelve-agent case so nothing published was wrong -- but the estimator behind
+every number in `docs/` should not exist twice, because a fix to one would not
+reach the other.
+
+`tests/test_stats.py` covers it: transitivity, a tied field, fractional wins
+from ties, the empty case, and a rock-paper-scissors cycle collapsing to equal
+strengths -- which is the numerical form of "any ranking is a ranking against
+its field".
+
+```bash
+python tests/test_stats.py
+```
+
 ### `tools/topeps.py`
 Digests Kaggle's daily dumps of the highest-scoring episodes -- games between
 players rated ~3,100 that we are never matched into.

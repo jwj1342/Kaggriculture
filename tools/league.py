@@ -38,6 +38,9 @@ import tempfile
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from stats import bradley_terry
+
 
 def _play(job):
     left, right, seed, steps = job
@@ -54,30 +57,6 @@ def _play(job):
         "shops": list(obs["town"]["unlocked_shops"]),
         "prices": dict(obs["market"]["prices"]),
     }
-
-
-def bradley_terry(wins, games, names, iters=1000, tol=1e-10):
-    """Zermelo / MM iteration for BT strengths. wins[(i,j)] may be fractional."""
-    p = {n: 1.0 for n in names}
-    for _ in range(iters):
-        new = {}
-        for i in names:
-            num = sum(wins.get((i, j), 0.0) for j in names if j != i)
-            den = 0.0
-            for j in names:
-                if i == j:
-                    continue
-                nij = games.get((i, j), 0)
-                if nij:
-                    den += nij / (p[i] + p[j])
-            new[i] = num / den if den > 0 else p[i]
-        total = sum(new.values()) or 1.0
-        new = {k: max(v, 1e-12) / total * len(names) for k, v in new.items()}
-        if max(abs(new[k] - p[k]) for k in names) < tol:
-            p = new
-            break
-        p = new
-    return p
 
 
 def make_variants(spec, out_dir):
