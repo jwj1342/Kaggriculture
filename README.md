@@ -25,12 +25,37 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
 
 ```bash
 bash tools/bootstrap.sh          # 建立 venv/，用一局真实对局验证
-# 把你自己的 Kaggle 凭据放进 .kaggle/  （见 ONBOARDING §1）
 source setup_env.sh              # 每次会话，任意目录下都能用
 ```
 
-`setup_env.sh` 激活 `venv/` 并把**所有**凭据和缓存路径重定向到这个目录，所以这里的
-任何操作都不会碰你的主目录。
+### 你需要自己的 Kaggle API 密钥
+
+**仓库里没有、也不会有任何人的密钥。** 每个人用自己的，从
+<https://www.kaggle.com/settings/api> 点 "Create New Token" 拿到：
+
+```bash
+mkdir -p .kaggle && chmod 700 .kaggle
+printf '{"username":"你的用户名","key":"你的key"}' > .kaggle/kaggle.json
+chmod 600 .kaggle/*
+source setup_env.sh
+kaggle competitions list -s kaggriculture     # 验证可用
+```
+
+`setup_env.sh` 把 `KAGGLE_CONFIG_DIR` 指向**项目自己的 `.kaggle/`**，所以这里不碰
+`~/.kaggle`，一台机器上可以放多个账号，而且 `.kaggle/` 是 git-ignored 的。
+
+**三件事需要它**，缺了任何一件都会卡住：
+
+| 你要做 | 用到的命令 | 没有密钥的后果 |
+|---|---|---|
+| 拿到对手场地 | `bash tools/fetch_fields.sh` | 一个对手都没有 —— 新克隆的 `agents/` 是空的 |
+| 拉对局数据分析 | `tools/ladder.py pull`、`tools/topeps.py pull`、`tools/ghost.py make` | 拉不到任何回放 |
+| 提交到排行榜 | `kaggle competitions submit` | 交不上去 |
+
+**只跑本地锦标赛不需要密钥** —— 前提是有人已经把 `agents/` 下的场地给了你。
+
+`setup_env.sh` 还把**所有**缓存路径重定向到这个目录，所以这里的任何操作都不会碰
+你的主目录。
 
 依赖放在 `requirements/`，按**安装语义**而不是按用途拆分，因为一个扁平文件表达不了：
 
@@ -85,6 +110,41 @@ smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
 所以单个产品的需求在不同对局间会摆动 **49 倍**。
 
 **这个仓库里没有任何版本号。**
+
+### 但这套库不是分数最高的那个结构
+
+**必须先知道这件事，否则你会往一条已经量到头的路上投入时间。**
+
+这个原子库是一个**在线调度器**：每回合扫描棋盘、生成任务清单、把任务派给最近的空闲
+单位。十一个落地的引擎改动把它从 623 推到 **857**，然后停住了。
+
+天梯顶端跑的是另一套结构 —— **剧本 + 软包装**：
+
+```
+   剧本 (trace)        一条离线算好的 720 回合动作序列，按回合号查表，不看棋盘
+        │
+        ▼
+   软包装 (wrapper)     一层薄的自适应逻辑，只重写市场动作：
+                        供给表、对克隆对手抢先卖出、终局收割清仓
+```
+
+三个场地一致的实测：
+
+| | 对 `bench3`+参考 | 对 156 条真实榜首轨迹 | 五方对打 |
+|---|---|---|---|
+| 剧本 + 软包装 | **99.2%** | **99.4%** | **92.7%** |
+| 只有剧本（原始录音） | 66.6% | 70.5% | **0.0%** |
+| 我们的在线调度器 | 60.9% | 57.7% | — |
+
+两个反直觉的地方，都是量出来的：
+
+- **原始录音换个种子就塌**（最好的那簇只剩 11.8%，另一簇 0.9%）—— 开环动作遇到不同的
+  杂草会大量变成静默空操作。跑的人最多的那条线是**最耐操**的，不是最强的。
+- **值钱的是软包装，不是剧本。** 原始录音对每一个带软包装的 agent 都是 **0/3072**。
+  而那层包装**只重写 `action["market"]`** —— 农场动作原封不动来自剧本。
+
+完整证据和它推翻的三个旧结论在 [`docs/ROADMAP.md`](docs/ROADMAP.md)；
+唯一还有前 10 天花板的路线是 §7 C：**自己搜一条剧本 + 自己写市场包装**，两样都要。
 
 一切在接近排行榜之前都先在本地测量。`tools/tournament.py` 跑面板筛选（`O(n)`）和
 循环赛（`O(n²)`），把每一局持久化到 SQLite，并拟合 **Bradley-Terry** 强度 ——
@@ -189,15 +249,10 @@ site/              生成的排行榜页面
 
 ### 1. 我该怎么提交到 Kaggle？
 
-**先配凭据。** `setup_env.sh` 把 `KAGGLE_CONFIG_DIR` 指向项目自己的 `.kaggle/`，
-所以这里不碰 `~/.kaggle`，你可以在一台机器上放多个账号：
+**先配好你自己的密钥**（见上面「你需要自己的 Kaggle API 密钥」），然后确认额度：
 
 ```bash
-mkdir -p .kaggle && chmod 700 .kaggle
-printf '{"username":"YOU","key":"..."}' > .kaggle/kaggle.json   # kaggle.com/settings/api
-chmod 600 .kaggle/*
-source setup_env.sh
-kaggle competitions submission-limits kaggriculture     # 验证可用
+kaggle competitions submission-limits kaggriculture
 ```
 
 **然后提交。** 单文件 agent 直接作为 `main.py` 上传；多文件的必须打成 tar.gz，
@@ -229,7 +284,7 @@ bash tools/package.sh agents/mine mine
 ```bash
 source setup_env.sh                  # 任意目录，任意机器
 bash tools/bootstrap.sh              # 只在 venv/ 缺失时需要
-bash tools/fetch_fields.sh           # 对手 —— 新克隆一个都没有
+bash tools/fetch_fields.sh           # 对手 —— 新克隆一个都没有，这一步要 Kaggle 密钥
 ```
 
 然后，从便宜到贵：
@@ -253,6 +308,8 @@ bash tools/fetch_fields.sh           # 对手 —— 新克隆一个都没有
 三个改动在四种子下读数为正，在每臂 2,304 局下落后 21 到 44 分。
 
 ### 3. 我该怎么分析一局对战？
+
+下面每一条都要**你自己的 Kaggle 密钥**（见上面那一节）—— 它们都在向 Kaggle 拉数据。
 
 **你自己的天梯对局。** Kaggle 保存回放；`ladder.py` 拉下来，留一份约 1.4 KB 的
 摘要，删掉 19 MB 的原件：
@@ -312,6 +369,9 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 ## 目前知道的事
 
 简版；证据在 `docs/ROADMAP.md`，任何关于真实场地的事在 `docs/LADDER_FIELD.md`。
+
+**最重要的一条在上面「核心思路」里**：天梯顶端是「剧本 + 软包装」，而我们这套原子库是
+在线调度器，两者差 40 个百分点，而且不是调参能补的。
 
 **差距不在开局，在全程。** 把一条录制的开局拼接到我们的引擎前面并扫描交接日，
 胜率从 54.0%（纯我们）单调升到 98.6%（纯剧本），**曲线不见顶**。不存在一个"我们的
