@@ -340,29 +340,17 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 
 ## 文档
 
-这个项目知道的一切都在 `docs/` 里。没有任何东西只存在于某个人的脑子里或聊天记录里。
+这个项目知道的一切都在 [`docs/`](docs/) 里 —— 完整目录见
+**[`docs/README.md`](docs/README.md)**，按问题查用 [`docs/MAP.md`](docs/MAP.md)。
 
-| 文档 | 内容 |
+四份起步必读：
+
+| | |
 |---|---|
-| [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | **从这里开始** —— 搭建、第一次锦标赛、会咬你的五件事 |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | **这个项目走到哪、为什么** —— 离开过几天就先读这个 |
-| [`docs/VALIDATING.md`](docs/VALIDATING.md) | **我的改动是真的吗？** 两个场地对应两个层级，以及两种自信地得出错误答案的方式 |
-| [`docs/GAME_ECONOMICS.md`](docs/GAME_ECONOMICS.md) | 引擎实际奖励什么；官方页面写错的三处 |
-| [`docs/EVALUATION.md`](docs/EVALUATION.md) | 完整版：要跑多少局，以及随机性到底在做什么 |
-| [`docs/MAP.md`](docs/MAP.md) | **哪份文档回答哪个问题，每个行为在代码的哪一行** |
-| [`docs/LADDER_FIELD.md`](docs/LADDER_FIELD.md) | 真实对手在做什么，以及本地排名为什么没预测到 |
-| [`docs/ENGINE_CHANGES.md`](docs/ENGINE_CHANGES.md) | 对 agent 的每一次改动、它测出了什么、以及被否决的那些 |
-| [`docs/GHOSTS.md`](docs/GHOSTS.md) | 怎么在本地对着天梯**顶端**测量 |
-| [`docs/CLUSTER.md`](docs/CLUSTER.md) | Vulcan 集群专用 —— 没有账号可以完全跳过 |
-| [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) | 什么时候提交、提交什么，以及额度机制 |
-| [`docs/ATOM_EFFECTS.md`](docs/ATOM_EFFECTS.md) | 每个原子选项值多少 —— 部分已被取代，见开头提示 |
-| [`docs/STRATEGY_LIBRARY.md`](docs/STRATEGY_LIBRARY.md) | 原子分类法和边界情况 |
-| [`docs/ADVERSARIAL.md`](docs/ADVERSARIAL.md) | 能靠压制对手取胜吗？（部分能，但不是你想的那样） |
-| [`docs/ENHANCED_BASELINE.md`](docs/ENHANCED_BASELINE.md) | 那个基线 agent：每个选择都追溯到一次测量，外加一处更正 |
-| [`docs/TOOLS.md`](docs/TOOLS.md) | 每个脚本：做什么、读写什么、已知局限 |
-| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | 约定、同步契约、加原子、提交 |
-| [`docs/RUNS.md`](docs/RUNS.md) | 溯源：每次实验和它支撑的那条主张 |
-| [`docs/LEADERBOARD.md`](docs/LEADERBOARD.md) | 由数据库生成 —— 不要手编辑 |
+| [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | 第一个小时：搭建、跑通、会咬你的五件事 |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 走到哪、为什么，以及哪些结论被推翻了 |
+| [`docs/VALIDATING.md`](docs/VALIDATING.md) | 我的改动是真的吗 —— 出数之前读 |
+| [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) | 碰排行榜之前读 |
 
 ---
 
