@@ -31,9 +31,13 @@ import os
 import subprocess
 import sys
 from collections import Counter
+import db as DB  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import db as DB  # noqa: E402
+from kaggle_cli import dataset_file, dataset_files
+from board import survey
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 WORK = "data/topeps"
 INDEX_DS = "kaggle/kaggriculture-episodes-index"
@@ -59,21 +63,9 @@ def _digest(steps, seat):
     """Board, trades, and -- new here -- what the units spent their turns on."""
     final = steps[-1][0]["observation"]
     farm = final["farms"][seat]
-    crops, animals, structs = Counter(), Counter(), Counter()
-    weeds = empty = 0
-    for row in farm["tiles"]:
-        for t in row:
-            if t is None:
-                empty += 1
-            elif isinstance(t, dict):
-                if t.get("kind") == "PLANT":
-                    crops[t["crop"]] += 1
-                elif t.get("kind") == "WEED":
-                    weeds += 1
-                elif "animal" in t:
-                    animals[t["animal"]] += 1
-                else:
-                    structs[t["kind"]] += 1
+    b = survey(farm)
+    crops, animals, structs = b["crops"], b["animals"], b["structs"]
+    weeds, empty = b["weeds"], b["empty"]
 
     sold, bought = Counter(), Counter()
     acts = Counter()
@@ -137,24 +129,6 @@ def _digest(steps, seat):
             "gap_hist": {str(k): v for k, v in sorted(gaps.items())}}
 
 
-def _files(slug):
-    out, token = [], None
-    while True:
-        cmd = ["kaggle", "datasets", "files", slug, "--page-size", "200"]
-        if token:
-            cmd += ["--page-token", token]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300).stdout
-        token = None
-        for line in r.splitlines():
-            if line.startswith("Next Page Token = "):
-                token = line.split(" = ", 1)[1].strip()
-                continue
-            p = line.split()
-            if p and p[0].endswith(".json"):
-                out.append(p[0])
-        if not token:
-            return out
-
 
 def cmd_index(args):
     os.makedirs(WORK, exist_ok=True)
@@ -184,7 +158,7 @@ def cmd_pull(args):
     have = {r[0] for r in con.execute("SELECT episode_id FROM top_episodes")}
     slug = f"kaggle/kaggriculture-episodes-{args.date}"
 
-    names = _files(slug)
+    names = dataset_files(slug)
     todo = [n for n in names if int(n[:-5]) not in have][:args.limit]
     print(f"{slug}: {len(names)} files listed, {len(todo)} new")
 
@@ -193,17 +167,7 @@ def cmd_pull(args):
         ep = int(name[:-5])
         path = os.path.join(WORK, name)
         try:
-            subprocess.run(["kaggle", "datasets", "download", slug, "-f", name,
-                            "-p", WORK, "--force"],
-                           capture_output=True, text=True, timeout=900)
-            if not os.path.exists(path):          # some CLI versions leave a .zip
-                zp = path + ".zip"
-                if os.path.exists(zp):
-                    import zipfile
-                    with zipfile.ZipFile(zp) as z:
-                        z.extractall(WORK)
-                    os.remove(zp)
-            if not os.path.exists(path):
+            if dataset_file(slug, name, WORK) is None:
                 print(f"    {ep}: download failed")
                 continue
             size = os.path.getsize(path)

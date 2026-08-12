@@ -49,20 +49,13 @@ import sys
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from stats import wilson
+
 
 # --------------------------------------------------------------------------
 # statistics
 # --------------------------------------------------------------------------
-
-def wilson(wins, n, z=1.96):
-    """Wilson score interval -- behaves sanely at 0%, 100% and small n."""
-    if n == 0:
-        return (0.0, 0.0, 0.0)
-    p = wins / n
-    d = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / d
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    return (p, max(0.0, centre - half), min(1.0, centre + half))
 
 
 def bootstrap_mean(xs, iters=5000, alpha=0.05, seed=0):
@@ -117,7 +110,8 @@ def _summarise(name, records, label=""):
     wins = sum(1 for a, b, _ in records if a > b)
     ties = sum(1 for a, b, _ in records if a == b)
     margins = [a - b for a, b, _ in records]
-    p, lo, hi = wilson(wins, n)
+    lo, hi = wilson(wins, n)
+    p = wins / n if n else 0.0
     m, mlo, mhi = bootstrap_mean(margins)
     mine = [a for a, _, _ in records]
 

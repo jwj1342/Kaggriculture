@@ -31,11 +31,12 @@ import base64
 import gzip
 import json
 import os
-import subprocess
 import random
 import sys
-import zipfile
 from collections import Counter
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from kaggle_cli import dataset_file, dataset_files
 
 # Final-money bands. A day's dump spans $31k to $139k and a field of only the
 # extremes measures something other than the ladder.
@@ -106,34 +107,7 @@ def agent(obs):
 
 
 def _fetch(date, name):
-    slug = f"kaggle/kaggriculture-episodes-{date}"
-    path = os.path.join(WORK, name)
-    subprocess.run(["kaggle", "datasets", "download", slug, "-f", name,
-                    "-p", WORK, "--force"], capture_output=True, timeout=900)
-    if not os.path.exists(path) and os.path.exists(path + ".zip"):
-        with zipfile.ZipFile(path + ".zip") as z:
-            z.extractall(WORK)
-        os.remove(path + ".zip")
-    return path if os.path.exists(path) else None
-
-
-def _listing(slug):
-    out, token = [], None
-    while True:
-        cmd = ["kaggle", "datasets", "files", slug, "--page-size", "200"]
-        if token:
-            cmd += ["--page-token", token]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300).stdout
-        token = None
-        for line in r.splitlines():
-            if line.startswith("Next Page Token = "):
-                token = line.split(" = ", 1)[1].strip()
-                continue
-            p = line.split()
-            if p and p[0].endswith(".json"):
-                out.append(p[0])
-        if not token:
-            return out
+    return dataset_file(f"kaggle/kaggriculture-episodes-{date}", name, WORK)
 
 
 def cmd_make(args):
@@ -165,7 +139,7 @@ def cmd_make(args):
     dates = [d.strip() for d in (args.dates or args.date).split(",") if d.strip()]
     per_day = {}
     for d in dates:
-        per_day[d] = _listing(f"kaggle/kaggriculture-episodes-{d}")
+        per_day[d] = dataset_files(f"kaggle/kaggriculture-episodes-{d}")
         print(f"  {d}: {len(per_day[d])} episodes listed")
 
     rng = random.Random(args.seed)

@@ -26,12 +26,13 @@ import sys
 import time
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db as DB  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from stats import bradley_terry
+from board import survey
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Anchors span the strategy space so a panel score is informative: a strong
 # metered farm, a flooder, a hoarder, a land-light farm, and two weak controls.
@@ -63,21 +64,9 @@ def _digest(env, p):
     steps = env.steps
     final = steps[-1][0].observation
     farm = final["farms"][p]
-    crops, animals, structs = C(), C(), C()
-    weeds = empty = 0
-    for row in farm["tiles"]:
-        for t in row:
-            if t is None:
-                empty += 1
-            elif isinstance(t, dict):
-                if t.get("kind") == "PLANT":
-                    crops[t["crop"]] += 1
-                elif t.get("kind") == "WEED":
-                    weeds += 1
-                elif "animal" in t:
-                    animals[t["animal"]] += 1
-                else:
-                    structs[t["kind"]] += 1
+    b = survey(farm)
+    crops, animals, structs = b["crops"], b["animals"], b["structs"]
+    weeds, empty = b["weeds"], b["empty"]
     sold = C()
     bought = C()
     hires = 0

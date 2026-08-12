@@ -314,6 +314,25 @@ Output goes to `agents/hybrid/` (git-ignored). **These are instruments, not
 submissions** — see `docs/ROADMAP.md` §5.3 for why a copy of the public line
 cannot rank above the crowd that already runs it.
 
+### `tools/kaggle_cli.py` and `tools/board.py`
+The two things every analysis tool here was reimplementing.
+
+`kaggle_cli.py` -- `dataset_files(slug)` follows `Next Page Token` to the end
+(the daily dumps run to hundreds of files and the CLI pages, so a single call
+silently returns a prefix), and `dataset_file(slug, name, dest)` downloads one,
+unpacking the `.zip` some CLI versions hand back instead. `ghost.py` and
+`topeps.py` each had a byte-identical copy of the listing under a different name
+(`_listing` and `_files`), so a fix to one would never have reached the other.
+
+`board.py` -- `survey(farm)` counts crops, animals, structures, weeds and empty
+tiles out of an observation; `ready(farm)` sums unharvested produce. Four tools
+had their own copy of that nested loop, differing only in whether they truncated
+names for display, which is presentation rather than measurement.
+
+Both are deliberately thin. `kaggle_cli` shells out to the same commands a human
+would type, because that is the only interface here with a stable contract and
+because a failure then looks like something you can paste and rerun.
+
 ### `tools/stats.py`
 The two estimators every ranking here depends on, and the only pure module in
 the repo: `bradley_terry`, `wilson`, `resolved`, `elo`. No database, no
