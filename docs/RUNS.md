@@ -269,6 +269,32 @@ stated implication that replaying recordings tops out near 1,900.
 > playing that same plan is still a real measurement of *something*. It is just
 > not a ceiling, because the plan and the replay penalty were never separated.
 
+### The replay penalty, measured: 877 points
+
+This is what `55484175` was submitted to find out, and it converged at 54
+episodes (50.0% over the trailing 18, opponent strength flat).
+
+```
+カワシギ, the team whose episode we replay      3,236.5
+topline, our open-loop replay of it            2,359.5
+-----------------------------------------------------
+open-loop replay penalty                         877
+```
+
+A recording under a market layer keeps **73%** of the rating of the adaptive
+agent that produced it. The estimate this replaced was 1,301–1,820 -- **too
+pessimistic by roughly a factor of two.**
+
+Both numbers are from 2026-08-13 16:52 UTC, when the leaderboard as a whole was
+flat over the preceding 3.5 hours (top 3,240.2 -> 3,236.5, tenth 3,094.4 ->
+3,089.0, median 738.5 -> 739.4, 4,259 -> 4,288 teams), so the +1,145 from
+`term714` to `topline` is movement and not inflation.
+
+**What it costs the road.** A prize place needs 3,089.0 and we are at 2,359.5.
+Cloning the single best recording available, with no loss at all, would reach
+3,236.5 -- and 877 of that is not obtainable, because it is not in the plan.
+Copying recordings cannot reach the prize zone; this measures by how much.
+
 ### A ladder score does not count until the agent loses a third of its games
 
 A new submission enters low and climbs by beating weaker opponents. Until it has
@@ -279,6 +305,13 @@ losing < 1/3   still climbing. The score means "at least this much" and nothing 
 losing ~ 1/3   near its level. Start reading it.
 losing ~ 1/2   converged. This is its score.
 ```
+
+Measure it on a **trailing window of ~18 episodes**, never cumulatively --
+cumulative lags forever, because the early wins against weaker opponents never
+age out. At 54 episodes `55484175` was 22.2% cumulative and 50.0% over the last
+18. Its three blocks ran 5.6% -> 11.1% -> 50.0% while mean opponent money went
+$61,245 -> $82,795 -> $82,194: **opponent strength stopped rising and the loss
+rate kept climbing, which is what convergence looks like.**
 
 `55484175` read **1695.2** at 11 episodes (11–0) and **2144.1** at 22 (21–1) --
 +449 points in forty minutes, same file, the only change being that it was still
