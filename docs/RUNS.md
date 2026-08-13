@@ -566,3 +566,119 @@ episodes, and 13–15 animals with 7 idle tiles instead of 9 and 32.
 - **The pre-database leagues used ad-hoc agent generators** (`agents/legacy/`)
   that had bugs the library engine later fixed. Treat their absolute numbers as
   indicative and their comparisons as valid only within a league.
+
+## Can we interfere with the market? Two waves, 106,000 episodes (2026-08-13)
+
+The question came from a specific model of the field: *if* every ladder opponent
+is a recording plus a market wrapper, there must be some way to move prices
+against them, because an open-loop agent cannot react. The engine says the
+premise is half right. There are exactly two channels between the two farms --
+the shared market inventory, and the end-of-day RNG, whose draw count depends on
+each farm's empty-tile count and which therefore decides which shop unlocks and
+so which market recovers. Only the first is usable on purpose.
+
+Every arm is `agents/champ/k01.py` with market constants rewritten by
+`tools/perturb.py` and played against a byte-identical copy of itself. `_TRACE`
+never varies, so planting, harvesting, hiring and buying are identical in every
+arm and nothing but market behaviour can move the result.
+
+**Controls first.** `mctl` (byte-identical copy) and `mnul` (interference overlay
+present, all dials empty) both returned 50.0% [45.7, 54.3] with a paired margin
+of $+0 ± 429. The harness is unbiased and the overlay is inert.
+
+### Every attempt to disrupt the market made the opponent richer
+
+Nineteen arms dumped, hoarded or re-slotted supply. **Not one produced a negative
+change in the opponent's bank.**
+
+```
+C.fr_straw   win 0.8%   us -$8,706   them +$9,608
+C.fr_melon   win 1.0%   us -$8,132   them +$9,133
+E.fuse_d20   win 0.0%   us -$82,229  them +$60,996
+```
+
+The reason is that we are already the disruption. The baseline lists 3,511 units
+a season and closes fertilizer and milk at $1, and that sustained selling is what
+holds the price down for the opponent. Anything that makes us sell less -- or
+wrecks our own farm so we produce less -- *removes* pressure we were already
+applying. In one traced episode the arm that hoarded wool left milk closing at
+$183 against the baseline's $1.
+
+Withdrawing as a seller is the largest gift available in this environment.
+
+### The one dial that won is a self-play artefact
+
+Extending the donor's clone-detection front-run from 1 turn to 3 scored **78.7%
+[75.0, 82.0]** against a mirror; turning it off scored 22.9%. Money barely moved
+-- Δus +$176, Δthem -$242, paired margin +$418 ± 431, which spans zero. A mirror
+match finishes near a tie by construction, so a few hundred dollars of consistent
+edge flips a quarter of the outcomes. The competition scores wins only, which is
+exactly why `docs/VALIDATING.md` ranks on win rate and not on money.
+
+Wave 2 crossed 7 horizons x 4 item sets x 2 slot policies and played all 56 cells
+against the mirror **and** against four wrapped ladder recordings. Against the
+recordings every one of the 58 agents returned **(901 wins / 992 games)** --
+identical to the episode, not merely indistinguishable. `_front_run` needs
+`_CLONE_CONFIDENCE >= 2`, which needs the opponent's public farm signature within
+distance 1; self-play satisfies that by construction and no real recording ever
+does. **None of the 78.7% transfers.**
+
+### The interaction table, and why the main effect lies
+
+```
+mirror win rate            all9     melon     prem4      wool
+h0 (off)                  21.8%     21.8%     21.8%     21.8%
+h1                         4.8%     21.8%     59.9%     59.9%
+h2                         4.8%     21.8%     78.8%     78.8%
+h3                         4.8%     21.8%     80.2%     80.2%
+h8                         4.8%     21.8%     79.0%     79.0%
+```
+
+The horizon effect exists only in one column. It is exactly zero for melon, and
+*negative* for the widened item set. `prem4` and `wool` agree in every cell,
+which means the mechanism only ever fires on wool and the four-product set is
+decoration. The marginal main effect of h3 is 46.8% -- an average over cells
+worth +58, 0 and -17 points, and a number that would have been read as a modest
+win by anyone who did not print the interaction.
+
+### Nobody on the ladder plays this dimension, and there is little room to
+
+`tools/tracefeat.py` extracts fourteen behavioural features of the market queue
+from all 371 mined lines and scores them against `wins/plays` -- real outcomes in
+real ladder episodes, not anything this repo simulated. Null: best |spearman|
+<= 0.28, the top-ranked feature changes with every play threshold, and
+`prem_unit_share` reverses sign between subsets.
+
+The structural measurement underneath it is the more useful one. Across 266,749
+recorded turns:
+
+```
+53.61%  place no market order at all
+29.87%  place exactly one
+82.26%  contain no SELL order
+```
+
+Ten slots, and 83.5% of turns use none or one of them. Slot ordering has nothing
+to order in most turns -- though 306 of 371 lines do fill all ten at some point,
+so the capacity is used in bursts and not unknown to them.
+
+### What this closes and what it leaves open
+
+Closed: market interference as a route for a recording-plus-wrapper agent. The
+channel exists, the baseline already sits at its aggressive end, and every
+implementable move along it is self-harm.
+
+Also closed: the fertilizer-subsidy hypothesis. Fertilizer has no sink anywhere
+in the engine -- no shop and no town-centre line consumes it -- so a buyer is the
+only thing that lowers its inventory, and we close it near $1 every season. The
+arm that bought it cheap scored 15.1% at a $5 cap and 4.1% at $20, and made the
+opponent richer. Buying lifts the price, which pays the seller.
+
+Left open: the queue is 10 wide and 83.5% of turns use at most one slot. The
+unused capacity is in *actions*, not in ordering -- HIRE and BUY_LAND are market
+orders too. Nothing here tested that.
+
+Caveat on all of it: the "field" condition is four wrapped recordings, not four
+adaptive agents. The replay penalty is 877 points, so a recording is not the team
+that produced it, and an adaptive opponent could react to a price move in ways no
+recording can.
