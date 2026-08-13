@@ -114,7 +114,7 @@ echo
 echo "done. Two fields, for two different levels -- see docs/VALIDATING.md:"
 echo "  agents/wrapped/*.py    THE REAL FIELD. 100 mined ladder plans, one shared"
 echo "                         adaptive layer. What we submitted places 64th here."
-echo "  benchmarks/strongest.py  the best of them (95.4%), committed, = CHAMPION"
+echo "  benchmarks/strongest.py  the bar to clear (source team #1), committed, = CHAMPION"
 echo "  agents/bench3/*.py     ENGINE level. Ranks agents that win 50-70% of it."
 echo "  agents/ref/{closer_cleo,slotter_silas,ledger_lena,broker_bea}.py"
 echo "                         WRAPPED level. The only field that still separates"

@@ -152,8 +152,10 @@ Grand total including these and the ablations: **well over 1.3 million episodes*
 
 | Date | Submission | Agent | Snapshot | Local evidence | Ladder |
 |---|---|---|---|---|---|
-| 2026-08-12 | *(pending)* | `closer_cleo` + terminal at 714 (resubmit) | `submissions/2026-08-11-closercleo-term714/` | 91.7% [90.9, 92.5] over a 28,080-episode round robin against the twelve most-played plans mined from 959 post-rebalance ladder episodes, beating all twelve. The field is strictly transitive, so no ensemble has anything to exploit. 28/28 stress clean. | — |
-| 2026-08-11 | *(pending)* | `closer_cleo` (third-party, unmodified) | `submissions/2026-08-11-closercleo/` | 99.2% of `bench3`+refs over 3,072 episodes and 99.4% of the 156 ghost trajectories, against 60.9% / 57.7% for our best engine. First of five in a 3,072-episode round robin among the trace agents at 92.7%, beating `slotter_silas` 88.0% and `ledger_lena` 91.9%. Raw replayed trajectories score **0.0%** against all four wrapped agents, so the value is the adaptive layer and not the trace. 28/28 stress clean. | — |
+| 2026-08-13 | `55484175` | `topline` — a recorded top-of-ladder plan under the `closer_cleo` market layer | `submissions/2026-08-13-topline/` | 92.4% over 1,920 episodes against the ten strongest plans previously mined (best incumbent 79.9%), **and** the highest-rated source team of the 371 in the library (カワシギ, #1 at 3,240). Two independent signals converge. Submitted as calibration, not as an answer — see the null result below. 28/28 stress clean; 720/720 actions identical after packaging. | pending |
+| 2026-08-12 | `55458466` | `closer_cleo` + terminal at 714 (resubmit) | `submissions/2026-08-11-closercleo-term714/` | 91.7% [90.9, 92.5] over a 28,080-episode round robin against the twelve most-played plans mined from 959 post-rebalance ladder episodes, beating all twelve. The field is strictly transitive, so no ensemble has anything to exploit. 28/28 stress clean. | **1218.6** — the same file scored 1363.7 five days earlier, see below |
+| 2026-08-11 | `55442784` | `closer_cleo` + terminal at 714 | `submissions/2026-08-11-closercleo-term714/` | Threshold sweep over 384 seeds against `bench3`, 10,800 episodes an arm: 714 reaches a 98.1% plateau against 95.2% unchanged. | **1363.7** — our best to date |
+| 2026-08-11 | `55439740` | `closer_cleo` (third-party, unmodified) | `submissions/2026-08-11-closercleo/` | 99.2% of `bench3`+refs over 3,072 episodes and 99.4% of the 156 ghost trajectories, against 60.9% / 57.7% for our best engine. First of five in a 3,072-episode round robin among the trace agents at 92.7%, beating `slotter_silas` 88.0% and `ledger_lena` 91.9%. Raw replayed trajectories score **0.0%** against all four wrapped agents, so the value is the adaptive layer and not the trace. 28/28 stress clean. | **1287.2** — our own change is worth less than the gap between two runs of it |
 | 2026-08-07 | `55332339` | `barnyard` | `submissions/2026-08-07-barnyard/` | ~67k median vs `starter`; 28/28 stress | 621.4; **47% over 59 real episodes** |
 | 2026-08-08 | `55358912` | `enhanced` (tar.gz, 5 modules) | `submissions/2026-08-08-enhanced/` | 100% vs `barnyard` and 75.8% vs the field leader, both over 384 episodes | 623.6; **49% over 35 real episodes**, level with `barnyard` |
 | 2026-08-09 | `55385371` | `marketgarden` | `submissions/2026-08-09-marketgarden/` | 34.9% vs `orchardherd` 16.1% over the balanced 960-cell factorial | 700.1 over 12 episodes |
@@ -166,6 +168,100 @@ Grand total including these and the ablations: **well over 1.3 million episodes*
 | 2026-08-10 | `55404837` | + liquidate on day 29 | `submissions/2026-08-10-mgtight-liq29/` | monotone sweep, 92.9/90.2/85.9/76.0 | **838.4** over 47 — the liquidation day is worth +69 on the ladder |
 | 2026-08-11 | `55418588` | `mgtightgrain` | `submissions/2026-08-11-mgtightgrain/` | 86.7% over 46,592 episodes | 781.1 over 38 — **bundled two changes, see below** |
 | 2026-08-11 | `55424…` | `mgtight` + here-pass, no wheat | `submissions/2026-08-11-mgtight-here/` | 2×2 factorial: here-pass +42, wheat −31; agreed by three fields | pending |
+
+### The wrapped field does not measure strategy strength (2026-08-13)
+
+This is the largest measured null result in the repo and it invalidates the way
+§10 of `docs/ROADMAP.md` was reading its own numbers.
+
+Every plan in `agents/wrapped/` was recorded from a real team's episode, and that
+team has a real ladder rating. So the local ranking can be checked against the
+thing it is supposed to predict, without submitting anything. Over all 100 plans:
+
+```
+local win% vs the source team's ladder score   pearson -0.038   spearman -0.054   n=100
+local win% vs the team's median rating         pearson -0.110   spearman -0.126
+single-episode best $ vs ladder score          pearson -0.014   spearman +0.114
+```
+
+**Zero.** With n=100 this rules out any correlation above about 0.2. The 477,225
+-episode round robin ranks 101 agents against each other very precisely and that
+ranking carries no information about which agent is actually good.
+
+The mechanism is visible without any statistics. Several teams appear in the
+field more than once, because we mined several of their episodes:
+
+| Team | Ladder | Plans mined | Local win% across them |
+|---|---|---|---|
+| THUNDER THUNDER | #364 @ 2,594 | 16 | **14% – 93%** |
+| HealthStone | #234 @ 2,741 | 14 | **15% – 81%** |
+| Seb (allegedly) | #801 @ 1,997 | 11 | 24% – 76% |
+| カワシギ | **#1 @ 3,240** | 3 | **26% – 83%** |
+
+Same team, same agent, same week. The median within-team spread is **52.6
+points**, against a full-field spread of 81.1 — **65% of the entire field's
+spread is reproduced inside one team's own episodes.** A wrapped plan's win rate
+measures which episode it was recorded from, not who recorded it.
+
+Two further facts fall out of the same check:
+
+* **The "101-agent field" is 20 sources.** 63 of the 100 plans belong to a single
+  team each, and those come from just 19 teams; two teams supply 30 of the seats.
+* **The frequency filter in `tools/wrap.py` was mostly inoperative.** Only 57
+  eligible lines have `count >= 2`, so 43 of the 100 seats were filled from 290
+  tied single-sighting lines in dictionary order. `agents/darkhorse/` (40 lines
+  picked by best single-episode money instead) put **18 of 40 above the old
+  field's tenth-place threshold**, and its best, `d08`, scores 92.4% against the
+  ten strongest incumbents where the best incumbent gets 79.9%.
+
+The darkhorse result is real but it does not mean what the pre-registered
+criterion in `docs/TODO.md` said it would. Selecting by single-episode money
+selects for a *productive action sequence that transplants*, which is genuinely
+what an open-loop replay needs. It does not select for strategy.
+
+**What survives.** Nothing local predicts ladder strength today. The only
+grounded signal left is external: the rating of the team a plan was recorded
+from. `submissions/2026-08-13-topline/` was chosen where both signals happen to
+agree, and exists to measure how much of a #1 team's plan survives open-loop
+replay.
+
+**What this does not say.** It does not say `term714` is strong. Its 64/101 and
+36.5% are uninformative in both directions — but its ladder scores, 1363.7 and
+1218.6 against a 3,240 top, are direct evidence and they stand.
+
+### What an open-loop replay costs, in ladder points
+
+`closer_cleo` submitted unmodified is an open-loop replay of the **shared public
+meta line** wearing this exact market layer. It scored **1287.2**. The 93 teams
+still on the board who play that same line score:
+
+```
+max 3,108   p75 2,848   median 2,588   p25 2,005   min 98
+```
+
+Same plan. **1,301 points below the median team that plays it, 1,820 below the
+best.** That difference is everything the recording does not carry: reacting to
+the shop draw, to weeds, to what the opponent is doing to prices.
+
+Applied to `topline` (recorded from カワシギ, #1 at 3,240.2), the pre-registered
+prediction for `55484175` is **1,400 – 1,950, point estimate ~1,650** (≈ rank
+900–1,200 of 4,259), ±145 for the noise measured below. Written down before the
+score arrives so it can be wrong.
+
+**The ceiling this implies matters more than the estimate.** A prize place needs
+3,094. Replaying recordings tops out near 1,900 even with a perfect copy of the
+best player's episode, because the 93 teams playing one identical plan span
+**3,000 ladder points**. In this competition the plan is the small term.
+
+### The same file, submitted twice, moved 145 points
+
+`55442784` and `55458466` are the same agent. They scored **1363.7** and
+**1218.6**. Nothing changed but the opponents the ladder happened to draw.
+
+Every ladder comparison in this document smaller than ~145 points is inside that
+band, including the +69 attributed to the liquidation day. Treat single-ladder-run
+differences as hypotheses; `docs/EVALUATION.md` §6 has the arm sizes that settle
+them locally.
 
 ### One submission, two changes, and why that was a mistake
 

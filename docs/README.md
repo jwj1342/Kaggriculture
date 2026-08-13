@@ -17,6 +17,7 @@
 | [`ROADMAP.md`](ROADMAP.md) | **这个项目走到哪、为什么** —— 离开过几天就先读这个，它开头就讲哪些结论被推翻了 |
 | [`VALIDATING.md`](VALIDATING.md) | **我的改动是真的吗？** 两个场地对应两个层级，以及两种自信地得出错误答案的方式 |
 | [`SUBMISSION_POLICY.md`](SUBMISSION_POLICY.md) | 什么时候提交、提交什么，以及额度机制 |
+| [`TODO.md`](TODO.md) | **接下来做什么** —— 按「不做会怎样」排序，每条附完成判据 |
 
 ## 这个游戏与这个场地
 
@@ -58,10 +59,15 @@
 |---|---|---|
 | `agents/bench3/` | 我们自己的引擎家族 + 参考 agent | 你的 agent 赢它 50–70% 时 |
 | **`agents/wrapped/`** | **100 条从天梯挖出的剧本，同一层适配层** | **赢 bench3 95% 以上时 —— 这是真正的对手** |
-| `benchmarks/strongest.py` | 那 100 条里最强的（95.4%），已进 git | 想知道离顶端还有多远 |
+| `benchmarks/strongest.py` | 要打过的那条（源队伍天梯 **#1**），已进 git | 想知道离顶端还有多远 |
+| `agents/darkhorse/` | 按单局最高分选的 40 条，18 条越过旧场地第十名 | 复核选取标准时 |
 
 **我们提交上天梯的 agent 在 `agents/wrapped/` 里排 64/101、胜率 36.5%**（477,225 局），
-而 `bench3` 给它 90%+。**在 bench3 上赢 95%，完全可能在真实前沿排倒数。**
+而 `bench3` 给它 90%+。**在 bench3 上赢 95%，完全可能在这个场地排倒数。**
+
+> **但别把 `wrapped` 的名次当强弱。** 2026-08-13 实测：本地胜率与源队伍真实天梯分
+> **不相关**（spearman −0.05，n=100），同一支队伍的不同对局本地胜率能从 14% 跨到 93%。
+> 它测的是「录音换个棋盘还能不能用」。见 [`ROADMAP.md`](ROADMAP.md) §10.5。
 
 不需要 Kaggle key —— 371 条剧本的快照 `dist/tracelib.json.xz`（3 MB）已提交进 git。
 用法见 [`VALIDATING.md`](VALIDATING.md) §1。

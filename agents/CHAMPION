@@ -4,14 +4,24 @@
 # `champion.py`, and `tools/tournament.py` warns when a panel or round robin
 # does not contain it.
 #
-# It points at `benchmarks/strongest.py` -- the best plan measured here, 95.4%
-# of a 477,225-episode round robin against a hundred others. It is committed
-# precisely so this pointer resolves in a fresh clone.
+# It points at `benchmarks/strongest.py` -- a plan recorded from the team at #1
+# on the ladder, which also happens to win 92.4% of 1,920 episodes against the
+# ten strongest plans mined here. It is committed precisely so this pointer
+# resolves in a fresh clone.
 #
-# It is NOT what is on the ladder. What we submitted places 64th of 101 in that
-# same round robin at 36.5%; see docs/ROADMAP.md §10. Beating the submitted
-# agent means nothing -- beat this one.
+# Read that 92.4% narrowly. `docs/ROADMAP.md` §10.5 checked local win% against
+# the source teams' real ladder ratings across 100 mined plans and found no
+# correlation (spearman -0.05, n=100); one team's own episodes span 14%-93%
+# locally. A local win means a plan survives an unfamiliar board, not that it
+# is a good strategy. The credential that survives scrutiny is where it came
+# from.
 #
-# Update it when something wins on two independent fields, and say so in
-# docs/RUNS.md.
+# As of 2026-08-13 this is also what is on the ladder
+# (`submissions/2026-08-13-topline/`), which was not true before: the previous
+# champion `w39` topped a 477,225-episode round robin and came from the team at
+# #358, while the plans from #6, #13 and #34 ranked below it.
+#
+# Update it when something wins on two independent fields -- and until §10.5's
+# open item is closed, "two independent fields" here means one local and one
+# external, not two local ones. Say so in docs/RUNS.md.
 benchmarks/strongest.py

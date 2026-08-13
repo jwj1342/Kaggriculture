@@ -19,6 +19,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WHAT = [
     ("agents/wrapped/", "**真正的对手** —— 从天梯挖出的剧本，全部套同一层适配层",
      "`tools/wrap.py --top 100`"),
+    ("agents/darkhorse/", "未进 `wrapped` 的 247 条里按**单局最高分**挑的，"
+     "18 条越过旧场地第十名", "`tools/wrap.py`（改选取）"),
     ("agents/lines/", "每条不同剧本的一个代表，**裸录音**（无适配层，会塌）",
      "`tracelib emit`"),
     ("agents/bench3/", "引擎级场地：我们自己的形状 + 参考 agent",
@@ -38,8 +40,8 @@ def fields():
         if n:
             print(f"| `{path}` | {n:,} | {what} | {how} |")
     if os.path.exists(os.path.join(ROOT, "benchmarks/strongest.py")):
-        print("| `benchmarks/strongest.py` | 1 | 最强的那条，**已提交进 git**，"
-              "`agents/CHAMPION` 指向它 | — |")
+        print("| `benchmarks/strongest.py` | 1 | 要打过的那条（源队伍天梯 **#1**），"
+              "**已提交进 git**，`agents/CHAMPION` 指向它 | `wrap.py` |")
 
 
 def submissions():

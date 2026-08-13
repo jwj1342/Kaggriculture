@@ -26,6 +26,26 @@ agent holds no shed inventory between turns.
 
 The result is a fair field: every agent has the same wrapper, so a win is about
 the plan.
+
+TWO THINGS MEASURED ABOUT THIS SELECTION, 2026-08-13 -- read before trusting a
+number that came out of a field built here.
+
+1. `--top` sorts by sighting count, and that ordering runs out early. Of the 347
+   plans clearing `--min-score`, only 57 have `count >= 2`; the remaining 290 are
+   tied at one sighting, so `--top 100` fills its last 43 seats in whatever order
+   the dict happens to iterate. Selecting the same 247 leftovers by best
+   single-episode money instead (`agents/darkhorse/`) put 18 of 40 above the old
+   field's tenth-place threshold. The frequency filter was mostly not a filter.
+
+2. A win here does not mean the plan is good. Checked against the source teams'
+   real ladder ratings across all 100 plans: spearman -0.05, n=100 -- no relation
+   at all, and one team's own episodes span 14% to 93% locally. What this field
+   measures is whether a recording still functions on an unfamiliar board.
+   `docs/ROADMAP.md` §10.5.
+
+Neither is fixed here on purpose: changing the selection would silently
+invalidate every comparison already recorded against a field built by the old
+one. Fix it deliberately, rebuild, and say so in `docs/RUNS.md`.
 """
 
 import argparse
