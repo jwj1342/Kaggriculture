@@ -152,6 +152,7 @@ Grand total including these and the ablations: **well over 1.3 million episodes*
 
 | Date | Submission | Agent | Snapshot | Local evidence | Ladder |
 |---|---|---|---|---|---|
+| 2026-08-13 | `55489160` | `kawashigi-k06` — the same team's strongest recorded line, chosen on the panel | `submissions/2026-08-13-kawashigi-k06/` | Panel win rate **98.5%** [97.8, 98.9] over 1,920 episodes against 92.4% [91.2, 93.5] for the incumbent, and **60.8%** [57.3, 64.2] head to head over 768. Beats all ten panel members; the incumbent's weakest matchup is 78.6%. 28/28 stress clean; 720/720 actions identical after packaging. | pending — **this is the prospective test of the panel, see below** |
 | 2026-08-13 | `55484175` | `topline` — a recorded top-of-ladder plan under the `closer_cleo` market layer | `submissions/2026-08-13-topline/` | 92.4% over 1,920 episodes against the ten strongest plans previously mined (best incumbent 79.9%), **and** the highest-rated source team of the 371 in the library (カワシギ, #1 at 3,240). Two independent signals converge. Submitted as calibration, not as an answer — see the null result below. 28/28 stress clean; 720/720 actions identical after packaging. | **2144.1 and still climbing** — 21–1 over 22, so **not yet a score**: see the one-third rule below. Beats 1218.6 for the plan it replaced, on opponents of the same strength ($73,884 vs $77,991 mean opponent money, +$6,421 margin against +$1,135). |
 | 2026-08-12 | `55458466` | `closer_cleo` + terminal at 714 (resubmit) | `submissions/2026-08-11-closercleo-term714/` | 91.7% [90.9, 92.5] over a 28,080-episode round robin against the twelve most-played plans mined from 959 post-rebalance ladder episodes, beating all twelve. The field is strictly transitive, so no ensemble has anything to exploit. 28/28 stress clean. | **1218.6** — the same file scored 1363.7 five days earlier, see below |
 | 2026-08-11 | `55442784` | `closer_cleo` + terminal at 714 | `submissions/2026-08-11-closercleo-term714/` | Threshold sweep over 384 seeds against `bench3`, 10,800 episodes an arm: 714 reaches a 98.1% plateau against 95.2% unchanged. | **1363.7** — our best to date |
@@ -294,6 +295,44 @@ flat over the preceding 3.5 hours (top 3,240.2 -> 3,236.5, tenth 3,094.4 ->
 Cloning the single best recording available, with no loss at all, would reach
 3,236.5 -- and 877 of that is not obtainable, because it is not in the plan.
 Copying recordings cannot reach the prize zone; this measures by how much.
+
+### The prospective test of the panel (written before the result)
+
+Every claim about local measurement in this repo so far has been checked *after
+the fact* -- correlate a local ranking against ladder scores that already exist.
+That is how §10.5's null result was found, and it is also why it could not say
+whether a *better* local measure would work. `55489160` is the first prospective
+version: a prediction recorded before the number arrives.
+
+**The design.** Two submissions, active at the same time, facing the same pool:
+
+|  | incumbent `55484175` | challenger `55489160` |
+|---|---|---|
+| source team | カワシギ, #1 | **the same team** |
+| market layer | `closer_cleo`, MIT | **the same file** |
+| recorded episode | 92125421 | **92135733** |
+| panel win rate | 92.4% [91.2, 93.5] | **98.5% [97.8, 98.9]** |
+| head to head | — | **60.8% [57.3, 64.2]**, n=768 |
+| ladder | **2359.5**, converged | *this is the prediction* |
+
+Everything is held fixed except which episode was recorded, so the ladder is
+being asked one question: **does a 6.1-point panel edge correspond to a real
+ladder edge?**
+
+**What each outcome means.** Read only after `55489160` has lost a third of its
+trailing 18 (rule 7 in `SUBMISSION_POLICY.md`):
+
+* **Clearly above 2359.5** -- the panel has predictive power with the source team
+  held constant. The open item at the top of `docs/TODO.md` is half solved, and
+  local optimisation becomes possible for the first time.
+* **Level with it** -- the panel separates plans that the ladder does not. It
+  stays useful as a filter and is worthless as an objective; do not search
+  against it.
+* **Clearly below** -- the panel is anti-predictive at the top, which would be
+  the strongest result of the three and would mean the ten-agent panel is
+  selecting for something the ladder punishes.
+
+There is no outcome here that is not worth having, which is the point.
 
 ### A ladder score does not count until the agent loses a third of its games
 
