@@ -98,12 +98,24 @@ def main():
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--min-score", type=float, default=50000)
     ap.add_argument("--terminal-at", type=int, default=714)
+    ap.add_argument("--team", default=None,
+                    help="only lines this team played (exact name, repeatable "
+                         "with commas). Selecting by source team is the one "
+                         "criterion docs/ROADMAP.md §10.5 did not refute.")
+    ap.add_argument("--by", choices=("count", "score"), default="count",
+                    help="ordering when there are more matches than --top")
+    ap.add_argument("--prefix", default="w", help="filename prefix")
     a = ap.parse_args()
 
     donor = open(DONOR).read()
     idx = json.load(open(a.index))
     rows = [(k, v) for k, v in idx["lines"].items() if v["best_score"] >= a.min_score]
-    rows.sort(key=lambda kv: -kv[1]["count"])
+    if a.team:
+        want = {t.strip() for t in a.team.split(",") if t.strip()}
+        rows = [(k, v) for k, v in rows if want & set(v.get("teams") or ())]
+        if not rows:
+            raise SystemExit(f"no line in {a.index} was played by {sorted(want)}")
+    rows.sort(key=lambda kv: -kv[1]["count" if a.by == "count" else "best_score"])
     os.makedirs(a.out, exist_ok=True)
     for f in os.listdir(a.out):
         if f.endswith(".py"):
@@ -112,15 +124,15 @@ def main():
     man = {}
     for i, (lid, v) in enumerate(rows[:a.top], 1):
         turns = json.loads(gzip.decompress(base64.b64decode(v["turns"])).decode())
-        name = f"w{i:02d}"
+        name = f"{a.prefix}{i:02d}"
         path = os.path.join(a.out, name + ".py")
         src = build(turns, donor, a.terminal_at)
         compile(src, path, "exec")
         with open(path, "w") as f:
             f.write(src)
         verify(src, path, turns)
-        man[name] = {k: v[k] for k in ("count", "teams", "best_score", "date")
-                     if k in v}
+        man[name] = {k: v[k] for k in ("count", "teams", "best_score", "date",
+                                       "episode", "seed") if k in v}
         print(f"  {path}  plan seen {v['count']}x across {len(v['teams'])} teams, "
               f"best ${v['best_score']:,.0f}")
     with open(os.path.join(a.out, "manifest.json"), "w") as f:
