@@ -29,12 +29,26 @@ bash tools/fetch_fields.sh          # 每次开工前
 
 ## 1. 选一个和你的 agent 水平匹配的场地
 
-有两个场地，用错了这一轮就白跑。
+有三个场地，用错了这一轮就白跑。
 
 | 你的 agent 能赢… | 用 | 为什么 |
 |---|---|---|
 | `agents/bench3` 的 **50–70%** | `agents/bench3/*.py` | 引擎级：形状和你接近，两端都没饱和 |
-| `agents/bench3` 的 **95% 以上** | `champion.py`、`closer_cleo`、`slotter_silas`、`ledger_lena`、`broker_bea` | 外包装级：唯一还能区分开的场地 |
+| `agents/bench3` 的 **95% 以上** | `agents/wrapped/*.py` | **真正的对手** —— 100 条从天梯挖出的剧本，全部套同一层适配层 |
+| 想知道离顶端还有多远 | `benchmarks/strongest.py` | 那 100 条里最强的（95.4%），已提交进 git |
+
+**`agents/wrapped/` 是现在真正该打的场地。** 我们放上天梯的那个 agent 在这里排
+**64/101、胜率 36.5%**（477,225 局实测，`ROADMAP.md` §10）。而 `bench3` 给同一个
+agent 的读数是 90%+ —— **在 `bench3` 上赢 95% 完全可能在真实前沿排倒数**。
+
+建这个场地：
+
+```bash
+bash tools/fetch_fields.sh          # 会自动 import dist/tracelib.json.xz，不需要 Kaggle key
+```
+
+那个快照是 3 MB、371 条对齐过的榜首剧本，**已提交进 git** —— 因为自己从 Kaggle 重拉
+要一小时且会撞限流。
 
 192 种子实测的分层（champion 赢它 / mgtight 赢它）：
 

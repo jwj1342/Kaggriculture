@@ -29,6 +29,12 @@ notebooks/*.ipynb
 data/
 # compressed snapshots produced by tools/sync.py
 dist/
+# ...except the trace library snapshot. 371 mined ladder plans in 3 MB, and the
+# only thing here that costs an hour of rate-limited Kaggle pulling to rebuild.
+# It is not in the database and not mirrored to D1 -- see docs/TOOLS.md.
+!dist/
+dist/*
+!dist/tracelib.json.xz
 
 # --- Run output -----------------------------------------------------------
 # Slurm stdout/stderr, plus the pre-database league dumps (5.2 MB of JSON).

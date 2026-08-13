@@ -50,6 +50,24 @@
 
 ---
 
+## 本地对手在哪
+
+`bash tools/fetch_fields.sh` 建起三层场地：
+
+| 场地 | 是什么 | 什么时候用 |
+|---|---|---|
+| `agents/bench3/` | 我们自己的引擎家族 + 参考 agent | 你的 agent 赢它 50–70% 时 |
+| **`agents/wrapped/`** | **100 条从天梯挖出的剧本，同一层适配层** | **赢 bench3 95% 以上时 —— 这是真正的对手** |
+| `benchmarks/strongest.py` | 那 100 条里最强的（95.4%），已进 git | 想知道离顶端还有多远 |
+
+**我们提交上天梯的 agent 在 `agents/wrapped/` 里排 64/101、胜率 36.5%**（477,225 局），
+而 `bench3` 给它 90%+。**在 bench3 上赢 95%，完全可能在真实前沿排倒数。**
+
+不需要 Kaggle key —— 371 条剧本的快照 `dist/tracelib.json.xz`（3 MB）已提交进 git。
+用法见 [`VALIDATING.md`](VALIDATING.md) §1。
+
+---
+
 ## 语言
 
 前八份是中文的（新人第一小时 + 判断数字是否可信所需的全部）。其余是英文的参考资料，

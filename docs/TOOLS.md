@@ -435,10 +435,21 @@ Mines the daily top-episode dumps into a library of the **distinct plans** the
 ladder actually plays.
 
 ```bash
-python tools/tracelib.py pull --dates 2026-08-07,2026-08-08 --per-date 200 -j 8
+python tools/tracelib.py import dist/tracelib.json.xz   # 371 plans, no Kaggle key needed
 python tools/tracelib.py stats
 python tools/tracelib.py emit --out agents/lines --top 12 --min-score 50000
+python tools/tracelib.py verify --dates 2026-08-11      # replays must be exact
+
+python tools/tracelib.py pull --dates 2026-08-07,2026-08-08 --per-date 200 -j 8
+python tools/tracelib.py export --out dist/tracelib.json.xz
 ```
+
+**The library is not in `data/arena.sqlite` and is not mirrored to D1.** The
+database holds episodes and ratings; this is an index of *plans*, a different
+kind of object, and it is the expensive part to rebuild -- about an hour of
+rate-limited pulling. So it travels as a committed 3 MB file, the way the
+database travels via `tools/sync.py`. `import` merges rather than replaces:
+a plan already held keeps its best season and accumulates team sightings.
 
 Deduplication is the whole job: 959 episodes gave 1,894 trajectories and 201
 distinct plans, a ratio of 9:1. Every comparison sweeps shifts of +-8 turns

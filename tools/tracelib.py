@@ -437,6 +437,47 @@ def cmd_verify(args):
     return 1 if bad else 0
 
 
+
+def cmd_export(args):
+    """Compress the library for sharing. It is not in the database.
+
+    `data/arena.sqlite` holds episodes and ratings; the trace library is a JSON
+    index of *plans*, which is a different kind of object and does not fit that
+    schema. It is also the expensive part to rebuild -- roughly an hour of
+    rate-limited pulling -- so it travels as a file, the same way the database
+    does via `tools/sync.py`.
+    """
+    import lzma
+    idx = _load()
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    with lzma.open(args.out, "wt") as f:
+        json.dump(idx, f)
+    print(f"  {args.out}  {os.path.getsize(args.out)/1048576:.1f} MB  "
+          f"({len(idx['lines'])} plans from {len(idx['seen'])} episodes)")
+    return 0
+
+
+def cmd_import(args):
+    """Merge a shared library in. Plans already held keep their best season."""
+    import lzma
+    opener = lzma.open if args.path.endswith(".xz") else open
+    with opener(args.path, "rt") as f:
+        other = json.load(f)
+    idx = _load()
+    before = len(idx["lines"])
+    for lid, v in other["lines"].items():
+        cur = idx["lines"].get(lid)
+        if cur is None or v["best_score"] > cur["best_score"]:
+            idx["lines"][lid] = v
+        elif cur is not None:
+            cur["count"] += v.get("count", 0)
+            cur["teams"] = sorted(set(cur["teams"] + v.get("teams", [])))
+    idx["seen"] = sorted(set(idx["seen"]) | set(other.get("seen", [])))
+    _save(idx)
+    print(f"  {before} -> {len(idx['lines'])} plans, {len(idx['seen'])} episodes seen")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -452,6 +493,12 @@ def main():
     p = sub.add_parser("stats")
     p.add_argument("--top", type=int, default=25)
     p.set_defaults(fn=cmd_stats)
+    p = sub.add_parser("export")
+    p.add_argument("--out", default="dist/tracelib.json.xz")
+    p.set_defaults(fn=cmd_export)
+    p = sub.add_parser("import")
+    p.add_argument("path")
+    p.set_defaults(fn=cmd_import)
     p = sub.add_parser("verify")
     p.add_argument("--dates", required=True)
     p.add_argument("--limit", type=int, default=4)
