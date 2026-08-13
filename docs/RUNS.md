@@ -876,3 +876,45 @@ recording cannot -- it plants what it planted.
 
 That is a concrete, measured mechanism for part of the 877-point replay penalty,
 and unlike everything else in these four waves it is not a mirror artefact.
+
+## Wave 4: the sell-ordering layer is the one part of the wrapper worth having
+
+72 cells over `_SORT_KEY` x `_SELLS_FIRST` x `_RACE_WEIGHT` x promotion policy,
+94,720 episodes, mirror and four mined ladder lines. Controls `qctl` and `qnul`
+both 50.0% [43.9, 56.1], paired margin $+0 ± 503.
+
+```
+_SORT_KEY   field win%      interval        per opponent
+impact        91.0%     [89.1, 92.6]    w39 93  w48 86  w16 87  w68 98   <- donor's
+gross         87.5%     [85.3, 89.4]
+off           86.9%     [84.7, 88.8]    <- reordering disabled
+unit          81.2%     [78.6, 83.4]
+```
+
+`impact` against `off` is +4.1 points with disjoint intervals, and against the
+worst key +9.8. **This is the first effect in four waves that survives a
+non-identical opponent.** It is also the only dial in the file whose ranking rule
+assumes the opponent is selling at all: `impact` ranks a sell by the revenue lost
+to going second -- quantity times its own price impact -- rather than by revenue
+at stake. Market competition is real, worth about four points, and the donor
+already found the right rule for it.
+
+Everything else in the layer is a mirror artefact or nothing. `_SELLS_FIRST`
+scores 69.3% in the mirror and 91.0% in the field, identical to leaving it off.
+`_RACE_WEIGHT` costs 5.7 points in the mirror and 0.4 in the field. Dropping
+`_PROMOTE_IF_OPP_MONEY` -- the only rule in the whole agent that reads the
+opponent's bank -- moves the field from 91.0% to 91.3%, well inside the interval.
+
+### The wrapper, priced
+
+```
+sell ordering (_SORT_KEY='impact')      +4.1 points vs disabling
+_terminal_action (board-reading)        $4 on $83,465; 91.0% with, 91.3% without
+_terminal_liquidation                   0
+_RACE_WEIGHT / _SELLS_FIRST / _PROMOTE  0 in the field
+_RESERVE / _RAMP_* / _SHED_PRESSURE     dead code, and _RESERVE is broken
+```
+
+Four points. That is what the adaptive layer is worth against real recordings,
+and it is already at its best setting. The 877-point replay penalty is not in
+here.
