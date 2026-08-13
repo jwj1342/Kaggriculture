@@ -80,6 +80,13 @@ regenerate. Keep the axes orthogonal.
   active and the ladder plays ~10 episodes/hour, so a burst of submissions
   leaves every agent with 4–12 games: too few to rank, and too few to diagnose.
   `docs/RUNS.md` has the numbers.
+- **A ladder score does not count until the agent has lost a third of its
+  games.** A new submission enters low and climbs by beating weaker opponents,
+  so while it is winning the number is a floor that is still moving. `55484175`
+  read 1695.2 at 11 episodes (11–0) and 2144.1 at 22 (21–1) — same file, +449
+  points in forty minutes. Episode count is necessary but not sufficient; the
+  **loss fraction** is what says it has found its level. `SUBMISSION_POLICY.md`
+  rule 7.
 - **Engine changes get an A/B, not an argument.** Four of seven derived from the
   rules correctly and still lost. `docs/ENGINE_CHANGES.md` records all seven with
   arm sizes; three of the losers assumed the farm was alone on the board.

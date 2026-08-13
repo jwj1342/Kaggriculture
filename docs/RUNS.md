@@ -152,7 +152,7 @@ Grand total including these and the ablations: **well over 1.3 million episodes*
 
 | Date | Submission | Agent | Snapshot | Local evidence | Ladder |
 |---|---|---|---|---|---|
-| 2026-08-13 | `55484175` | `topline` — a recorded top-of-ladder plan under the `closer_cleo` market layer | `submissions/2026-08-13-topline/` | 92.4% over 1,920 episodes against the ten strongest plans previously mined (best incumbent 79.9%), **and** the highest-rated source team of the 371 in the library (カワシギ, #1 at 3,240). Two independent signals converge. Submitted as calibration, not as an answer — see the null result below. 28/28 stress clean; 720/720 actions identical after packaging. | pending |
+| 2026-08-13 | `55484175` | `topline` — a recorded top-of-ladder plan under the `closer_cleo` market layer | `submissions/2026-08-13-topline/` | 92.4% over 1,920 episodes against the ten strongest plans previously mined (best incumbent 79.9%), **and** the highest-rated source team of the 371 in the library (カワシギ, #1 at 3,240). Two independent signals converge. Submitted as calibration, not as an answer — see the null result below. 28/28 stress clean; 720/720 actions identical after packaging. | **2144.1 and still climbing** — 21–1 over 22, so **not yet a score**: see the one-third rule below. Beats 1218.6 for the plan it replaced, on opponents of the same strength ($73,884 vs $77,991 mean opponent money, +$6,421 margin against +$1,135). |
 | 2026-08-12 | `55458466` | `closer_cleo` + terminal at 714 (resubmit) | `submissions/2026-08-11-closercleo-term714/` | 91.7% [90.9, 92.5] over a 28,080-episode round robin against the twelve most-played plans mined from 959 post-rebalance ladder episodes, beating all twelve. The field is strictly transitive, so no ensemble has anything to exploit. 28/28 stress clean. | **1218.6** — the same file scored 1363.7 five days earlier, see below |
 | 2026-08-11 | `55442784` | `closer_cleo` + terminal at 714 | `submissions/2026-08-11-closercleo-term714/` | Threshold sweep over 384 seeds against `bench3`, 10,800 episodes an arm: 714 reaches a 98.1% plateau against 95.2% unchanged. | **1363.7** — our best to date |
 | 2026-08-11 | `55439740` | `closer_cleo` (third-party, unmodified) | `submissions/2026-08-11-closercleo/` | 99.2% of `bench3`+refs over 3,072 episodes and 99.4% of the 156 ghost trajectories, against 60.9% / 57.7% for our best engine. First of five in a 3,072-episode round robin among the trace agents at 92.7%, beating `slotter_silas` 88.0% and `ledger_lena` 91.9%. Raw replayed trajectories score **0.0%** against all four wrapped agents, so the value is the adaptive layer and not the trace. 28/28 stress clean. | **1287.2** — our own change is worth less than the gap between two runs of it |
@@ -244,14 +244,55 @@ best.** That difference is everything the recording does not carry: reacting to
 the shop draw, to weeds, to what the opponent is doing to prices.
 
 Applied to `topline` (recorded from カワシギ, #1 at 3,240.2), the pre-registered
-prediction for `55484175` is **1,400 – 1,950, point estimate ~1,650** (≈ rank
-900–1,200 of 4,259), ±145 for the noise measured below. Written down before the
-score arrives so it can be wrong.
+prediction for `55484175` was **1,400 – 1,950, point estimate ~1,650**, with a
+stated implication that replaying recordings tops out near 1,900.
 
-**The ceiling this implies matters more than the estimate.** A prize place needs
-3,094. Replaying recordings tops out near 1,900 even with a perfect copy of the
-best player's episode, because the 93 teams playing one identical plan span
-**3,000 ladder points**. In this competition the plan is the small term.
+> ### ~~That prediction~~ — falsified the same day
+>
+> `55484175` reached **2144.1** within ninety minutes and was still climbing,
+> at 21 wins in 22. Both the range and the ceiling are wrong.
+>
+> **The arithmetic double-counted.** `closer_cleo` scored 1287.2 while carrying
+> the *shared public meta* plan -- a weak plan (47.4% locally, the most-copied
+> line in the library). So
+>
+> ```
+> 1287.2  =  a weak plan  +  the replay penalty
+> ```
+>
+> Subtracting the whole 1,301–1,820 gap from 3,240 charged all of it to replay
+> and implicitly priced plan quality at zero -- which is the quantity the
+> submission exists to measure. Swapping the plan alone is worth **at least
+> +857** (2144.1 − 1287.2) and had not finished.
+>
+> Keep the anchor, drop the conclusion: 1287.2 vs a 2,588 median for the teams
+> playing that same plan is still a real measurement of *something*. It is just
+> not a ceiling, because the plan and the replay penalty were never separated.
+
+### A ladder score does not count until the agent loses a third of its games
+
+A new submission enters low and climbs by beating weaker opponents. Until it has
+climbed, the number on the leaderboard is a floor that is still moving.
+
+```
+losing < 1/3   still climbing. The score means "at least this much" and nothing else.
+losing ~ 1/3   near its level. Start reading it.
+losing ~ 1/2   converged. This is its score.
+```
+
+`55484175` read **1695.2** at 11 episodes (11–0) and **2144.1** at 22 (21–1) --
++449 points in forty minutes, same file, the only change being that it was still
+ascending. The prediction above was made against the first reading and broke
+against the second.
+
+The converged counter-example is in the same table: `term714` over 130 pooled
+episodes sits at exactly **50.0%**, and its 1363.7 / 1218.6 are real readings.
+
+**Episode count is the wrong stopping rule.** `SUBMISSION_POLICY.md` rule 1 asks
+for ≥40 episodes; that is necessary, not sufficient. `55484175` was at 95.5%
+after 22 and would still have been climbing at 42. Episodes buy sample size,
+**the loss fraction is what tells you it has found its level.** Recorded as rule
+7 there.
 
 ### The same file, submitted twice, moved 145 points
 
