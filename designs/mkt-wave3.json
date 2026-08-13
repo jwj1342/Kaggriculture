@@ -1,0 +1,54 @@
+{
+  "_comment": "Wave 3 -- how much of the season should the board-reading controller own? _terminal_action is the only closed-loop component in the whole agent: it reads tiles, assigns every hand a harvest/carry/drop task, and sells what it collected. By default it replaces the tape for the last SIX turns of seven hundred and twenty. Nobody has swept that. This is no longer about interfering with the opponent -- waves 1 and 2 closed that -- it is about whether reading the board beats replaying a recording, and for how long.",
+  "_why_this_and_not_the_market_slots": "The previous idea was that 83.5% of recorded turns leave 9 of 10 market slots empty, so there is room for more actions. Checked before spending compute: in a live k01 episode only 4.4% of emitted hand actions fall through for lack of a hand (269 of 6,183), and that 269 is almost exactly the 277 HIRE orders -- a hire settles in the market phase, so the turn it is placed has one hand action with nowhere to go. The recordings are hire-balanced. Extra hands would idle, because `hands` actions are positional and the tape has no entry for them.",
+  "_prediction_written_before_the_run": "_terminal_action harvests, carries and sells but never plants, waters or feeds. Run it long enough and animals starve and plants decay to weeds, so there must be an interior optimum. If the best cell is t714 the recording beats closed-loop play everywhere and Road C's premise is in trouble; if it is earlier, the gap between t714 and that cell is what board-reading is worth, in win rate, measured.",
+  "factors": {
+    "term": {
+      "t720": {
+        "_X_TERMINAL_AT": 720
+      },
+      "t717": {
+        "_X_TERMINAL_AT": 717
+      },
+      "t714": {
+        "_X_TERMINAL_AT": 714
+      },
+      "t708": {
+        "_X_TERMINAL_AT": 708
+      },
+      "t696": {
+        "_X_TERMINAL_AT": 696
+      },
+      "t672": {
+        "_X_TERMINAL_AT": 672
+      },
+      "t624": {
+        "_X_TERMINAL_AT": 624
+      }
+    },
+    "liq": {
+      "l720": {
+        "_X_LIQ_AT": 720
+      },
+      "l680": {
+        "_X_LIQ_AT": 680
+      },
+      "l600": {
+        "_X_LIQ_AT": 600
+      }
+    },
+    "land": {
+      "buy": {},
+      "noland": {
+        "_X_NO_LAND": true
+      }
+    }
+  },
+  "_notes": {
+    "term_levels": "t720 disables the board-reading controller entirely (steps run 0..719, so `step >= 720` never fires) -- the arm that asks whether those six turns are worth anything at all. t714 is the donor's value and must reproduce the control. The rest sweep earlier: t708 is 12 turns, t696 one day, t672 two, t624 four. A single traced episode already shows the direction -- $63,550 at t714, $60,182 at t672, $48,435 at t576, $32,717 at t480 -- so the sweep is resolving where it turns, not whether.",
+    "liq": "l720 disables terminal liquidation, l680 is the donor's value, l600 starts it five hours earlier. Goods held past the last step are worth nothing, so l720 should lose; the question is by how much, and whether starting sooner is better than the donor's guess.",
+    "land": "LAND_PRICES are [1000, 2000, 4000] for NE, SW, SE. docs/RUNS.md records that a second quadrant made our own engine worse -- 32 of 50 tiles idle while hands walked further -- but that was our engine, not this recording, which planned its own land purchases. Suppressing them saves up to $7,000 and costs tiles the tape expects to use.",
+    "hoisting": "All three thresholds are literals in the donor, not named constants. tools/perturb.py hoists them by regex and fails loudly if a pattern does not match exactly once -- an unreplaced threshold would produce an arm that runs, scores, and reads as a real result.",
+    "land_noop_caught": "The first build of this factor was a silent no-op: _x_market returned early unless a sell or buy dial was set, so _X_NO_LAND never ran and the arm matched the control to the dollar. Traces do buy land -- k01 buys 2 for $3,000, and all 371 mined lines buy 2 or 3 -- so an identical result was the tell."
+  }
+}

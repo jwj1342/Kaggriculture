@@ -682,3 +682,80 @@ Caveat on all of it: the "field" condition is four wrapped recordings, not four
 adaptive agents. The replay penalty is 877 points, so a recording is not the team
 that produced it, and an adaptive opponent could react to a price move in ways no
 recording can.
+
+## Wave 3: what is the wrapper actually worth? (2026-08-13, 54,560 episodes)
+
+Waves 1 and 2 closed market interference. Wave 3 turns the same instrument on the
+agent's own structure, sweeping three thresholds that are literals in the donor
+rather than named constants -- `tools/perturb.py` hoists them by regex and fails
+loudly if a pattern does not match exactly once. Controls: `pctl` 49.6%
+[43.4, 55.8], `pnul` 49.6%, paired margin $+34 ± 514.
+
+### Buying land is not optional: 0.0% in both conditions
+
+`_X_NO_LAND` suppresses the tape's BUY_LAND orders -- k01 buys two for $3,000,
+and all 371 mined lines buy two or three. The arm won **zero of 5,208 mirror
+episodes and zero of 20,832 field episodes**. It is the largest effect measured
+in three waves.
+
+This also fences off an earlier note. `RUNS.md` records that a second quadrant
+made *our own engine* worse -- 32 of 50 tiles idle while hands walked further.
+That was our engine. The ladder disagrees: across 643 real ladder episodes the
+opponent's median holding is 3 quadrants with 40 idle tiles. Idle tiles are not
+the cost they looked like.
+
+### Starting liquidation at 600 instead of 680: +17 points, mirror only
+
+```
+mirror (vs an identical copy)          field (vs w39/w48/w16/w68)
+          l600    l680    l720                  l600    l680    l720
+t708     69.2%   46.4%   46.0%                 91.8%   91.2%   91.2%
+t714     66.5%   49.6%   52.8%  <- donor       91.8%   91.4%   91.4%
+t717     66.5%   49.6%   52.8%                 91.8%   91.4%   91.4%
+t720     64.9%   50.4%   50.8%                 91.8%   91.4%   91.4%
+```
+
+`t714.l600` is 66.5% [60.4, 72.1] against the control's 49.6% -- clean and
+significant. The same cell against the field is 91.8% [90.0, 93.4] against
+91.4% [89.5, 93.0]. Intervals almost entirely overlap.
+
+Third time in three waves that a large mirror effect is worth nothing against a
+non-identical opponent. Selling earlier than your clone is front-running your
+clone; a stranger is not on the same schedule.
+
+### The only board-reading component in the agent is worth $4
+
+`_terminal_action` reads tiles, assigns every hand a harvest/carry/drop task and
+sells what it collected. It is the sole closed-loop part of the file, and it owns
+six turns of seven hundred and twenty. `t720` disables it completely:
+
+```
+seed 777        t714 $83,465    t717 $83,465    t720 $83,461
+step 717 farmer      NORTH           WEST            WEST
+step 719 farmer    HARVEST         HARVEST         WATER
+```
+
+The actions genuinely differ; the money does not. Field win rate is 91.4% with it
+and 91.8% without. Running it *longer* degrades monotonically -- 91.2% at t708,
+88.0% at t696, 69.3% at t672, 31.5% at t624 -- because it harvests and carries but
+never plants, waters or feeds. Disabling `_terminal_liquidation` (`l720`) costs
+nothing either.
+
+Note against a past decision: submission `55442784` was justified entirely by
+moving this threshold from 717 to 714, measured at +2.9 points with disjoint
+intervals against `bench3`. Here t717 and t714 return identical win rates in all
+six cells and identical money on every seed tried. That does not refute the
+bench3 measurement -- the field is different and the space is non-transitive --
+but the effect does not reproduce.
+
+### What this means for the route
+
+The agent's strength is the recording. The wrapper's two terminal components are
+worth nothing measurable, and the third (sell ordering) has only ever been
+measured against a mirror -- wave 1's `A.sort_off` cost 37 points there while
+moving nothing at all against `starter`. Nobody has run the sort dials against
+the field; that is the cheapest open question left and it is one job.
+
+If the wrapper is worth as little as this suggests, the 877-point replay penalty
+is not a wrapper problem to be tuned away. It is the plan, and Road C is the only
+lever.

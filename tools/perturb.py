@@ -137,6 +137,16 @@ OVERLAY = '''
 _X_SELL_FROM = {}
 _X_SLOT = 0
 _X_BUY = {}
+_X_NO_LAND = False
+# Hoisted from literals in the donor so they can be swept. _X_TERMINAL_AT is the
+# step where the board-reading controller takes over from the tape entirely --
+# the only closed-loop component in the whole agent, and by default it owns six
+# turns out of seven hundred and twenty. _X_LIQ_AT is where the shed starts
+# being listed unconditionally. _X_GUARD_AT is where the donor stops letting its
+# market controller touch the action at all.
+_X_TERMINAL_AT = 714
+_X_LIQ_AT = 680
+_X_GUARD_AT = 717
 
 
 def _x_is_sell(o, items):
@@ -145,9 +155,16 @@ def _x_is_sell(o, items):
 
 
 def _x_market(action, obs, step):
-    if not _X_SELL_FROM and not _X_BUY:
+    # Every dial that edits the queue must be named here. An early return that
+    # forgot one produced an arm that ran, scored, and matched the control to
+    # the dollar -- the third silent no-op of the day, and the reason the
+    # control arms exist.
+    if not _X_SELL_FROM and not _X_BUY and not _X_NO_LAND:
         return
     orders = list(action.get("market") or [])
+    if _X_NO_LAND:
+        orders = [o for o in orders
+                  if not (isinstance(o, list) and o and o[0] == "BUY_LAND")]
     fire = []
     if _X_SELL_FROM:
         hot = {i for i, t in _X_SELL_FROM.items() if step >= t}
@@ -180,7 +197,7 @@ def agent(obs, config=None):
     action = _inner_agent(obs, config)
     try:
         step = int(obs.get("step", 0) or 0)
-        if step < 717:
+        if step < _X_GUARD_AT:
             _x_market(action, obs, step)
     except Exception:
         pass
@@ -189,11 +206,27 @@ def agent(obs, config=None):
 
 AGENT_DEF = re.compile(r"^def agent\(", re.M)
 
+# Literals in the donor that are worth sweeping but are not named constants.
+# Each must match exactly once; a miss is fatal rather than silent, because a
+# swept-but-unreplaced threshold produces an arm that runs, scores, and is
+# indistinguishable from a real result.
+HOISTS = (
+    (re.compile(r"if step >= 714:\n(\s+)return _terminal_action\(obs\)"),
+     r"if step >= _X_TERMINAL_AT:\n\1return _terminal_action(obs)"),
+    (re.compile(r"if step < 680:\n(\s+)return"), r"if step < _X_LIQ_AT:\n\1return"),
+    (re.compile(r"if step >= 717:\n(\s+)return action"),
+     r"if step >= _X_GUARD_AT:\n\1return action"),
+)
+
 
 def inject(src):
-    """Rename the base's `agent` and define a new one last."""
+    """Rename the base's `agent`, hoist swept literals, define a new agent last."""
     if len(AGENT_DEF.findall(src)) != 1:
         raise SystemExit("base must define `agent` exactly once at top level")
+    for pat, rep in HOISTS:
+        src, n = pat.subn(rep, src)
+        if n != 1:
+            raise SystemExit(f"hoist {pat.pattern!r} matched {n} times, need 1")
     src = AGENT_DEF.sub("def _inner_agent(", src)
     return src + OVERLAY
 
