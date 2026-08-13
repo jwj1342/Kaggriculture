@@ -288,6 +288,66 @@ site/              生成的排行榜页面
 
 **新克隆一个对手都没有** —— 先跑 `bash tools/fetch_fields.sh`。
 
+## 对手一览
+
+`bash tools/fetch_fields.sh` 建起全部场地。**除 `benchmarks/` 外都是 git-ignored 的生成物** ——
+它们由脚本重建，不进版本库。
+
+| 路径 | 数量 | 是什么 | 怎么来 |
+|---|---|---|---|
+| **`agents/wrapped/`** | **100** | **真正的对手** —— 从天梯挖出的剧本，全部套同一层适配层 | `tools/wrap.py --top 100` |
+| `benchmarks/strongest.py` | 1 | 上面那 100 条里最强的（95.4%），**已提交进 git**，`agents/CHAMPION` 指向它 | — |
+| `agents/lines/` | 35 | 每条不同剧本的一个代表，**裸录音**（无适配层，会塌） | `tracelib emit` |
+| `agents/bench3/` | 28 | 引擎级场地：我们自己的形状 + 参考 agent | `registry.py gen --plan bench` |
+| `agents/ref/` | 10 | 第三方教学梯队 tier 0–9（MIT，见其 NOTICE） | Kaggle 数据集 |
+| `agents/ghosts/` | 156 | 早期拉的开环轨迹（**08-04～08-07，跨在再平衡线上**） | `ghost.py make` |
+| `agents/spar/` | 30 | 从天梯回放重建的对手形状 | `registry.py gen --plan ladder` |
+| `agents/lib/` | 2,366 | 全量策略库（七个原子的笛卡尔积） | `registry.py gen --plan all` |
+
+### `agents/wrapped/` 里的名次（477,225 局实测）
+
+| 对手 | 名次 | 胜率 | 跑它的队伍 |
+|---|---|---|---|
+| `w39` = `benchmarks/strongest.py` | **1** | 95.4% | 1 |
+| `w48` | 2 | 95.1% | 1 |
+| `w16` | 3 | 93.9% | 2 |
+| `w05` | 9 | 86.3% | 11 |
+| `w02` | 10 | 84.5% | 39 |
+| `w03` | 11 | 84.0% | 38 |
+| `w01` | 45 | 47.4% | **96** ← 最流行 |
+| `cleo` = 我们提交的那个 | **64** | 36.5% | — |
+
+**最强的几条只有 1–2 个队伍在跑，最流行的那条（96 队）排 45。**
+
+### 提交过的 agent 与天梯分数
+
+| 日期 | 提交号 | agent | 天梯分 | 快照 |
+|---|---|---|---|---|
+| 08-12 | `55458466` | `closer_cleo` + terminal@714（重发） | 1218.6 | `submissions/2026-08-11-closercleo-term714/` |
+| 08-11 | `55442784` | 同上，首次 | **1363.7** | 同上 |
+| 08-11 | `55439740` | `closer_cleo` 原样 | 1287.2 | `submissions/2026-08-11-closercleo/` |
+| 08-11 | `55404837` | `mgtight` + liq29 | 836.8 | `submissions/2026-08-10-mgtight-liq29/` |
+| 08-11 | `55431972` | `mgtight` + here-pass | 818.4 | `submissions/2026-08-11-mgtight-here/` |
+| 08-11 | `55418588` | `mgtightgrain` | 767.4 | `submissions/2026-08-11-mgtightgrain/` |
+| 08-10 | `55400803` | `bigberry` + compost | 763.3 | — |
+| 08-10 | `55402695` | `mgtight` | 759.9 | — |
+| 08-08 | `55358912` | `enhanced`（多文件） | 623.6 | `submissions/2026-08-08-enhanced/` |
+| 08-07 | `55332339` | `barnyard`（最初版本） | 621.4 | `submissions/2026-08-07-barnyard/` |
+
+**天梯最高 1363.7，而榜首约 3,180、第 10 名约 3,090。** 完整清单见
+[`docs/RUNS.md`](docs/RUNS.md)。
+
+> **这三张表会过时。** 重新生成用：
+>
+> ```bash
+> python tools/fieldtable.py          # 打印当前的三张表，可直接粘回这里
+> ```
+>
+> 提交一个新 agent 后，把它加进最后一张表并在 `docs/RUNS.md` 记一行 ——
+> 一条天梯记录必须几个月后仍能追溯到产生它的代码。
+
+---
+
 ## 常见问题
 
 三个每个人第一周都会问的问题。更长的答案在链接后面；这里的内容够你动起来。

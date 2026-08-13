@@ -412,6 +412,19 @@ nested directory breaks the imports. Verifies by unpacking, checking
 `get_last_callable` resolves to `agent`, and running a full episode. Single-file
 agents do not need it; submit the `.py` directly.
 
+### `tools/fieldtable.py`
+Reprints README's three opponent tables — the fields on disk, the standings in
+`agents/wrapped/`, and every submission with its ladder score — in the README's
+own markdown, so refreshing them is a paste rather than an edit.
+
+```bash
+python tools/fieldtable.py
+```
+
+It exists because those tables go stale silently: a field gets rebuilt, plans
+get re-mined, submissions accumulate, and a table nobody can cheaply regenerate
+becomes fiction that reads like fact.
+
 ### `tools/wrap.py`
 Puts the same adaptive layer around each mined plan, so a round robin compares
 plans instead of wrappers.
