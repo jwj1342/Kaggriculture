@@ -1,0 +1,38 @@
+{
+  "_comment": "Wave 4 -- price the sell-ordering layer, the last part of the wrapper never measured against a non-identical opponent. Wave 1 found _SORT_SELLS=False costs 37 points in a mirror while moving nothing at all against `starter`, so the effect is opponent-mediated; whether it survives a stranger is the open question. Three waves running, every large mirror effect has evaporated against the field.",
+
+  "_why_this_layer_matters": "It contains the only code in the whole agent that reads the opponent on purpose. _PROMOTE_IF_OPP_MONEY gates WHEAT promotion on the rival's public bank, with the donor's comment saying a rival near insolvency is the one most helped by our extra supply. Everything else in the file either replays a tape or reads our own farm.",
+
+  "factors": {
+    "sort": {
+      "impact": {},
+      "gross": {"_SORT_KEY": "gross"},
+      "unit": {"_SORT_KEY": "unit"},
+      "off": {"_SORT_SELLS": false}
+    },
+
+    "sf": {
+      "sf0": {},
+      "sf1": {"_SELLS_FIRST": true}
+    },
+
+    "race": {
+      "r0": {},
+      "r1": {"_RACE_WEIGHT": 1.0},
+      "r2": {"_RACE_WEIGHT": 2.0}
+    },
+
+    "prom": {
+      "base": {},
+      "all": {"_PROMOTE": []},
+      "nogate": {"_PROMOTE_IF_OPP_MONEY": {}}
+    }
+  },
+
+  "_notes": {
+    "sort": "_SORT_KEY decides which sell takes the earliest market slot. 'impact' ranks by revenue lost to going second (quantity x own price impact), 'gross' by revenue at stake, 'unit' by current unit price. 'off' skips the reordering entirely and keeps the tape's slot layout.",
+    "sf": "_SELLS_FIRST=True places promoted sells ahead of buys instead of refilling the slots the tape already used for selling. The donor's own docstring warns this breaks the funding chain -- sells pay for the buys behind them in the same queue -- and wave 3 measured that at $19,000 in one episode when a sell was pushed to the last slot. Here it moves the other way.",
+    "race": "_RACE_WEIGHT adds slot priority for a product whose remaining supply outruns the town's remaining appetite, on the theory that such a product is a race rather than a hold. Wave 1 found it monotonically harmful in a mirror: 30.8% / 30.3% / 26.0% at 1 / 2 / 4.",
+    "prom": "base keeps the donor's list of eight promotable products plus the WHEAT-if-rival-solvent gate. 'all' makes everything promotable (empty means no restriction). 'nogate' removes _PROMOTE_IF_OPP_MONEY, which drops WHEAT out of promotion entirely, since WHEAT is not in _PROMOTE -- so this level is 'never promote wheat' and is the cleanest test of the one opponent-reading rule in the file."
+  }
+}

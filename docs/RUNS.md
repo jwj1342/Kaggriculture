@@ -759,3 +759,120 @@ the field; that is the cheapest open question left and it is one job.
 If the wrapper is worth as little as this suggests, the 877-point replay penalty
 is not a wrapper problem to be tuned away. It is the plan, and Road C is the only
 lever.
+
+## What actually couples the two players (2026-08-13)
+
+Three questions, all answerable from data already on disk.
+
+### In a mirror, weeds are the only tie-breaker
+
+Two byte-identical agents on the same seed. Set `weedSpawnChance` to 0 and every
+mirror episode ends in an **exact tie**, to the dollar, on every seed tried.
+Restore it and the margins reappear.
+
+The mechanism is in `_end_of_day`: one `random.Random((seed * 1_000_003) ^ day)`
+serves both farms in player order, and `_spawn_weeds` draws only on empty tiles
+(Python short-circuits `tiles[y][x] is None and rng.random() < chance`). Player 0
+consumes the first N draws, player 1 the next M. Different draws, same stream.
+Nothing else in the engine is asymmetric: market slots resolve index by index
+against the same pre-commit inventory, and the town is shared.
+
+Pooled over 2,048 control-vs-`k01` mirror episodes across three waves:
+
+```
+exact ties                     804 / 2,048  = 39.3%
+non-tie margin, median         $717      (25th $180, 75th $1,857, 90th $7,448)
+```
+
+On the real ladder, 664 episodes, **zero exact ties**, median margin $10,392.
+That is the useful contrast: a monoculture of one recording plus one wrapper
+would tie 39% of the time. The ladder does not, so the field is not a
+monoculture -- and it also explains why a few hundred dollars of consistent edge
+flipped 28 points of mirror win rate in wave 1. The baseline margin is literally
+zero.
+
+### Where `topline` loses on the ladder: it peaks at day 15
+
+59 ladder episodes, 46-13. Our own digest is identical in wins and losses --
+open-loop replay -- so every difference is the opponent's.
+
+```
+our lead, median      d5      d10     d15      d20     d25     d29
+wins                 -407   +1,490  +9,602  +8,994  +8,572 +11,284
+losses                +80     +537  +7,200  +3,981    +837    -632
+
+still ahead in losses:  d15 92%   d20 77%   d25 54%   d29 31%
+```
+
+We are ahead at day 15 in twelve of thirteen losses. The lead then decays
+monotonically. In wins it grows. Day 15 is where we stop gaining, not where we
+fall behind.
+
+What the opponents who beat us do differently -- and it is not selling more of
+what we sell:
+
+```
+                 us    opp (we win)   opp (we lose)
+cows             10         8              8
+milk sold       279       241            320
+wool sold       120       138            154
+strawberry      227       286            300
+fertilizer    1,708       235            300
+wheat         1,037       455            479
+weeds left       13         5              5
+```
+
+**Ten cows produce 279 milk for us; eight cows produce 320 for the agents that
+beat us.** 28 per cow against 40. We hire more (277 orders against 266), own more
+animals, sell more than twice the total volume, and lose -- because 2,745 of our
+3,511 units are fertilizer and wheat, one dumped at 3.5x its depth to a $1 close
+and the other floored at $17.
+
+### The shop draw is a coupling channel worth up to 20 points
+
+Eight shop instances are drawn with replacement from eight shops, one every three
+days, and each consumes fixed products every fourth step. That draw decides which
+markets stay above the price floor. Measured over 4,096 episodes of an unmodified
+`k01` against four mined ladder lines:
+
+```
+milk-consuming instances   n     win%          our $     their $   final milk price
+0                        100    64.0%         58,964     61,066         $1
+1                        392    88.8%         73,578     67,866         $1
+2                      1,036    84.9%         76,804     71,487         $1
+3                      1,024    92.6%         92,108     80,446         $1
+4                      1,048    95.4%        105,930     94,344        $47
+5                        420    98.1%        111,990     99,652       $197
+```
+
+The right-hand column is the mechanism. At three milk shops or fewer the milk
+market is saturated and closes at the floor; at four the town drains enough to
+keep it alive, and at five it closes near base price. Win rate spans 64% to 98%
+and our bank spans $58,964 to $111,990 across a variable neither player controls.
+
+Carrot shops run the other way (-6.4 points at three or more) because the eight
+instance slots are zero-sum: a PET_CAFE is a slot that is not draining anything
+we sell.
+
+Two refinements that matter more than the headline:
+
+**It is opponent-specific.** Against `w48` the effect is +20.0 points
+(78.1% -> 98.0%, disjoint); against `w16` +10.5; against `w39` +2.0 and `w68`
++0.6, both nothing. The shop draw decides a matchup only when the two plans have
+different product mixes. This is the coupling asked about, and it is not the
+market inventory directly -- it is whose product mix the town happens to want.
+
+**Earlier is better, monotonically.** Position of the first milk shop in the
+unlock order: d3 96.4%, d6 90.4%, d9 89.6%, d12 83.0%, d15 79.2%, never 64.0%.
+Cumulative drain explains this without needing an adaptation story.
+
+### The opening this leaves
+
+`obs["town"]["unlocked_shops"]` is public and fills up one entry every three
+days, so by day 12 an agent has seen four of eight. Which markets will stay
+liquid is therefore *knowable in-season*, and it is worth up to 20 points against
+a given opponent. An adaptive agent can shift its product mix toward the draw. A
+recording cannot -- it plants what it planted.
+
+That is a concrete, measured mechanism for part of the 877-point replay penalty,
+and unlike everything else in these four waves it is not a mirror artefact.
