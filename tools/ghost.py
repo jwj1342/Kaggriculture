@@ -190,7 +190,14 @@ def cmd_make(args):
             if band_quota and band_count[band] >= band_quota:
                 skipped_band += 1
                 continue
-            turns = [s[seat].get("action") for s in d["steps"]]
+            # `steps[i]["action"]` produced `steps[i]["observation"]`, so an
+            # agent asked at step i must return `_TURNS[i + 1]`. Off by one, the
+            # plan runs a turn late against the previous turn's board and the
+            # replay silently produces a *different* plausible season -- which is
+            # why `verify` used to report 114% of the original score and that was
+            # read as success. Verified: +1 reproduces a real episode to the
+            # dollar and to the shop sequence; +0 does not.
+            turns = [s[seat].get("action") for s in d["steps"][1:]]
             blob = base64.b64encode(
                 gzip.compress(json.dumps(turns).encode(), 9)).decode()
             fn = f"ghost-{ep}-{seat}.py"

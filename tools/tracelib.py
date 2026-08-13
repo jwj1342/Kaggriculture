@@ -123,7 +123,15 @@ def _digest_one(args):
         final = steps[-1]
         out = []
         for seat in (0, 1):
-            turns = [(s[seat].get("action") or {}) for s in steps[:-1]]
+    # `steps[i]["action"]` is the action that PRODUCED `steps[i]["observation"]`,
+    # not the one taken from it. So an agent asked at step i must return
+    # `_TURNS[i + 1]`. Getting this wrong shifts the whole plan one turn late,
+    # which for an open-loop plan means every decision is made against the
+    # previous turn's board -- and it is invisible, because a shifted replay
+    # still produces a plausible season. Verified against a real episode:
+    # offset +1 reproduces 85,511 / 86,278 and the shop sequence exactly;
+    # offset 0 gives 91,206 / 90,033 and a different town.
+            turns = [(s[seat].get("action") or {}) for s in steps[1:]]
             if len(turns) < 700:
                 continue
             out.append({
@@ -366,6 +374,69 @@ def cmd_emit(args):
     return 0
 
 
+
+def cmd_verify(args):
+    """Replay whole recorded episodes and require them to reproduce, exactly.
+
+    The bar is *both sides of a real episode, to the dollar, plus the shop
+    sequence* -- not "the ghost reaches a plausible score". The old check
+    reported a ghost hitting 114% of its original and that was read as success;
+    it was a one-turn offset producing a different, luckier season. An
+    open-loop plan replayed a turn late makes every decision against the
+    previous turn's board, and nothing about the result looks wrong.
+    """
+    import gzip as _gz
+    from kaggle_environments import make
+    tmp = os.path.join(WORK, "_verify")
+    os.makedirs(tmp, exist_ok=True)
+    tpl = ('import json,gzip,base64\n'
+           '_T=json.loads(gzip.decompress(base64.b64decode("{b}")).decode())\n'
+           '_P={{"farmer":["PASS"],"hands":[],"market":[]}}\n'
+           'def agent(obs):\n'
+           '    try:\n'
+           '        i=int(obs.get("step",0) or 0)\n'
+           '        return _T[i] if 0<=i<len(_T) else _P\n'
+           '    except Exception: return _P\n')
+    dates = [d.strip() for d in args.dates.split(",") if d.strip()]
+    ok = bad = 0
+    for d in dates:
+        cache = os.path.join(LIB, f"files-{d}.json")
+        names = json.load(open(cache)) if os.path.exists(cache) else \
+            dataset_files(f"kaggle/kaggriculture-episodes-{d}")
+        step = max(1, len(names) // args.limit)
+        for name in names[::step][:args.limit]:
+            path = dataset_file(f"kaggle/kaggriculture-episodes-{d}", name, WORK)
+            if not path:
+                continue
+            try:
+                data = json.load(open(path))
+                steps, seed = data["steps"], (data.get("info") or {}).get("seed")
+                want, want_shops = data["rewards"], \
+                    steps[-1][0]["observation"]["town"]["unlocked_shops"]
+                for seat in (0, 1):
+                    turns = [(s[seat].get("action") or {}) for s in steps[1:]]
+                    blob = base64.b64encode(_gz.compress(
+                        json.dumps(turns).encode())).decode()
+                    open(os.path.join(tmp, f"s{seat}.py"), "w").write(
+                        tpl.format(b=blob))
+                env = make("kaggriculture",
+                           configuration={"episodeSteps": 720, "seed": seed})
+                env.run([os.path.join(tmp, "s0.py"), os.path.join(tmp, "s1.py")])
+                got = [float(x.reward or 0) for x in env.steps[-1]]
+                shops = env.steps[-1][0].observation["town"]["unlocked_shops"]
+                exact = got == want and shops == want_shops
+                ok, bad = ok + exact, bad + (not exact)
+                mark = "ok  " if exact else "FAIL"
+                print(f"  {mark} {name[:-5]}  {got} vs {want}"
+                      f"{'' if shops == want_shops else '  shops differ'}")
+            finally:
+                for q in (path, path + ".zip"):
+                    if q and os.path.exists(q):
+                        os.remove(q)
+    print(f"\n  {ok} exact, {bad} not")
+    return 1 if bad else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -381,6 +452,10 @@ def main():
     p = sub.add_parser("stats")
     p.add_argument("--top", type=int, default=25)
     p.set_defaults(fn=cmd_stats)
+    p = sub.add_parser("verify")
+    p.add_argument("--dates", required=True)
+    p.add_argument("--limit", type=int, default=4)
+    p.set_defaults(fn=cmd_verify)
     p = sub.add_parser("emit")
     p.add_argument("--out", default="agents/traces")
     p.add_argument("--top", type=int, default=20)

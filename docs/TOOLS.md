@@ -412,6 +412,24 @@ nested directory breaks the imports. Verifies by unpacking, checking
 `get_last_callable` resolves to `agent`, and running a full episode. Single-file
 agents do not need it; submit the `.py` directly.
 
+### `tools/wrap.py`
+Puts the same adaptive layer around each mined plan, so a round robin compares
+plans instead of wrappers.
+
+```bash
+python tools/wrap.py --top 100 --out agents/wrapped
+```
+
+Without this, a field of bare recordings against one wrapped agent measures the
+wrapper. That mistake produced a "92.4%, beats all twelve" reading for an agent
+that sits 64th of 101 once every entrant carries the same layer.
+
+The transplant is safe because the parts of the donor wrapper that depend on its
+own plan are already dead: `_SUPPLY` is read only by `_reserve_price`, which is
+only called for items in `_RESERVE`, and `_RESERVE` is empty. Each emitted file
+is verified by loading it the way the framework will and checking that step 0
+matches the plan.
+
 ### `tools/tracelib.py`
 Mines the daily top-episode dumps into a library of the **distinct plans** the
 ladder actually plays.
@@ -444,6 +462,13 @@ is playing a different game.
   Every retry refreshes the limit that is blocking it. `-j 8` and few requests
   beat `-j 64` and many, by a wide margin -- at 48 the download failure rate was
   80%, at 64 the account was 429'd for minutes.
+* **`steps[i]["action"]` produced `steps[i]["observation"]`,** so a replay must
+  return `_TURNS[i + 1]` at step i. Off by one, an open-loop plan makes every
+  decision against the previous turn's board -- and it is invisible, because the
+  shifted replay still produces a plausible season. `verify` used to report a
+  ghost reaching 114% of its original score and that was read as success. The
+  bar is now `tracelib verify`: both sides of a real episode reproduced **to the
+  dollar**, plus an identical shop sequence.
 * **The seed is in `info["seed"]`,** not in the first observation. Reading the
   wrong place gives `None` for every episode and an open-loop trace without its
   seed cannot be replayed on the board it was recorded on, which is most of its

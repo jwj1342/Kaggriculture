@@ -77,7 +77,8 @@ into one ratings row — the defect that corrupted runs #22 and #32.
 | `endhire-ghosts` | the same two engines vs 156 ladder trajectories | 3,120 | independent confirmation, +4.55 points |
 | `endD-shape` | 10 shapes under the new engine, 192 seeds | 72,960 | disagrees with the ghost field on the produce axis — tiebreaker `endD-ref` in flight |
 | `tracelib` | 959 post-rebalance top episodes mined for distinct plans | 1,894 traj | **201 distinct plans**, 9:1 duplication — `ROADMAP.md` §10 |
-| `metaduel` | 12 mined ladder plans + our champion, 192 seeds | **28,080** | champion wins 91.7%, beats all twelve; **zero non-transitive cycles** — `ROADMAP.md` §10 |
+| ~~`metaduel`~~ | 12 mined plans + champion | 28,080 | **void** — the replays were one turn late; see `ROADMAP.md` §10 |
+| `duel101` | 101 mined plans, one shared wrapper, 48 seeds | **477,225** | champion 64th at 36.5%; 3.3% of triples are cycles but none inside the top 12 — `ROADMAP.md` §10 |
 
 Reproduce any of them without the database:
 
