@@ -30,18 +30,31 @@ the plan.
 TWO THINGS MEASURED ABOUT THIS SELECTION, 2026-08-13 -- read before trusting a
 number that came out of a field built here.
 
-1. `--top` sorts by sighting count, and that ordering runs out early. Of the 347
+1. **Nothing this script can sort on tells you a plan is good.** Judge a line by
+   its **panel win rate** -- `docs/VALIDATING.md` opens with the definition. Not
+   by `count`, and emphatically not by `best_score`: over one team's 17 lines,
+   `best_score` versus panel win rate is **spearman -0.47**, because a recorded
+   episode's money is a property of the board, not the player. The two players in
+   one episode earn almost the same amount (pearson +0.950), so a high
+   `best_score` says the shop draw was generous. The agent submitted on
+   2026-08-13 was picked this way: first of 17 by `best_score`, **seventh** by
+   panel win rate.
+
+2. `--top` sorts by sighting count, and that ordering runs out early. Of the 347
    plans clearing `--min-score`, only 57 have `count >= 2`; the remaining 290 are
    tied at one sighting, so `--top 100` fills its last 43 seats in whatever order
-   the dict happens to iterate. Selecting the same 247 leftovers by best
-   single-episode money instead (`agents/darkhorse/`) put 18 of 40 above the old
-   field's tenth-place threshold. The frequency filter was mostly not a filter.
+   the dict happens to iterate. The frequency filter was mostly not a filter.
 
-2. A win here does not mean the plan is good. Checked against the source teams'
-   real ladder ratings across all 100 plans: spearman -0.05, n=100 -- no relation
-   at all, and one team's own episodes span 14% to 93% locally. What this field
-   measures is whether a recording still functions on an unfamiliar board.
-   `docs/ROADMAP.md` §10.5.
+3. Winning the local field does not mean the plan is good either. Checked against
+   the source teams' real ladder ratings across all 100 plans: spearman -0.05,
+   n=100 -- no relation at all, and one team's own episodes span 14% to 93%
+   locally. What this field measures is whether a recording still functions on an
+   unfamiliar board. `docs/ROADMAP.md` §10.5.
+
+Selection is for **coverage** -- getting the plans worth measuring onto the
+field. Ranking happens afterwards, on the panel. `--team` is the one selector
+with an argument behind it, because the source team's ladder rating is external
+evidence rather than something this repo computed about itself.
 
 Neither is fixed here on purpose: changing the selection would silently
 invalidate every comparison already recorded against a field built by the old
@@ -103,7 +116,9 @@ def main():
                          "with commas). Selecting by source team is the one "
                          "criterion docs/ROADMAP.md §10.5 did not refute.")
     ap.add_argument("--by", choices=("count", "score"), default="count",
-                    help="ordering when there are more matches than --top")
+                    help="tie-break when there are more matches than --top. "
+                         "NEITHER is a quality signal -- judge a line by its "
+                         "panel win rate (docs/VALIDATING.md), never by this.")
     ap.add_argument("--prefix", default="w", help="filename prefix")
     a = ap.parse_args()
 

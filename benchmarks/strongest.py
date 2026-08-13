@@ -11,8 +11,10 @@ One recorded 720-turn plan wearing the shared adaptive layer from
 `agents/ref/closer_cleo.py` (see `tools/wrap.py`). It is here because two
 independent signals agree on it, which no other plan in the library manages:
 
-* **Local.** 92.4% over 1,920 episodes against the ten strongest plans
-  previously mined, where the best of those ten manages 79.9% on the same panel.
+* **Local.** A **panel win rate** of 92.4% over 1,920 episodes -- the only
+  measure of a plan this repo trusts, defined at the top of
+  `docs/VALIDATING.md` -- against the ten strongest plans previously mined,
+  where the best of those ten manages 79.9% on the same panel.
 * **External.** It was recorded from the team sitting at #1 on the ladder
   (3,240). Of the 371 plans in the library, none has a higher-rated source.
 
@@ -26,6 +28,11 @@ and necessary -- but it does not say the plan is good.
 The previous occupant of this file, `w39`, won 95.4% of a 477,225-episode round
 robin and was recorded from the team at **#358**. That is the whole problem in
 one sentence.
+
+Not the top of its own team either: of カワシギ's 17 recorded lines, `k06` takes
+the same panel at **98.5%**. This file was picked by the recorded episode's money
+before that was known to be a *negative* indicator (spearman -0.47 across those
+17), and it is seventh of the seventeen on the measure that counts.
 
 Committed, unlike the rest of `agents/wrapped/`, because `agents/CHAMPION` has
 to point at something a fresh clone already has. Rebuild the full field with:

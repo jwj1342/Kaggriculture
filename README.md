@@ -293,11 +293,20 @@ site/              生成的排行榜页面
 `bash tools/fetch_fields.sh` 建起全部场地。**除 `benchmarks/` 外都是 git-ignored 的生成物** ——
 它们由脚本重建，不进版本库。
 
+> **怎么判断一条线或一个 agent 好不好：只看「面板胜率」。**
+> 固定十个对手（`w39 w48 w16 w68 w56 w25 w12 w28 w05 w02`）× 96 个种子 × 双方座位
+> = **1,920 局**，赢的比例就是它。固定，是为了让不同候选用同一把尺子量。
+> 比赛只看输赢不看钱，所以胜率就是比赛真正评的那个量；任何以「钱」为单位的指标
+> 都只是代理，而代理指标背叛过我们一次。
+> 定义、跑法、以及它自己还没解决的两个问题，写在
+> [`docs/VALIDATING.md`](docs/VALIDATING.md) 开头。
+
 | 路径 | 数量 | 是什么 | 怎么来 |
 |---|---|---|---|
 | **`agents/wrapped/`** | **100** | **真正的对手** —— 从天梯挖出的剧本，全部套同一层适配层 | `tools/wrap.py --top 100` |
 | `benchmarks/strongest.py` | 1 | 要打过的那条（= `d08`，源队伍天梯 **#1**），**已提交进 git**，`agents/CHAMPION` 指向它 | `wrap.py` |
-| `agents/darkhorse/` | 40 | 未进 `wrapped` 的 247 条里按单局最高分挑的，**18 条越过旧场地第十名** | `tools/wrap.py`（改选取） |
+| `agents/darkhorse/` | 40 | 未进 `wrapped` 的 247 条里另选的 40 条，**18 条越过旧场地第十名** | `tools/wrap.py` |
+| `agents/champ/` | 17 | **天梯 #1 那支队伍的全部录音**，同一层适配层 | `wrap.py --team` |
 | `agents/lines/` | 35 | 每条不同剧本的一个代表，**裸录音**（无适配层，会塌） | `tracelib emit` |
 | `agents/bench3/` | 28 | 引擎级场地：我们自己的形状 + 参考 agent | `registry.py gen --plan bench` |
 | `agents/ref/` | 10 | 第三方教学梯队 tier 0–9（MIT，见其 NOTICE） | Kaggle 数据集 |
