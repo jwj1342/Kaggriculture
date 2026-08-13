@@ -149,6 +149,58 @@ _X_LIQ_AT = 680
 _X_GUARD_AT = 717
 
 
+_X_DRAIN_FIX = False
+
+# The donor's `_remaining_drain` is the only shop-aware model in the agent: it
+# reads `town.unlocked_shops` and projects how many units of a product the town
+# will still absorb. It is wired only into `_reserve_price` (dead -- `_RESERVE`
+# is empty) and `_race_factor` (live when _RACE_WEIGHT > 0), and it does not
+# match this engine. Measured against 200 real ladder shop draws:
+#
+#   step 0     MILK 491 vs 336   WOOL 374 vs 210   MELON 140 vs 30   (est vs real)
+#   step 360   MILK 348 vs 249   WOOL 280 vs 195   MELON 100 vs 15
+#
+# It fires the town centre every 12 steps with a 1/2/4 multiplier stepping up on
+# days 10 and 20. The engine fires it every `townCenterSellInterval` (24) steps
+# with multiplier 1 and no step-up -- pre-1.32.6 balance, most likely, since that
+# release halved town demand. Melon is worst hit because no shop consumes melon
+# at all, so its entire estimate is the wrong term.
+#
+# _RACE_WEIGHT was measured harmful in wave 1 and neutral in wave 4. Both used
+# this model. With a corrected one it is a different experiment.
+_donor_remaining_drain = _remaining_drain
+
+
+def _remaining_drain(item, step, shops):
+    if not _X_DRAIN_FIX:
+        return _donor_remaining_drain(item, step, shops)
+    if item == "FERTILIZER":
+        return 0.0        # no shop and no town-centre line consumes fertilizer
+    live = 0
+    for name in (shops or ()):
+        products = _SHOP_DEMAND.get(name)
+        if products and item in products:
+            live += 2 if len(products) == 1 else 1
+    # A shop not yet unlocked is worth its average draw: the town picks with
+    # replacement from the eight, so the expected weight of one future instance
+    # is the mean weight over all eight.
+    per_new = sum((2 if len(p) == 1 else 1) if item in p else 0
+                  for p in _SHOP_DEMAND.values()) / float(len(_SHOP_DEMAND))
+    n_open = len(shops or ())
+    is_center = item in _CENTER_ITEMS
+    total = 0.0
+    for s in range(step, 720):
+        day = s // 24
+        if s % 4 == 0:
+            total += live
+            pending = min(8, day // 3 + 1) - n_open
+            if pending > 0:
+                total += pending * per_new
+        if is_center and s % 24 == 0:
+            total += 1.0
+    return total
+
+
 def _x_is_sell(o, items):
     return (isinstance(o, list) and len(o) >= 2 and o[0] == "SELL"
             and o[1] in items)

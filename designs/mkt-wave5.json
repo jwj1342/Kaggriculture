@@ -1,0 +1,30 @@
+{
+  "_comment": "Wave 5 -- the shop-aware mechanism, retested with a demand model that matches this engine. _remaining_drain is the only code in the agent that reads town.unlocked_shops, and it overestimates by 1.3-1.8x on most products and 4.7-6.7x on melon, measured against 200 real ladder shop draws. It feeds _race_factor, which adds slot priority for a product whose remaining supply outruns the town's remaining appetite. _RACE_WEIGHT tested harmful in wave 1 (mirror) and neutral in wave 4 (field) -- both with the broken model.",
+
+  "_why_this_and_not_production": "Production cannot respond to the shop draw without writing a new agent. PLANT names its crop in the action (`[\"PLANT\", \"CARROT\"]`), and the engine drops ALL plant requests for a crop when seeds are short, so editing the market queue's BUY_SEED orders redirects nothing and can destroy a whole turn's planting. Selling is the only part of the loop the tape leaves open.",
+
+  "_the_prize_being_chased": "Shop draw is worth 64% to 98% win rate against four mined ladder lines, and the milk market closes at $1 with three or fewer milk shops, $47 with four, $197 with five. Any dial that lets the agent notice which markets will stay liquid is aimed at that spread.",
+
+  "factors": {
+    "drain": {
+      "donor": {"_X_DRAIN_FIX": false},
+      "fixed": {"_X_DRAIN_FIX": true}
+    },
+    "race": {
+      "r0": {"_RACE_WEIGHT": 0.0},
+      "r05": {"_RACE_WEIGHT": 0.5},
+      "r1": {"_RACE_WEIGHT": 1.0},
+      "r2": {"_RACE_WEIGHT": 2.0},
+      "r4": {"_RACE_WEIGHT": 4.0}
+    },
+    "sort": {
+      "impact": {},
+      "gross": {"_SORT_KEY": "gross"}
+    }
+  },
+
+  "_notes": {
+    "r0_is_a_replicate": "_race_factor returns 1.0 when _RACE_WEIGHT <= 0, so the drain model is unreachable at r0. The donor and fixed cells at r0 must return identical numbers; if they do not, _X_DRAIN_FIX is leaking somewhere it should not.",
+    "expected_direction": "Written before the run. The corrected model reports LESS remaining demand, so more products look structurally oversupplied, so _race_factor fires more often and harder. If wave 1's finding was 'racing is bad', a truer model should make it worse, not better. A win here would mean the earlier harm came from racing the wrong products."
+  }
+}
