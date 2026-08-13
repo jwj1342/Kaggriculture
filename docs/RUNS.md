@@ -918,3 +918,48 @@ _RESERVE / _RAMP_* / _SHED_PRESSURE     dead code, and _RESERVE is broken
 Four points. That is what the adaptive layer is worth against real recordings,
 and it is already at its best setting. The 877-point replay penalty is not in
 here.
+
+## Wave 5: correcting the demand model does not rescue the shop-aware dial
+
+`_remaining_drain` is the only code in the agent that reads
+`town.unlocked_shops`, and it does not match this engine -- it fires the town
+centre every 12 steps with a 1/2/4 multiplier stepping up on days 10 and 20,
+where the engine fires it every 24 with multiplier 1. Against 200 real ladder
+shop draws it overestimates by 1.3-1.8x on most products and 4.7-6.7x on melon,
+whose entire estimate is the wrong term because no shop consumes melon.
+
+It feeds `_race_factor` alone. 20 cells, 56,320 episodes, controls 50.0%/50.0%,
+and the design's own pre-registered self-check passed: at `r0` the donor and
+fixed cells are identical to the decimal, confirming the model is unreachable
+when the weight is zero.
+
+```
+pooled over every race > 0 cell, field, 16,384 episodes each
+  donor model   86.27%  [85.73, 86.79]
+  fixed model   86.62%  [86.09, 87.13]     +0.35, intervals overlap
+
+pooled over both models, field, 8,192 each
+  r0 (off)      87.67%  [86.94, 88.37]     <- donor's value, and the best
+  r05           87.21%
+  r1            86.63%
+  r2            86.24%
+  r4            85.69%  [84.92, 86.43]     disjoint from r0
+```
+
+Racing is monotonically harmful under both models. Fixing the model does not
+rescue it.
+
+**A pre-registered prediction, refuted.** The design file said a truer model
+reports less remaining demand, so `_race_factor` fires harder, so the corrected
+version should be *worse*. It is marginally better instead, and inside noise. The
+mechanism offered for wave 1's result was therefore wrong in direction; the
+honest reading is that correcting the model barely changes which products get
+raced, because the mechanism is worthless either way.
+
+Production cannot respond either: PLANT names its crop in the action and the
+engine drops every plant request for a crop when seeds are short, so editing
+BUY_SEED redirects nothing and can destroy a turn's planting.
+
+That closes shop-response through the market layer. The 34-point spread the shop
+draw controls is reachable only on the production side, and the production side
+is the tape.
