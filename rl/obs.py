@@ -164,35 +164,44 @@ def net_worth(obs):
     priv = obs["private"]
     prices = {p: R.MARKET_PARAMS[p]["base"] for p in PRODUCT_LIST}
 
-    worth = farm["money"]
+    # End-game decay: over the last five days every non-cash asset ramps
+    # linearly to worthless, money never does. Holding through the end is a
+    # steady negative delta, selling converts decaying value into permanent
+    # value -- liquidation discipline emerges from the reward shape instead
+    # of a scripted rule. (Without it, an argmax policy finished with a full
+    # shed, half its net worth unrealised.)
+    t = obs.get("day", 0) * 24 + obs.get("hour", 0)
+    decay = min(1.0, max(0.0, (720.0 - t) / 120.0))
+
+    assets = 0.0
     # Land credit: neutralises the BUY_LAND cash dip in the shaping delta, the
     # same way seeds/animals are credited at cost.
-    worth += sum(R.LAND_PRICES[:len(farm["unlocked_quadrants"]) - 1])
+    assets += sum(R.LAND_PRICES[:len(farm["unlocked_quadrants"]) - 1])
     for item, n in priv["shed"].items():
         if n <= 0:
             continue
         if item in R.ANIMALS:
-            worth += n * R.ANIMALS[item]["cost"]
+            assets += n * R.ANIMALS[item]["cost"]
         else:
-            worth += n * prices[item]
+            assets += n * prices[item]
     for c, n in priv["seeds"].items():
-        worth += n * R.CROPS[c]["seed"]
+        assets += n * R.CROPS[c]["seed"]
     for invd in priv["inventories"]:
         for item, n in invd.items():
             if item in prices:
-                worth += n * prices[item]
+                assets += n * prices[item]
             elif item in R.ANIMALS:
-                worth += n * R.ANIMALS[item]["cost"]
+                assets += n * R.ANIMALS[item]["cost"]
     for y in range(N):
         for x in range(N):
             t = farm["tiles"][y][x]
             if not isinstance(t, dict):
                 continue
             if t.get("kind") == "PLANT":
-                worth += R.CROPS[t["crop"]]["seed"]
-                worth += t.get("yield_units", 0) * prices[t["crop"]]
+                assets += R.CROPS[t["crop"]]["seed"]
+                assets += t.get("yield_units", 0) * prices[t["crop"]]
             elif "animal" in t:
                 a = R.ANIMALS[t["animal"]]
-                worth += a["cost"]
-                worth += t.get("yield_units", 0) * prices[a["product"]]
-    return worth
+                assets += a["cost"]
+                assets += t.get("yield_units", 0) * prices[a["product"]]
+    return farm["money"] + decay * assets

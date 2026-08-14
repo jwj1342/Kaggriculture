@@ -43,6 +43,14 @@ ANIMAL_LIST = list(R.ANIMALS)
 PRODUCT_LIST = list(R.PRODUCTS)
 MAX_HANDS = 12
 
+# Mechanics-dead planting deadline: a crop planted after day
+# 29 - first_yield_day can never yield anything before the episode ends, so
+# PLANT/BUY_SEED past it are pure money burns -- mask them like any other
+# impossibility. (Measured: an argmax policy sank $14k into post-deadline
+# melon seeds in one episode.) This is derived from the yield mechanics, not
+# a strategy preference; profitable-but-late planting stays available.
+PLANT_DEADLINE = {c: 29 - R.CROPS[c]["first_yield_day"] for c in CROP_LIST}
+
 FARMER_ACTIONS = (
     ["PASS", "MOVE_N", "MOVE_S", "MOVE_E", "MOVE_W",
      "WATER", "HARVEST", "FEED", "CARE", "COLLECT_FERT", "FERTILIZE",
@@ -288,6 +296,7 @@ def decode(obs, f_idx, m_idx):
 def farmer_mask(obs):
     farm, priv, inv, (fx, fy) = _me(obs)
     s = _scan(obs)
+    day = obs.get("day", 0)
     shed = priv["shed"]
     empties = bool(s["empty"])
     m = np.zeros(N_FARMER, dtype=bool)
@@ -314,7 +323,8 @@ def farmer_mask(obs):
     allow("BUILD_PASTURE", empties)
     allow("DROP", bool(inv))
     for c in CROP_LIST:
-        allow(f"PLANT_{c}", empties and priv["seeds"].get(c, 0) > 0)
+        allow(f"PLANT_{c}", empties and priv["seeds"].get(c, 0) > 0
+              and day <= PLANT_DEADLINE[c])
     for a in ANIMAL_LIST:
         kind = R.ANIMALS[a]["structure"]
         has = inv.get(a, 0) > 0 or shed.get(a, 0) > 0
@@ -326,6 +336,7 @@ def farmer_mask(obs):
 def market_mask(obs):
     farm, priv, _inv, _pos = _me(obs)
     money = farm["money"]
+    day = obs.get("day", 0)
     shed = priv["shed"]
     prices = obs["market"]["prices"]
     m = np.zeros(N_MARKET, dtype=bool)
@@ -338,7 +349,8 @@ def market_mask(obs):
     for p in PRODUCT_LIST:
         allow(f"SELL_{p}", shed.get(p, 0) > 0)
     for c in CROP_LIST:
-        allow(f"BUY_SEED_{c}", money >= R.CROPS[c]["seed"])
+        allow(f"BUY_SEED_{c}", money >= R.CROPS[c]["seed"]
+              and day <= PLANT_DEADLINE[c])
     room = sum(shed.values()) < R.SHED_CAPACITY
     allow("BUY_WHEAT", room and money >= prices["WHEAT"] * 5)
     allow("BUY_FERT", room and money >= prices["FERTILIZER"])
