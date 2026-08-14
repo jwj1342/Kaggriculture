@@ -76,10 +76,13 @@ def main():
     run_dir = os.path.join(_RL, "runs", args.run)
     os.makedirs(run_dir, exist_ok=True)
     ppo_optim = torch.optim.Adam(policy.parameters(), lr=3e-4, eps=1e-5)
-    torch.save({"model": policy.state_dict(), "optim": ppo_optim.state_dict(),
-                "global_step": 0, "stage": 0, "iter": -1},
-               os.path.join(run_dir, "latest.pt"))
-    print(f"BC checkpoint -> {run_dir}/latest.pt")
+    ck = {"model": policy.state_dict(), "optim": ppo_optim.state_dict(),
+          "global_step": 0, "stage": 0, "iter": -1}
+    # bc_init.pt is immutable -- PPO overwrites latest.pt within minutes, and
+    # the pristine clone must stay exportable/diagnosable forever.
+    torch.save(ck, os.path.join(run_dir, "bc_init.pt"))
+    torch.save(ck, os.path.join(run_dir, "latest.pt"))
+    print(f"BC checkpoint -> {run_dir}/latest.pt (+ immutable bc_init.pt)")
     print("BC-DONE")
 
 

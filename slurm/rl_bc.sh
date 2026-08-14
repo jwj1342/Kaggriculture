@@ -20,5 +20,14 @@ export OMP_NUM_THREADS=1
 export KG_FAST_ENV=1
 
 RUN=${RUN:-m2}
-python rl/collect_bc.py --episodes 224 --jobs 28
+if [ "${SKIP_COLLECT:-0}" != "1" ]; then
+    python rl/collect_bc.py --episodes 224 --jobs 28
+fi
 python rl/train_bc.py --run "$RUN" --epochs 6 --threads "${SLURM_CPUS_PER_TASK}"
+
+# Sanity-read on the *pristine* clone before any PPO touches it: export it and
+# play a handful of real episodes. A healthy clone should be near the teacher
+# (>20k money, beats starter); a collapsed one means BC itself is the problem.
+python rl/export_agent.py --ckpt "rl/runs/${RUN}/bc_init.pt" --name groundhog-bc
+python tools/eval.py h2h rl/out/groundhog-bc/main.py starter --seeds 4 -j 8
+echo "BC-VERIFY-DONE"

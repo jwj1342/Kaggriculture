@@ -95,7 +95,9 @@ def main():
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
-    policy.load_state_dict(ck["model"])
+    # strict=False: pre-value-net checkpoints lack v1/v2 keys, and the value
+    # net never ships anyway -- only the policy side is exported.
+    policy.load_state_dict(ck["model"], strict=False)
     policy.export_npz(os.path.join(out_dir, "weights.npz"))
 
     for src, dst in ((os.path.join(_RL, "obs.py"), "kg_rl_obs.py"),

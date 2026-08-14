@@ -86,8 +86,14 @@ def main():
     global_step, stage, it0 = 0, 0, 0
     if not args.no_resume and os.path.exists(ckpt_path):
         ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        policy.load_state_dict(ck["model"])
-        optim.load_state_dict(ck["optim"])
+        missing, unexpected = policy.load_state_dict(ck["model"], strict=False)
+        if missing or unexpected:
+            print(f"arch drift on resume: missing {missing} unexpected {unexpected}",
+                  flush=True)
+        try:
+            optim.load_state_dict(ck["optim"])
+        except ValueError:
+            print("optimiser state incompatible, starting it fresh", flush=True)
         global_step, stage, it0 = ck["global_step"], ck["stage"], ck["iter"] + 1
         print(f"resumed: step {global_step:,} stage {stage} iter {it0}", flush=True)
 
