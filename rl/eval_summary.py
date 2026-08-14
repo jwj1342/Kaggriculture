@@ -12,7 +12,14 @@ import glob
 import json
 import os
 
-RECORDINGS = {"w49", "w100", "w88", "w50"}
+import re
+
+
+def _is_recording(name):
+    """Recording lineage: bare ghost replays, spar reconstructions (estate-*),
+    wrapped ladder recordings (w<nn>)."""
+    return (name.startswith("ghost-") or name.startswith("estate-")
+            or re.fullmatch(r"w\d+", name) is not None)
 
 
 def main():
@@ -39,7 +46,7 @@ def main():
               f"[{lo:>5.1%},{hi:>5.1%}] {s['margin']:>+10,.0f}  {verdict}")
 
     n = len(files)
-    rec_beaten = [b for b in beaten if b in RECORDINGS]
+    rec_beaten = [b for b in beaten if _is_recording(b)]
     print(f"\nbeaten {len(beaten)}/{n}: {', '.join(beaten) or '-'}")
     print(f"recordings beaten: {', '.join(rec_beaten) or 'none'}")
     goal = len(beaten) >= (n + 1) // 2 and rec_beaten
