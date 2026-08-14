@@ -4,7 +4,10 @@
     python tools/datalake.py status        # what is out of sync, and by how much
     python tools/datalake.py sync          # ingest every shard directory not yet in `runs`
     python tools/datalake.py sync --prune  # ...and delete the shard files afterwards
-    python tools/datalake.py export        # refresh the snapshots collaborators pull
+
+Exporting snapshots is `tools/sync.py`, which already does it and also merges,
+pushes and pulls. This tool does not duplicate it -- an earlier draft did, which
+is exactly the kind of overlap that makes a repo hard to hold in one head.
 
 WHY THIS EXISTS
 
@@ -38,7 +41,7 @@ THE FOUR LAYERS, AND WHICH ONES ARE ALLOWED TO BE DELETED
    database and costs 1.4 GB. `sync --prune` is the only thing here that deletes,
    and it deletes only directories whose label is already in `runs`.
 
-3. **Shareable snapshots.** `dist/`. This is what a collaborator with a fresh
+3. **Shareable snapshots.** `dist/`, written by `tools/sync.py export`. This is what a collaborator with a fresh
    clone can actually get, so it must be current and it must be tracked. As of
    2026-08-14 only `tracelib.json.xz` was either: `arena-full.sqlite.xz` held
    85,064 episodes from 2026-08-07 against the live 1.6M, and was not in git.
@@ -47,15 +50,6 @@ THE FOUR LAYERS, AND WHICH ONES ARE ALLOWED TO BE DELETED
    All git-ignored, all rebuildable from layers 1-3. Deleting any of it costs
    only the time to regenerate. Never hand-edit these.
 
-WHAT `export` WRITES, AND WHY IT IS NOT THE WHOLE DATABASE
-
-`arena-meta.sqlite.xz` carries `runs`, `agents` and `ratings` -- the shape of
-every experiment ever run, a few hundred KB, and enough to answer "has this been
-measured before". The 1.6M-row `episodes` table is deliberately left out: it is
-gigabytes, it compresses badly because digests are already compressed, and it is
-reproducible by re-running the tournament. `tracelib.json.xz` is the exception
-that must ship in full, because the mined plans cannot be reproduced -- Kaggle's
-daily episode datasets expire.
 """
 
 import argparse
@@ -210,32 +204,6 @@ def cmd_sync(a):
     return 0
 
 
-def cmd_export(a):
-    os.makedirs(DIST, exist_ok=True)
-    import lzma
-    meta = os.path.join(DIST, "arena-meta.sqlite")
-    if os.path.exists(meta):
-        os.unlink(meta)
-    src = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-    dst = sqlite3.connect(meta)
-    src.backup(dst)
-    dst.execute("delete from episodes")
-    dst.commit()
-    dst.execute("vacuum")
-    n = dst.execute("select count(*) from runs").fetchone()[0]
-    dst.close()
-    src.close()
-    with open(meta, "rb") as f, lzma.open(meta + ".xz", "wb", preset=6) as g:
-        shutil.copyfileobj(f, g)
-    os.unlink(meta)
-    print(f"dist/arena-meta.sqlite.xz  {n} 个 run 的元数据  "
-          f"{os.path.getsize(meta + '.xz')/1e6:.2f} MB")
-    print("episodes 表故意不导出：几个 GB，压不动（摘要本身已压缩），而且可以重跑复现。")
-    print("\n剧本库要单独导出（它不可复现，Kaggle 的每日数据集会过期）:")
-    print("  python tools/tracelib.py export")
-    print("\n导出后记得 git add dist/*.xz —— 不 tracked 的快照队友拿不到。")
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -243,9 +211,8 @@ def main():
     p = sub.add_parser("sync", help="把所有未入库的分片入库")
     p.add_argument("--prune", action="store_true",
                    help="入库后删除已入库目录的分片文件。只删 runs 里已有 label 的。")
-    sub.add_parser("export", help="刷新可分享快照")
     a = ap.parse_args()
-    return {"status": cmd_status, "sync": cmd_sync, "export": cmd_export}[a.cmd](a) or 0
+    return {"status": cmd_status, "sync": cmd_sync}[a.cmd](a) or 0
 
 
 if __name__ == "__main__":

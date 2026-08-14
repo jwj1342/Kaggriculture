@@ -363,7 +363,7 @@ than the primary one. They remain the only offline-capable copy:
 
 ```bash
 python tools/sync.py export            # dist/arena-meta.sqlite.xz    36 KB
-python tools/sync.py export --full     # dist/arena-full.sqlite.xz   4.6 MB
+python tools/sync.py export --full     # 本地传输用，不进 git（3.4M 局，几百 MB）
 python tools/sync.py import <file>     # install as data/arena.sqlite
 python tools/sync.py merge <file> --tag alice   # fold in someone else's runs
 ```

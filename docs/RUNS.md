@@ -103,7 +103,7 @@ Runs #8 and #9 were the first sharded runs: 48 array tasks × 32 cores = 1,536
 cores, `KG_FAST_ENV=1`. Run #8's 184,224 episodes took about six minutes of wall
 clock against the ~9 hours the same work would have taken on one 32-core job.
 
-**1,297,916 episodes total** across 43 runs, plus 396 real ladder episodes. Regenerate these three numbers with `python tools/db.py stats` -- they are the only figures here that drift, and they drift every time anyone runs anything.
+**3,397,241 episodes total** across 87 runs, plus 737 real ladder episodes. Regenerate these three numbers with `python tools/db.py stats` -- they are the only figures here that drift, and they drift every time anyone runs anything.
 
 `docs/MAP.md` says which document explains which run.
 

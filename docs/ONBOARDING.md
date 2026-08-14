@@ -64,10 +64,10 @@ python tools/registry.py gen --plan all --out agents/lib   # 生成策略库
 
 ```bash
 # 有它的人导出一份快照
-python tools/sync.py export --full        # -> dist/arena-full.sqlite.xz
+python tools/sync.py export --full        # -> dist/arena-meta.sqlite.xz
 
 # 你来安装
-python tools/sync.py import dist/arena-full.sqlite.xz
+python tools/sync.py import dist/arena-meta.sqlite.xz
 
 # 或者只要排名，几十 KB，如果你只想读结果
 python tools/sync.py export               # -> dist/arena-meta.sqlite.xz
@@ -167,7 +167,9 @@ python tools/tournament.py roundrobin \
 | 整个策略库的全量筛选（数万局） | 几小时 |
 
 **前三行在笔记本上完全可行**，只有最后一行值得动用集群（`docs/CLUSTER.md`）。
-另一个办法是直接拿别人跑好的证据：`python tools/sync.py import dist/arena-full.sqlite.xz`。
+另一个办法是直接拿别人跑好的证据：`python tools/sync.py import dist/arena-meta.sqlite.xz`。
+这份快照带 `runs` / `agents` / `ratings`（每一次实验的形状和排名，0.42 MB），**不带 episodes**
+—— 那是 3.4M 行、几个 GB，git 装不下，而且重跑就能复现。要完整的找有集群的人直接拷。
 
 然后：
 

@@ -72,7 +72,7 @@ salloc --account=aip-zhouyang --time=02:00:00 --cpus-per-task=16 --mem=32G
 1. **用 `tools/eval.py h2h` 而不是全场地面板。** 96 个种子的两两对比在 8 核上约一分钟，
    足以分辨 10 分的差距。
 2. **拿别人跑好的数据库，不要自己重挣。**
-   `python tools/sync.py import dist/arena-full.sqlite.xz` —— 那是几小时的算力压成
+   `python tools/sync.py import dist/arena-meta.sqlite.xz` —— 那是几小时的算力压成
    几 MB。或者用 `tools/d1.py` 直接查远端镜像，连文件都不用下。
 3. **分片格式是通用的。** 如果有人在集群上帮你跑了一批，你拿到 `data/shards/<label>/`
    下的 JSONL 就能自己分析，`docs/VALIDATING.md` §5 有现成的代码。

@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 """Share the episode database without needing cluster access.
 
-The database is 136 MB but compresses to about 6 MB, and the part most people
-actually want -- agents, runs and ratings -- is 0.3 MB. So this is a publishing
+The database is 7.6 GB across 3.4M episodes as of 2026-08-14, and `--full` is no
+longer something you hand around: it is hundreds of MB and git will not take it.
+The part most people actually want -- agents, runs and ratings -- is 0.42 MB and
+is committed as `dist/arena-meta.sqlite.xz`. So this is a publishing
 problem, not a hosted-database problem: snapshots are exported, compressed, and
 handed around; nobody needs an account on the machine that ran the tournament.
 
     python tools/sync.py export                 # meta snapshot, ~0.3 MB
-    python tools/sync.py export --full          # everything, ~6 MB compressed
-    python tools/sync.py import dist/arena-full.sqlite.xz
+    python tools/sync.py export --full          # everything; local transfer only, not for git
+    python tools/sync.py import dist/arena-meta.sqlite.xz
     python tools/sync.py merge other.sqlite     # fold someone else's runs in
     python tools/sync.py push                   # upload to the shared remote
     python tools/sync.py pull                   # download and install
