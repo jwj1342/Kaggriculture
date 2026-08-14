@@ -67,6 +67,9 @@ def main():
     ap.add_argument("--shape-w", type=float, default=1.0)
     ap.add_argument("--win-bonus", type=float, default=3.0)
     ap.add_argument("--advance-at", type=float, default=0.85)
+    ap.add_argument("--freeze-policy-until", type=int, default=0,
+                    help="global_step below which only the value head trains "
+                         "(warm-up after a BC init)")
     ap.add_argument("--window", type=int, default=200)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--no-resume", action="store_true")
@@ -155,6 +158,7 @@ def main():
         f_ret = torch.from_numpy(ret.reshape(-1))
         f_adv = (f_adv - f_adv.mean()) / (f_adv.std() + 1e-8)
 
+        pg_on = 0.0 if global_step < args.freeze_policy_until else 1.0
         idx = np.arange(T * N)
         pg_l = vf_l = ent_l = 0.0
         for _ in range(args.epochs):
@@ -169,7 +173,7 @@ def main():
                     ratio * a,
                     ratio.clamp(1 - args.clip, 1 + args.clip) * a).mean()
                 vf = 0.5 * (val - f_ret[mb]).pow(2).mean()
-                loss = pg + args.vf_coef * vf - args.ent_coef * ent.mean()
+                loss = pg_on * (pg - args.ent_coef * ent.mean()) + args.vf_coef * vf
                 optim.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(policy.parameters(), 0.5)

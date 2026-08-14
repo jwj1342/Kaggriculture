@@ -88,13 +88,16 @@ MLP 直接吃扁平向量；棋盘段保留了 (通道, y, x) 结构，v1 想上
 - **farmer 头（23）**：PASS，4 方向微操，WATER / HARVEST / FEED / CARE /
   COLLECT_FERT / FERTILIZE / DIG_WEED（各取最近目标），PLANT×5，
   BUILD_COOP / BUILD_PASTURE，PLACE×3，DROP（回 shed 卸货）。
-- **market 头（21）**：NOOP，SELL_ALL×9，BUY_SEED×5，BUY_WHEAT(×5)、
-  BUY_FERT(×1)，BUY_ANIMAL×3，BUY_LAND。每回合最多一条指令（上限是 10，
-  留给 M2/外包装模式用）。
+- **market 头（22）**：NOOP，SELL_ALL×9，BUY_SEED×5，BUY_WHEAT(×5)、
+  BUY_FERT(×1)，BUY_ANIMAL×3，BUY_LAND，HIRE。每回合最多一条指令
+  （上限是 10，留给外包装模式用）。
 
-**v0 故意不含 HIRE。** 雇工是支配性的轴（crew 55% vs 不雇 ~35%），但每个
-雇工要一个动作、雇工每天重生成，是脚手架之外的一整块（共享策略、可变数量
-单位）。M2 第一优先级。
+**雇工 = 战略雇佣、脚本劳动。** crew 轴支配其他所有轴（crew 55% vs swarm
+10%），不能留在动作空间外；但逐雇工的 RL 控制（共享策略、可变数量单位）
+是一整块工程。折衷：market 头拥有 HIRE（何时雇、雇多深入 fib 成本曲线），
+调度器把每个雇工派给一步免耗材杂务（收获 > 浇水 > 照料 > 捡肥 > 除草，
+背满 8 件回 shed 卸货）；FEED 因为要小麦物流留给农夫。策略的杠杆是雇工
+规模与时机，不是微操。逐雇工 RL 控制降级为后续可选项。
 
 ## 5. Reward 设计
 
@@ -102,8 +105,8 @@ MLP 直接吃扁平向量；棋盘段保留了 (通道, y, x) 结构，v1 想上
   proxy 坑过一次（CLAUDE.md「Watch rank against money」）。
 - **过程用 dense shaping 启动学习**：每步 `Δ net_worth`，其中
   `net_worth = 钱 + shed 存货按当前价 + 种子按买价 + 圈里/棚里的动物按买价
-  + 在田作物按种子价 + 未收 yield 按当前价`。把在田资产计进势函数，
-  种地/放animal才不会被瞬时惩罚。
+  + 在田作物按种子价 + 未收 yield 按当前价 + 已购土地按地价`。把在田资产
+  和土地计进势函数，种地/放动物/买地才不会被瞬时惩罚。
 - 组合：`r_t = Δnet_worth/3000 · w_shape + 终局 win·1.0`，`w_shape` 计划从 1
   退火到 0.2——shaping 负责起步，胜负负责收尾。
 - **已知 hacking 风险**：net_worth 用边际价估存货，大仓位实际清仓价更低；
@@ -127,8 +130,10 @@ MLP 直接吃扁平向量；棋盘段保留了 (通道, y, x) 结构，v1 想上
   相加当联合动作；GAE(λ=0.95)，γ=0.999（720 步 horizon，γ 不能低）。
 - **并行**：SubprocVecEnv 式多进程 rollout worker（环境 2.6 s/局是瓶颈）。
   调试在 salloc 交互节点，长跑 `sbatch`（CPU-only，32–64 核）。
-- **课程**：starter → barnyard → bench3 → `agents/spar/`（真实榜首轨迹重建的
-  对手）。固定对手先学会赢，再混对手池防过拟合；league/自博弈是 M3 选项。
+- **课程**（`train_ppo.py` 里自动推进，滚动胜率 ≥0.85 进下一阶段，进阶后
+  30% 的局仍抽早期对手防遗忘）：starter → barnyard → w49 → w100（后两个是
+  101 录音循环赛里最弱的两条，14–15% 胜率、中位收入 ~50k——它们是「打败
+  一个录音」这一目标的靶子）。league/自博弈是 M3 选项。
 - **种子纪律**：训练随机 seed；评估固定池且与 `eval.py` 的 10_000+ 段隔离。
   episode 对 (seed, 双方) 确定，同 seed 重复不加信息。
 
@@ -142,6 +147,12 @@ MLP 直接吃扁平向量；棋盘段保留了 (通道, y, x) 结构，v1 想上
   做之前先量映射覆盖率。
 
 ## 9. 评价体系
+
+**M1 目标花名册**（`slurm/rl_eval.sh`，固定十个本地对手，48–96 seeds × 双席位）：
+random、starter、barnyard、enhanced/main、bench3/ledger_lena、bench3/broker_bea、
+wrapped/w49、w100、w88、w50。目标 = 对其中至少一半 h2h 胜率 > 50%，且
+至少一个 wrapped 录音被打过 50%。已知强度参照（arena 数据库）：starter ~3.5k、
+barnyard 34–45k、enhanced/main 31–37k、lena/bea ~73–80k、最弱录音 ~50k。
 
 - **训练内**（只用于调参，不用于汇报）：平均终局钱、对固定对手滚动胜率、
   各动作使用率（宏动作退化成全 PASS 是最常见的死法，要在曲线上看得见）。
