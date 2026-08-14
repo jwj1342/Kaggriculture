@@ -149,16 +149,20 @@ def encode(obs):
 # --------------------------------------------------------------------------
 
 def net_worth(obs):
-    """Money plus everything convertible to money, at marginal current prices.
+    """Money plus everything convertible to money, at *base* prices.
 
-    Counts standing assets (planted crops, placed animals, accrued yield) so
-    that planting/placing is not punished by the shaping delta. Marginal price
-    overvalues big positions -- documented hacking risk, see README §5.
+    Base, not current, prices -- deliberately. Marking holdings to market made
+    the shaping delta depend on the opponent: against a flooding seller,
+    prices fall all episode, every held or standing unit bleeds value, and the
+    locally optimal policy is to produce nothing. Measured twice as an erosion
+    from ~12k to ~2k after the barnyard stage switch. At base prices,
+    production is credited once when the unit exists and market swings only
+    matter at the moment of sale (cash received vs base value released).
     """
     me = obs["player"]
     farm = obs["farms"][me]
     priv = obs["private"]
-    prices = obs["market"]["prices"]
+    prices = {p: R.MARKET_PARAMS[p]["base"] for p in PRODUCT_LIST}
 
     worth = farm["money"]
     # Land credit: neutralises the BUY_LAND cash dip in the shaping delta, the
