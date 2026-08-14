@@ -78,6 +78,24 @@ def get_last_callable(path):
     return callables[-1] if callables else None
 
 
+def write_agent_dir(policy, out_dir):
+    """Write a ready-to-run numpy agent directory for `policy` and verify the
+    loader contract statically. Shared by the CLI export and league promotion."""
+    os.makedirs(out_dir, exist_ok=True)
+    policy.export_npz(os.path.join(out_dir, "weights.npz"))
+    for src, dst in ((os.path.join(_RL, "obs.py"), "kg_rl_obs.py"),
+                     (os.path.join(_RL, "actions.py"), "kg_rl_actions.py"),
+                     (os.path.join(_REPO, "agents", "kg_rules.py"), "kg_rules.py")):
+        shutil.copy(src, os.path.join(out_dir, dst))
+    main_path = os.path.join(out_dir, "main.py")
+    with open(main_path, "w") as f:
+        f.write(MAIN_TEMPLATE)
+    fn = get_last_callable(main_path)
+    assert fn is not None and fn.__name__ == "agent", \
+        f"last callable is {fn}, expected the agent"
+    return main_path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
@@ -91,26 +109,14 @@ def main():
     import obs as O
 
     out_dir = os.path.join(args.out, args.name)
-    os.makedirs(out_dir, exist_ok=True)
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
     # strict=False: pre-value-net checkpoints lack v1/v2 keys, and the value
     # net never ships anyway -- only the policy side is exported.
     policy.load_state_dict(ck["model"], strict=False)
-    policy.export_npz(os.path.join(out_dir, "weights.npz"))
-
-    for src, dst in ((os.path.join(_RL, "obs.py"), "kg_rl_obs.py"),
-                     (os.path.join(_RL, "actions.py"), "kg_rl_actions.py"),
-                     (os.path.join(_REPO, "agents", "kg_rules.py"), "kg_rules.py")):
-        shutil.copy(src, os.path.join(out_dir, dst))
-    main_path = os.path.join(out_dir, "main.py")
-    with open(main_path, "w") as f:
-        f.write(MAIN_TEMPLATE)
-
+    main_path = write_agent_dir(policy, out_dir)
     fn = get_last_callable(main_path)
-    assert fn is not None and fn.__name__ == "agent", \
-        f"last callable is {fn}, expected the agent"
     from kg_env import KGEnv
     raw = KGEnv(opponent="starter").reset(seed=123)
     act = fn(raw)

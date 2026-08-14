@@ -81,6 +81,10 @@ def main():
     ap.add_argument("--freeze-policy-until", type=int, default=0,
                     help="global_step below which only the value head trains "
                          "(warm-up after a BC init)")
+    ap.add_argument("--league", action="store_true",
+                    help="population self-play (league.py) instead of the "
+                         "stage curriculum")
+    ap.add_argument("--league-dir", default=os.path.join(_RL, "league"))
     ap.add_argument("--window", type=int, default=200)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--no-resume", action="store_true")
@@ -108,7 +112,14 @@ def main():
         global_step, stage, it0 = ck["global_step"], ck["stage"], ck["iter"] + 1
         print(f"resumed: step {global_step:,} stage {stage} iter {it0}", flush=True)
 
-    venv = VecEnv(args.n_envs, stage_pool(stage), shape_w=args.shape_w,
+    league = None
+    if args.league:
+        from league import League
+        league = League(args.league_dir)
+        pool0 = league.pool()
+    else:
+        pool0 = stage_pool(stage)
+    venv = VecEnv(args.n_envs, pool0, shape_w=args.shape_w,
                   win_bonus=args.win_bonus, base_rng_seed=global_step % 100_000)
     obs, fm, mm = venv.initial_obs()
 
@@ -147,7 +158,10 @@ def main():
             b_rew[t], b_done[t] = rew, done
             for e in eps:
                 recent_all.append(e)
-                if e["opponent"] == STAGES[stage]:
+                if league is not None:
+                    league.record(e["opponent"], e["win"])
+                    recent.append(e)
+                elif e["opponent"] == STAGES[stage]:
                     recent.append(e)
         global_step += T * N
 
@@ -215,7 +229,16 @@ def main():
                        ckpt_path + ".tmp")
             os.replace(ckpt_path + ".tmp", ckpt_path)
 
-        if (len(recent) >= args.window // 2 and win >= args.advance_at
+        if league is not None:
+            promoted = league.maybe_promote(policy, global_step)
+            if promoted:
+                print(f"=== promoted into league: {promoted} ===", flush=True)
+            if promoted or it % 10 == 0:
+                league._save()
+                venv.set_pool(league.pool())
+            if it % 25 == 0:
+                print(league.summary(), flush=True)
+        elif (len(recent) >= args.window // 2 and win >= args.advance_at
                 and stage < len(STAGES) - 1):
             stage += 1
             recent.clear()
