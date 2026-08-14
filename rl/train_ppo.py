@@ -38,9 +38,12 @@ import obs as O                      # noqa: E402
 # repo can field.
 STAGES = [
     "starter",
+    # Ghost first: a bare ladder replay earns 13-24k without flooding the
+    # market, so the +-win bonus is an achievable gradient right after starter
+    # (vs barnyard it is a constant -3 for millions of steps). The eval roster
+    # holds out a second ghost the policy never trains against.
+    os.path.join(_RL, "..", "agents", "ghosts", "ghost-89825016-0.py"),
     os.path.join(_RL, "..", "agents", "barnyard.py"),
-    os.path.join(_RL, "..", "agents", "spar",
-                 "estate-crew-grazier-flood-blind-muck.py"),
     os.path.join(_RL, "..", "agents", "bench3", "ledger_lena.py"),
 ]
 
