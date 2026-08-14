@@ -1,26 +1,38 @@
-"""League self-play: population, PFSP sampling, gated promotion, retirement.
+"""League self-play: population, mixture sampling, gated promotion, diversity.
 
 Design (agreed 2026-08-14, wired for after the ghost milestone):
 
-- The pool is ANCHORS (fixed real-field agents, never retired -- the repo's
-  own history says a ranking against an inbred field is not evidence) plus
-  exported checkpoints of the training policy.
-- Opponent sampling is PFSP with variance weighting f(p) = p(1-p) + eps:
-  probability mass concentrates on ~50% opponents, not on hopeless walls or
-  crushed victims. Non-transitivity is documented in this game; latest-vs-
-  latest self-play cycles, a weighted population does not.
-- Promotion is gated with sample-size discipline: the current policy joins
-  the pool only after >= MIN_GAMES recent league episodes at >= GATE mean win
-  rate (seed spread here resolves ~10pp at ~200 episodes).
-- Checkpoint members (never anchors) retire once the policy beats them >= 80%
-  over >= 100 games: they stop sampling but stay on disk and in the manifest.
+- **Pool** = ANCHORS (fixed real-field agents, never retired) + a rolling
+  MIRROR of the current policy (refreshed every few iterations; the closest a
+  frozen-file opponent gets to live self-play) + promoted checkpoints.
+- **Sampling** is a three-bucket mixture: 40% mirror / 40% history / 20%
+  anchors, with PFSP variance weighting f(p)=p(1-p)+eps *inside* the history
+  bucket only -- effort concentrates on ~50% opponents, the anchor floor
+  keeps real-field pressure from ever vanishing.
+- **Promotion gate**, all of: >= MIN_GAMES recent league episodes (seat-
+  balanced by construction -- workers alternate seats) at >= GATE mean win
+  rate; per-anchor EMA floors (a policy that beats the league but fails the
+  real field is a degenerate and stays out); behavioural-fingerprint dedup --
+  cosine > DUP_COS against a member replaces that member instead of joining
+  beside it (upgrades swap in, near-duplicates never accumulate).
+- **Retirement**: checkpoint members beaten >= 80% over >= 100 games stop
+  being sampled. Anchors and the mirror are exempt.
+- Full N x N Bradley-Terry refits are a separate offline job (tools/stats.py
+  has bradley_terry; shards must be keyed by *directory* -- every member here
+  is a main.py, and the ratings table keys by basename, which would merge the
+  whole league into one row).
 
-Members are exported numpy agent directories -- exactly what vec_env already
-accepts as opponents, so league mode changes nothing below the pool list.
+Members are exported numpy agent directories -- exactly what vec_env accepts
+as opponents. Caveat: all member dirs carry copies of the same kg_rl_*
+modules and Python caches the first one loaded, so an obs/actions encoding
+change invalidates every existing member (delete the league dir and let it
+rebuild).
 """
 
 import json
 import os
+
+import numpy as np
 
 _RL = os.path.dirname(os.path.abspath(__file__))
 _AGENTS = os.path.join(os.path.dirname(_RL), "agents")
@@ -33,12 +45,26 @@ ANCHORS = [
      os.path.join(_AGENTS, "spar", "estate-crew-grazier-flood-blind-muck.py")),
 ]
 
+# Promotion floors on per-anchor EMA win rate, banded by anchor strength;
+# raise as the policy matures. Strong anchors (barnyard, spar) deliberately
+# have no floor yet.
+ANCHOR_FLOORS = {"anchor-starter": 0.80, "anchor-ghost": 0.50}
+FLOOR_MIN_GAMES = 40
+
+MIX_MIRROR, MIX_HISTORY, MIX_ANCHOR = 0.40, 0.40, 0.20
 MIN_GAMES = 200
 GATE = 0.55
 RETIRE_WINRATE = 0.80
 RETIRE_MIN_GAMES = 100
 EMA_ALPHA = 0.02
 PFSP_EPS = 0.05
+DUP_COS = 0.97
+
+
+def _cos(a, b):
+    a, b = np.asarray(a), np.asarray(b)
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    return float(a @ b) / denom if denom > 0 else 0.0
 
 
 class League:
@@ -60,9 +86,10 @@ class League:
         self._save()
 
     @staticmethod
-    def _new_member(name, path, kind, step):
+    def _new_member(name, path, kind, step, fingerprint=None):
         return {"name": name, "path": path, "kind": kind, "added_step": step,
-                "games": 0, "wins": 0.0, "ema": 0.5, "retired": False}
+                "games": 0, "wins": 0.0, "ema": 0.5, "retired": False,
+                "fingerprint": fingerprint}
 
     def _save(self):
         tmp = self.manifest_path + ".tmp"
@@ -70,18 +97,57 @@ class League:
             json.dump(self.m, f, indent=1)
         os.replace(tmp, self.manifest_path)
 
+    def _member(self, name):
+        for mm in self.m["members"]:
+            if mm["name"] == name:
+                return mm
+        return None
+
+    # ---- mirror ----------------------------------------------------------
+
+    def refresh_mirror(self, policy):
+        """Overwrite the rolling self-play mirror with the current policy.
+        Weights swap atomically; agent files re-exec per episode, so workers
+        pick the new net up on their next reset."""
+        from export_agent import write_agent_dir
+        out_dir = os.path.join(self.agents_dir, "latest-mirror")
+        mm = self._member("latest-mirror")
+        if mm is None:
+            main_path = write_agent_dir(policy, out_dir)
+            mm = self._new_member("latest-mirror", main_path, "mirror", 0)
+            self.m["members"].append(mm)
+            self._by_path[mm["path"]] = mm
+            self._save()
+        else:
+            tmp = os.path.join(out_dir, "weights_tmp.npz")
+            policy.export_npz(tmp)
+            os.replace(tmp, os.path.join(out_dir, "weights.npz"))
+
     # ---- sampling --------------------------------------------------------
 
-    def active(self):
-        return [mm for mm in self.m["members"] if not mm["retired"]]
-
     def pool(self):
-        """[(path, weight)] under PFSP variance weighting. `ema` is the
-        *policy's* win rate against the member; f peaks at ema=0.5."""
+        """[(path, weight)] under the 40/40/20 mixture."""
+        anchors, history, mirror = [], [], None
+        for mm in self.m["members"]:
+            if mm["retired"]:
+                continue
+            if mm["kind"] == "anchor":
+                anchors.append(mm)
+            elif mm["kind"] == "mirror":
+                mirror = mm
+            else:
+                history.append(mm)
         out = []
-        for mm in self.active():
-            p = mm["ema"]
-            out.append((mm["path"], p * (1.0 - p) + PFSP_EPS))
+        if mirror is not None:
+            out.append((mirror["path"], MIX_MIRROR))
+        if anchors:
+            w = MIX_ANCHOR / len(anchors)
+            out.extend((mm["path"], w) for mm in anchors)
+        if history:
+            raw = [(mm, mm["ema"] * (1 - mm["ema"]) + PFSP_EPS) for mm in history]
+            z = sum(r for _, r in raw)
+            out.extend((mm["path"], MIX_HISTORY * r / z) for mm, r in raw)
+        # Missing buckets renormalise implicitly (vec_env normalises weights).
         return out
 
     # ---- bookkeeping -----------------------------------------------------
@@ -95,30 +161,49 @@ class League:
         mm["ema"] += EMA_ALPHA * (win - mm["ema"])
         self.m["recent"].append(win)
         del self.m["recent"][:-2 * MIN_GAMES]
-        if (mm["kind"] != "anchor" and mm["games"] >= RETIRE_MIN_GAMES
+        if (mm["kind"] == "checkpoint" and mm["games"] >= RETIRE_MIN_GAMES
                 and mm["wins"] / mm["games"] >= RETIRE_WINRATE):
             mm["retired"] = True
 
     # ---- promotion -------------------------------------------------------
 
-    def maybe_promote(self, policy, global_step):
-        """Export the current policy into the pool when the gate clears.
-        Returns the new member's path, or None."""
+    def gate_status(self):
         recent = self.m["recent"]
-        if len(recent) < MIN_GAMES:
+        overall = sum(recent) / len(recent) if recent else 0.0
+        floors_ok = all(
+            (mm := self._member(name)) is not None
+            and mm["games"] >= FLOOR_MIN_GAMES and mm["ema"] >= floor
+            for name, floor in ANCHOR_FLOORS.items())
+        return len(recent) >= MIN_GAMES, overall, floors_ok
+
+    def maybe_promote(self, policy, global_step, fingerprint=None):
+        """Export the current policy into the pool when every gate clears.
+        Returns the new member's path, or None."""
+        enough, overall, floors_ok = self.gate_status()
+        if not (enough and overall >= GATE and floors_ok):
             return None
-        if sum(recent) / len(recent) < GATE:
-            return None
+        replaced = None
+        if fingerprint is not None:
+            fp = list(np.asarray(fingerprint, dtype=float))
+            for mm in self.m["members"]:
+                if mm["kind"] == "checkpoint" and not mm["retired"] \
+                        and mm.get("fingerprint") \
+                        and _cos(fp, mm["fingerprint"]) >= DUP_COS:
+                    mm["retired"] = True          # upgrade swaps in
+                    replaced = mm["name"]
+        else:
+            fp = None
         name = f"ckpt-{global_step // 1000}k"
         out_dir = os.path.join(self.agents_dir, name)
         from export_agent import write_agent_dir
-        write_agent_dir(policy, out_dir)
-        member = self._new_member(
-            name, os.path.join(out_dir, "main.py"), "checkpoint", global_step)
+        main_path = write_agent_dir(policy, out_dir)
+        member = self._new_member(name, main_path, "checkpoint", global_step, fp)
         self.m["members"].append(member)
         self._by_path[member["path"]] = member
         self.m["recent"] = []
         self._save()
+        if replaced:
+            print(f"league: {name} replaces near-duplicate {replaced}", flush=True)
         return member["path"]
 
     def summary(self):
@@ -126,6 +211,6 @@ class League:
         for mm in self.m["members"]:
             g = mm["games"]
             wr = mm["wins"] / g if g else float("nan")
-            flag = "R" if mm["retired"] else (mm["kind"][0])
+            flag = "R" if mm["retired"] else mm["kind"][0]
             rows.append(f"{flag} {mm['name']:<24} g {g:>5} win {wr:5.2f} ema {mm['ema']:.2f}")
         return "\n".join(rows)

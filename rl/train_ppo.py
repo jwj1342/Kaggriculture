@@ -136,6 +136,7 @@ def main():
 
     recent = deque(maxlen=args.window)          # episodes vs current stage
     recent_all = deque(maxlen=args.window)      # every episode
+    fp_ema = None                               # behavioural fingerprint (league)
     new_csv = not os.path.exists(csv_path)
     csv_f = open(csv_path, "a", newline="")
     csv_w = csv.writer(csv_f)
@@ -161,6 +162,9 @@ def main():
                 if league is not None:
                     league.record(e["opponent"], e["win"])
                     recent.append(e)
+                    if e.get("fp") is not None:
+                        fp_ema = (e["fp"] if fp_ema is None
+                                  else 0.98 * fp_ema + 0.02 * e["fp"])
                 elif e["opponent"] == STAGES[stage]:
                     recent.append(e)
         global_step += T * N
@@ -230,10 +234,11 @@ def main():
             os.replace(ckpt_path + ".tmp", ckpt_path)
 
         if league is not None:
-            promoted = league.maybe_promote(policy, global_step)
+            promoted = league.maybe_promote(policy, global_step, fp_ema)
             if promoted:
                 print(f"=== promoted into league: {promoted} ===", flush=True)
             if promoted or it % 10 == 0:
+                league.refresh_mirror(policy)
                 league._save()
                 venv.set_pool(league.pool())
             if it % 25 == 0:

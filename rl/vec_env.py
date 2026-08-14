@@ -41,16 +41,25 @@ def _worker(remote, wcfg):
     env = None
     raw = None
     prev_worth = 0.0
+    fcount = np.zeros(A.N_FARMER, dtype=np.float64)
+    mcount = np.zeros(A.N_MARKET, dtype=np.float64)
+    ep_counter = wcfg["rng_seed"]  # offset so workers alternate out of phase
 
     def new_episode():
-        nonlocal env, raw, prev_worth
+        nonlocal env, raw, prev_worth, ep_counter
         opps, weights = zip(*pool)
         p = np.asarray(weights, dtype=float)
         opp = opps[int(rng.choice(len(opps), p=p / p.sum()))]
-        seat = int(rng.integers(0, 2))
+        # Strict seat alternation, not random: the engine is not perfectly
+        # seat-symmetric, and alternation makes every stats window (promotion
+        # gates especially) seat-balanced by construction.
+        ep_counter += 1
+        seat = ep_counter % 2
         env = KGEnv(opponent=opp, seat=seat)
         raw = env.reset(seed=int(rng.integers(seed_lo, seed_hi)))
         prev_worth = O.net_worth(raw)
+        fcount[:] = 0.0
+        mcount[:] = 0.0
 
     def pack():
         return O.encode(raw), A.farmer_mask(raw), A.market_mask(raw)
@@ -61,6 +70,8 @@ def _worker(remote, wcfg):
         if cmd == "obs":
             remote.send(pack())
         elif cmd == "step":
+            fcount[data[0]] += 1
+            mcount[data[1]] += 1
             nonlocal_raw, done = env.step(A.decode(raw, data[0], data[1]))
             raw = nonlocal_raw
             worth = O.net_worth(raw)
@@ -71,8 +82,11 @@ def _worker(remote, wcfg):
                 mine, theirs = env.final_money()
                 win = 1.0 if mine > theirs else 0.0 if mine < theirs else 0.5
                 reward += win_bonus * (1.0 if win == 1.0 else -1.0 if win == 0.0 else 0.0)
+                n_acts = max(1.0, fcount.sum())
+                fp = np.concatenate([fcount / n_acts, mcount / n_acts])
                 ep = {"money": mine, "opp_money": theirs, "win": win,
-                      "opponent": env.opponent, "seat": env.seat}
+                      "opponent": env.opponent, "seat": env.seat,
+                      "fp": fp.astype(np.float32)}
                 new_episode()
             vec, fm, mm = pack()
             remote.send((vec, fm, mm, reward, done, ep))
