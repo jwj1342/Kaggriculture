@@ -88,7 +88,7 @@ regenerate. Keep the axes orthogonal.
   **loss fraction** is what says it has found its level. `SUBMISSION_POLICY.md`
   rule 7.
 - **Engine changes get an A/B, not an argument.** Four of seven derived from the
-  rules correctly and still lost. `docs/ENGINE_CHANGES.md` records all seven with
+  rules correctly and still lost. `docs/ROADMAP.md §11` records all seven with
   arm sizes; three of the losers assumed the farm was alone on the board.
 
 ## Cluster
@@ -122,7 +122,7 @@ has the diagram.
 `agents/spar/` is the same generator on the `ladder` plan: opponents
 reconstructed from real ladder replays. Keep it in every field — before it
 existed, every measurement here was against strategies we wrote ourselves, and
-`docs/LADDER_FIELD.md` is what that cost.
+`docs/ROADMAP.md §11` is what that cost.
 
 Generated, never hand-edit: `agents/lib/`, `agents/spar/`, `docs/LEADERBOARD.md`,
 `site/leaderboard.html`, `notebooks/baseline.ipynb`. All of these plus `venv/`,

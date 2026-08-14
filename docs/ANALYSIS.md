@@ -541,7 +541,7 @@ in several places (§2). Re-diff that copy against the installed package after
 every `kaggle-environments` upgrade; the balance has already changed once
 mid-competition.
 
-Companion documents: `docs/ATOM_EFFECTS.md` measures which of these levers
+Companion documents: `docs/ROADMAP.md §11` measures which of these levers
 actually pays, and `docs/ANALYSIS.md` covers what you can do *to* the
 opponent.
 

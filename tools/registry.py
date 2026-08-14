@@ -84,7 +84,7 @@ PRODUCE = {
     "orchardherd": {"crops": [["MELON", 14, 18]], "animals": {"COW": 10, "SHEEP": 8}},
     "berryherd":   {"crops": [["STRAWBERRY", 16, 13]], "animals": {"COW": 10, "SHEEP": 8}},
 
-    # --- reconstructed from real ladder opponents (docs/LADDER_FIELD.md) -----
+    # --- reconstructed from real ladder opponents (docs/ROADMAP.md §11) -----
     # These three are not designed; they are the shapes that actually beat us,
     # read out of 94 digested ladder replays. Keep them in the field so local
     # rank is measured against the competition rather than against ourselves.
@@ -571,7 +571,7 @@ def plan_factorial():
     units, and the fertilized agent *loses* while producing more. Fertilizer and
     sale sizing cannot be measured apart.
 
-    Balance is the point. `docs/ATOM_EFFECTS.md` had to carry a standing warning
+    Balance is the point. `docs/ROADMAP.md §11` had to carry a standing warning
     that its main effects were confounded, because the older plans sample the
     axes unevenly: `orchardherd` appears in 256 strategies and `dairy` in 10, so
     a marginal mean over `produce` was partly a mean over the *company each atom

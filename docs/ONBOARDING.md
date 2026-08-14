@@ -190,8 +190,8 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 2. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。两个场地对应两个水平层级，用错
    这一轮就白跑
 3. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么
-4. `docs/ENGINE_CHANGES.md` —— 七个落地、五个被否，全都附样本量
-5. `docs/LADDER_FIELD.md` —— 为什么我们自己写的场地误导了我们一周
+4. `docs/ROADMAP.md §11` —— 七个落地、五个被否，全都附样本量
+5. `docs/ROADMAP.md §11` —— 为什么我们自己写的场地误导了我们一周
 6. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读
 7. `docs/VALIDATING.md` —— 上面第 2 条的完整版
 

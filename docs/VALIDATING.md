@@ -149,7 +149,7 @@ bash tools/fetch_fields.sh          # ref agents、ghosts、lines、bench3
 
 **第一次测量之前先跑它。** `agents/` 整个目录是 git-ignored 的，所以新克隆下来一个
 对手都没有 —— 而一个没有参考 agent 的场地，测的是我们自己家族内部互殴，这个错误让这个
-项目损失了一周（`docs/LADDER_FIELD.md`）。
+项目损失了一周（`docs/ROADMAP.md §11`）。
 
 ## 2. 要跑多少局
 

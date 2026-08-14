@@ -5,7 +5,7 @@
 # third-party code, the other is 150+ generated files reconstructible from
 # public data. Both are load-bearing -- a bench without them measures our own
 # family against itself, which is the mistake that cost this project a week
-# (docs/LADDER_FIELD.md).
+# (docs/ROADMAP.md §11).
 #
 #     bash tools/fetch_fields.sh            # both, default sizes
 #     bash tools/fetch_fields.sh ref        # just the reference agents
@@ -37,7 +37,7 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "ghosts" ]; then
   echo "==> ghosts (~90 s each: a 32 MB replay in, an 11 KB opponent out)"
   # Stratified on purpose: at most two per team, score bands filled evenly, and
   # sampled round-robin across days. A naive pull gave 12% of the field to one
-  # team and drew every episode from the same hour. See docs/GHOSTS.md.
+  # team and drew every episode from the same hour. See docs/ROADMAP.md §11.
   python tools/ghost.py make \
       --dates 2026-08-09,2026-08-08,2026-08-07,2026-08-06 \
       --limit "$N" --per-team 2 --bands

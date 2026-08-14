@@ -2,7 +2,7 @@
 
 An opponent-aware farm built from what 95,000 locally measured episodes actually
 showed, rather than from the competition's prose. The reasoning behind each
-choice is in docs/ENHANCED_BASELINE.md; the short version:
+choice is in docs/ROADMAP.md §11; the short version:
 
   * **Labour is the dominant axis.** 11 hands capped at 6% of cash per day
     measured 55% win rate; 30 hands with no payroll cap measured 10% -- worse

@@ -128,7 +128,7 @@ Fix it by adding a stronger anchor, not by trusting the order.
   `(seed, both agents)`; a repeat adds zero information.
 - **Compare on balanced subsets.** Main effects across an unbalanced design are
   confounded, and the confound here reverses conclusions — see
-  `docs/ATOM_EFFECTS.md`, the section on why `dairy` looked better than
+  `docs/ROADMAP.md §11`, the section on why `dairy` looked better than
   `orchardherd`.
 - **Check the mirror.** Run a candidate against itself. Scores roughly halve
   against a real opponent; if they more than halve, the agent depends on a
@@ -460,16 +460,16 @@ between checkouts, see ONBOARDING §1) and credentials are per-person by design.
 
 Keep results and their evidence together. When you measure something:
 
-- Numbers that inform a decision go in `docs/ATOM_EFFECTS.md` with the sample
+- Numbers that inform a decision go in `docs/ROADMAP.md §11` with the sample
   size and the slice they came from.
-- **Negative results go in too.** `docs/ENGINE_CHANGES.md` has a
+- **Negative results go in too.** `docs/ROADMAP.md §11` has a
   *Measured and rejected* section and a *Measured and confirmed* one, and both
   earn their place: seventeen changes derived correctly from the rules still
   lost, and a rejection made against a weak field is not a fact about the game.
   already been shown not to work. Two entries there were "obvious" improvements
   that measured worse.
 - If a published claim turns out wrong, correct the document rather than adding
-  a new one. There is one entry in `ATOM_EFFECTS.md` (`frontrun`) that exists
+  a new one. There is one entry in `ROADMAP.md` §11 (`frontrun`) that exists
   purely to retract an earlier confounded result.
 
 ---
@@ -652,7 +652,7 @@ python tools/eval.py pool agents/lib/<candidate>.py agents/barnyard.py --vs star
 ### `tools/ladder.py`
 Pulls the episodes we played **on the ladder**, against real opponents, and keeps
 only the digest. This is the only measurement in the project whose opponents were
-not written by us; `docs/LADDER_FIELD.md` is what it found.
+not written by us; `docs/ROADMAP.md §11` is what it found.
 
 ```bash
 python tools/ladder.py pull                    # all submissions

@@ -60,7 +60,7 @@ rather than a ranking: sticky assignment, idle pre-positioning, alternate-day
 watering, CARE priority, `paced` selling, `shopwise`, the fertilizer reserve, the
 carrying threshold, the ramp shape, the inverted scheduler, two-pass and zone
 scheduling, the here-pass and the tile hold. Every one is written up with its arm
-size in `docs/ENGINE_CHANGES.md` — **eleven landed, seventeen were rejected**.
+size in `docs/ROADMAP.md §11` — **eleven landed, seventeen were rejected**.
 
 **Three more on 2026-08-11**, also read from shard JSONL rather than ingested,
 and for a second reason: all three carry builds that share basenames across
@@ -69,7 +69,7 @@ into one ratings row — the defect that corrupted runs #22 and #32.
 
 | label | arms | episodes | outcome |
 |---|---|---|---|
-| `bootlock` | 3 engines × 6 produce × 2 land | **137,664** | the opening seed freeze is a trade, not a deadlock — rejected, `ENGINE_CHANGES.md` |
+| `bootlock` | 3 engines × 6 produce × 2 land | **137,664** | the opening seed freeze is a trade, not a deadlock — rejected, `ROADMAP.md` §11 |
 | `handover` | 17 handover days + anchors | 62,016 | no handover day helps; the curve runs to 100% recording — `ROADMAP.md` §3 D |
 | `handover-adopt` | same, targets adopted at handover | 39,936 | ±4 points, no change in shape |
 | `endgame` | 3 endgame variants × 10 shapes | 109,440 | keeping the task list alive on the liquidation day loses; so does never liquidating |
@@ -109,7 +109,7 @@ The `文档` table in the top-level `README.md` indexes every document by questi
 
 Runs #1–#6 ran on an engine with two defects that hurt crop plans much more than
 herd plans, and on a library that could not issue `FERTILIZE`. **Do not compare
-their numbers with #7's.** `docs/LADDER_FIELD.md` §4 has the controlled A/B and
+their numbers with #7's.** `docs/ROADMAP.md §11` §4 has the controlled A/B and
 what each fix was worth.
 
 ## Ladder episodes (real opponents)
@@ -425,7 +425,7 @@ status ERROR. It was not produced by this repo.)*
 
 **The local-versus-ladder correlation is now measured, and it is weak.** Over 94
 real episodes, `enhanced` wins 49% and `barnyard` 47% — the two agents that are
-384/384 apart locally. `docs/LADDER_FIELD.md` is the diagnosis: the field we were
+384/384 apart locally. `docs/ROADMAP.md §11` is the diagnosis: the field we were
 ranking against could not express the winning strategy, and the engine's bugs
 penalised crop plans far more than herd plans. This is the single most useful
 thing measured in the project so far, and it took 94 episodes.
@@ -562,7 +562,7 @@ episodes, and 13–15 animals with 7 idle tiles instead of 9 and 32.
   (`docs/ANALYSIS.md`).
 - **Main effects in `docs/LEADERBOARD.md` are unbalanced** by construction, because
   the composition plans do not sample the axes evenly. The balanced versions are
-  in `docs/ATOM_EFFECTS.md` and they reverse some orderings.
+  in `docs/ROADMAP.md §11` and they reverse some orderings.
 - **The pre-database leagues used ad-hoc agent generators** (`agents/legacy/`)
   that had bugs the library engine later fixed. Treat their absolute numbers as
   indicative and their comparisons as valid only within a league.
