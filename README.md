@@ -17,6 +17,8 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
 
 ### → 离开了几天？读 [`docs/ROADMAP.md`](docs/ROADMAP.md)，它开头就讲哪些结论被推翻了。
 
+### → 只想知道榜上跑的是什么？读 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 场上两个提交对应本地哪两个、怎么一模一样地重建、以及为什么现在不要提交。
+
 ---
 
 ## 环境搭建
@@ -502,6 +504,8 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 
 | | |
 |---|---|
+| [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) | **榜上跑的是什么，本地怎么复现** —— 交接先读这个 |
+| [`docs/ANALYSIS.md`](docs/ANALYSIS.md) | 这个比赛里到底什么决定输赢：312,000 局的系统分析 |
 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | 第一个小时：搭建、跑通、会咬你的五件事 |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | 走到哪、为什么，以及哪些结论被推翻了 |
 | [`docs/VALIDATING.md`](docs/VALIDATING.md) | 我的改动是真的吗 —— 出数之前读 |
