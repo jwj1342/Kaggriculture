@@ -31,17 +31,21 @@ AGENT="rl/out/groundhog/main.py"
 python rl/export_agent.py --ckpt "rl/runs/${RUN}/latest.pt" --name groundhog
 mkdir -p "rl/runs/${RUN}/eval"
 
+# Ten local opponents spanning every strength band this repo fields:
+# baselines, our hand-written agents, a strong reference, recording-lineage
+# agents at all three fidelities (bare ghost replays, spar reconstructions,
+# a wrapped recording). Ghosts chosen by name order, not by weakness.
 ROSTER=(
     random
     starter
     agents/barnyard.py
     agents/enhanced/main.py
     agents/bench3/ledger_lena.py
-    agents/bench3/broker_bea.py
+    agents/spar/estate-crew-grazier-flood-blind-muck.py
+    agents/spar/estate-crew-berrybaron-metered-blind-muck.py
+    agents/ghosts/ghost-89825016-0.py
+    agents/ghosts/ghost-89830307-0.py
     agents/wrapped/w49.py
-    agents/wrapped/w100.py
-    agents/wrapped/w88.py
-    agents/wrapped/w50.py
 )
 
 for opp in "${ROSTER[@]}"; do

@@ -31,11 +31,17 @@ from vec_env import VecEnv           # noqa: E402
 import actions as A                  # noqa: E402
 import obs as O                      # noqa: E402
 
+# Curriculum. w49/w100 were stages 2-3 until a head-to-head probe showed even
+# the weakest wrapped recording making $131k-162k against a non-flooding
+# opponent -- an unreachable wall, not a rung. spar reconstructions (23-61k)
+# and ledger_lena (73-80k) are the actual gradient toward the top of what this
+# repo can field.
 STAGES = [
     "starter",
     os.path.join(_RL, "..", "agents", "barnyard.py"),
-    os.path.join(_RL, "..", "agents", "wrapped", "w49.py"),
-    os.path.join(_RL, "..", "agents", "wrapped", "w100.py"),
+    os.path.join(_RL, "..", "agents", "spar",
+                 "estate-crew-grazier-flood-blind-muck.py"),
+    os.path.join(_RL, "..", "agents", "bench3", "ledger_lena.py"),
 ]
 
 
