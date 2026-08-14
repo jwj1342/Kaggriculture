@@ -56,7 +56,7 @@ regenerate. Keep the axes orthogonal.
 
 ## Measurement
 
-`docs/EVALUATION.md` is mandatory reading before producing a number.
+`docs/VALIDATING.md` is mandatory reading before producing a number.
 
 - Seed-to-seed spread exceeds most tuning effects; 3–4 seed sweeps here produced
   contradictory orderings on repeat runs. 96 episodes resolves a 10-point edge,

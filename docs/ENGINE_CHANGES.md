@@ -350,7 +350,7 @@ manage 52-62. Three ways to buy more were tried and all three lost:
 
 The reserve change is the instructive one. A four-seed smoke test showed it
 +$6,500 ahead; over 3,072 episodes an arm it is **44 points behind**. Fertilizer
-held is fertilizer not sold, and the early price is real money. `docs/EVALUATION.md`
+held is fertilizer not sold, and the early price is real money. `docs/VALIDATING.md`
 says four seeds cannot resolve anything and this is what that looks like.
 
 The alternate-tick harvest is arithmetically free — `yield_units` caps at
@@ -412,7 +412,7 @@ farm loses more to one unwatered plant than it gains from three saved steps.
 
 Its four-seed smoke test showed **+$15,000**. Over 2,304 episodes an arm it is
 23 points behind. That is the third time in one session that a four-seed check
-pointed the wrong way; `docs/EVALUATION.md` is right and the smoke test is only
+pointed the wrong way; `docs/VALIDATING.md` is right and the smoke test is only
 ever a syntax check.
 
 **Six separate attempts have now failed to close the action-efficiency gap**:

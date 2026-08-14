@@ -110,7 +110,7 @@ idle for the last twelve days.
 visible, and town consumption is deterministic given `unlocked_shops`, so
 subtracting our own fills from the inventory delta recovers **what the opponent
 sold each turn**. Above ~0.9 units/turn they are dumping, and metering against a
-dumper is strictly worse (see `docs/ADVERSARIAL.md`).
+dumper is strictly worse (see `docs/ANALYSIS.md`).
 
 ### `intel` — whether the opponent's board changes behaviour
 
@@ -216,7 +216,7 @@ leaderboard — and persist every episode to `data/arena.sqlite`.
 
 **A caveat that applies to any panel screen:** the strategy space is
 non-transitive (a measured rock-paper-scissors cycle exists between metered,
-flood and spite strategies — see `docs/ADVERSARIAL.md`). A panel score is
+flood and spite strategies — see `docs/ANALYSIS.md`). A panel score is
 therefore a score *against that panel*, and the ranking will shift with the
 anchors. That is a property of the game, not a defect of the method; it is also
 why the confirm stage exists.

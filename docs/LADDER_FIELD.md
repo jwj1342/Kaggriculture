@@ -322,7 +322,7 @@ locally:
 median of 3.1. Our own money roughly doubled, $42,714 → $73,924.
 
 The win rate moved far less than the money: 47% → 58%. The field earns more too,
-and the competition scores wins. That is the whole reason `docs/EVALUATION.md`
+and the competition scores wins. That is the whole reason `docs/VALIDATING.md`
 insists on win rate over margin — a change can double the money and be worth
 eleven points of win rate.
 
@@ -334,6 +334,6 @@ policies can produce the same digest. They are a harder and more *representative
 field than what we had, not a simulation of specific opponents.
 
 94 episodes is enough to see a 38-point split (27% vs 65% on the strawberry
-cut) and not enough to rank anything finely; `docs/EVALUATION.md` has the
+cut) and not enough to rank anything finely; `docs/VALIDATING.md` has the
 sample-size arithmetic. The ladder sample also covers two submissions over about
 two days, so it describes the field at that rating, not the field at the top.

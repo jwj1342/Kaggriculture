@@ -117,7 +117,7 @@ Fix it by adding a stronger anchor, not by trusting the order.
 
 ## Measuring anything
 
-`docs/EVALUATION.md` is the long version. The short version:
+`docs/VALIDATING.md` is the long version. The short version:
 
 - **Report intervals, not points.** `tools/eval.py` gives a Wilson interval on
   the win rate and a paired bootstrap on the money margin.
@@ -679,7 +679,7 @@ Deleted 2026-08-12. All three were superseded by `tournament.py` (panel and
 round robin, persisted to SQLite) and `eval.py` (A/B with an interval), and they
 were the main source of duplication in the repo -- five different `_play`
 implementations lived across them. Their results predate `data/arena.sqlite` and
-are transcribed into `docs/EVALUATION.md` §7, which is where published numbers
+are transcribed into `docs/VALIDATING.md` §7, which is where published numbers
 citing them should point. `slurm/league.sh` and `slurm/sweep.sh` went with them.
 
 ### `tools/db.py`

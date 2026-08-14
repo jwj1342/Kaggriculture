@@ -373,7 +373,7 @@ after 22 and would still have been climbing at 42. Episodes buy sample size,
 
 Every ladder comparison in this document smaller than ~145 points is inside that
 band, including the +69 attributed to the liquidation day. Treat single-ladder-run
-differences as hypotheses; `docs/EVALUATION.md` §6 has the arm sizes that settle
+differences as hypotheses; `docs/VALIDATING.md` §6 has the arm sizes that settle
 them locally.
 
 ### One submission, two changes, and why that was a mistake
@@ -559,7 +559,7 @@ episodes, and 13–15 animals with 7 idle tiles instead of 9 and 32.
 - **Runs #1 and #2 disagree on atom effects** — `ranchmix` goes from second-best
   to worst, `frontrun` from marginal to top. Both are honest; they measure
   different fields. The strategy space is non-transitive
-  (`docs/ADVERSARIAL.md`).
+  (`docs/ANALYSIS.md`).
 - **Main effects in `docs/LEADERBOARD.md` are unbalanced** by construction, because
   the composition plans do not sample the axes evenly. The balanced versions are
   in `docs/ATOM_EFFECTS.md` and they reverse some orderings.

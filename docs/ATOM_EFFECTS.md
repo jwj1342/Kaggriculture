@@ -136,7 +136,7 @@ more often** — the denial signature. Strictly paired, it is config-dependent:
 | `estate-crew-mixedfarm-blind` | **82%** | 67% | 60% | 48% |
 
 Three of four favour flooding; the fourth reverses it. That is the
-non-transitivity documented in `docs/ADVERSARIAL.md` showing up as an
+non-transitivity documented in `docs/ANALYSIS.md` showing up as an
 interaction, not noise. `vault` is the only unambiguous verdict: never hoard.
 
 ## 5. `intel` — a negative result
@@ -250,7 +250,7 @@ Compare the two runs' atom effects, on the same strategies:
 
 `ranchmix` goes from second-best to worst; `frontrun` from marginal to top. Both
 rosters are honest measurements — they are measuring *different fields*. This is
-the non-transitivity in `docs/ADVERSARIAL.md` at library scale, and it is the
+the non-transitivity in `docs/ANALYSIS.md` at library scale, and it is the
 main reason to treat any single ranking as provisional.
 
 ---

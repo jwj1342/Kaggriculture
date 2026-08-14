@@ -184,7 +184,7 @@ PY
 |---|---|
 | 这个比赛里到底什么决定输赢 | **`docs/ANALYSIS.md`**（先读这个） |
 | 每一次实验的原始数字 | `docs/RUNS.md` |
-| 怎么才算量准了一个数 | `docs/EVALUATION.md` |
+| 怎么才算量准了一个数 | `docs/VALIDATING.md` |
 | 提交的规矩 | `docs/SUBMISSION_POLICY.md` |
 | 现在该做什么 | `docs/TODO.md` |
 | 环境和踩过的坑 | `CLAUDE.md`、`docs/ONBOARDING.md` |

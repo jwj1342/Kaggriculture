@@ -5,7 +5,7 @@ coins-per-action, and greedily assign each to the nearest capable idle unit.
 
 Priorities are ordered by measured value, with anything that destroys an asset
 pulled to the front regardless of its marginal return. The numbers behind the
-ordering are in docs/GAME_ECONOMICS.md; the short version is that harvesting a
+ordering are in docs/ANALYSIS.md; the short version is that harvesting a
 full animal is ~6 units in one action, a melon watered inside its bonus window is
 +1 melon (~$250) for one action, and CARE is +$160/day for one action, while
 wheat is ~$25/action and not worth an action anyone else wants.

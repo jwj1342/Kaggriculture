@@ -189,11 +189,11 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 1. `docs/ROADMAP.md` —— 这个项目走到哪、为什么，每条主张都附样本量
 2. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。两个场地对应两个水平层级，用错
    这一轮就白跑
-3. `docs/GAME_ECONOMICS.md` —— 这个游戏实际奖励什么
+3. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么
 4. `docs/ENGINE_CHANGES.md` —— 七个落地、五个被否，全都附样本量
 5. `docs/LADDER_FIELD.md` —— 为什么我们自己写的场地误导了我们一周
 6. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读
-7. `docs/EVALUATION.md` —— 上面第 2 条的完整版
+7. `docs/VALIDATING.md` —— 上面第 2 条的完整版
 
 根目录 `README.md` 的《文档》一节按问题索引全部十份文档。
 
@@ -209,7 +209,7 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 这一个 bug 值约 4.5 万。
 
 **种子间的方差大于大多数调参效果。** 这个仓库早期 3–4 个种子的扫描，**重复跑会得出
-互相矛盾的排序**。一个可信结果的下限是几百局；表格见 `EVALUATION.md` §5。
+互相矛盾的排序**。一个可信结果的下限是几百局；表格见 `VALIDATING.md` §5。
 
 **共同随机数在这个环境里不成立。** `_end_of_day` 用同一个 RNG 抽杂草和商店解锁，而
 杂草抽取次数正比于**双方**农场的空地数 —— 所以改你的 agent 会改变哪些商店解锁。
