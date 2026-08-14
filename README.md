@@ -72,7 +72,7 @@ kaggle competitions list -s kaggriculture     # 验证可用
 > `data/arena.sqlite` 是唯一不可替代的文件，而且是 git-ignored 的 —— 用
 > `tools/sync.py` 分享，不要重跑。
 >
-> 有 Vulcan 集群账号的人另见 [`docs/CLUSTER.md`](docs/CLUSTER.md)；**其余文档都不
+> 有 Vulcan 集群账号的人另见 [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)「在 Vulcan 集群上跑」；**其余文档都不
 > 假设你有集群**。
 
 ## 日常命令
@@ -85,7 +85,7 @@ python tools/registry.py gen --plan all --out agents/lib
 python tools/db.py stats                                # 有史以来跑过什么
 python tools/sync.py export --full                      # 可分享的压缩快照
 
-# 锦标赛：-j 给多少核就用多少（集群上走 Slurm，见 docs/CLUSTER.md）
+# 锦标赛：-j 给多少核就用多少（集群上走 Slurm，见 docs/CONTRIBUTING.md（集群））
 export KG_FAST_ENV=1                                    # 结果相同，快 17%
 python tools/tournament.py roundrobin --agents a.py b.py --seeds 96 -j 8
 python tools/tournament.py panel --lib agents/lib --panel agents/bench3/*.py --seeds 8 -j 8
@@ -280,7 +280,7 @@ reference/
   docs/            比赛数据集里的官方 README.md 和 AGENTS.md
 requirements/      base.txt、nodeps.txt、lock.txt —— 按安装语义拆分
 submissions/       每一份发给 Kaggle 的文件的精确快照
-slurm/             Vulcan 专用封装（可选，见 docs/CLUSTER.md）
+slurm/             Vulcan 专用封装（可选，见 docs/CONTRIBUTING.md（集群））
 site/              生成的排行榜页面
 ```
 
@@ -454,7 +454,7 @@ bash tools/fetch_fields.sh           # 对手 —— 新克隆一个都没有，
 | A 是否优于 B | `python tools/eval.py h2h a.py b.py --seeds 96 -j 32` |
 | 对整个场地 | `python tools/tournament.py panel --agents <agent>.py --panel agents/bench3/*.py --seeds 96 -j 8 --label mine` |
 
-八核笔记本上，最后一行约 15 分钟。更大的跑数见 [`docs/CLUSTER.md`](docs/CLUSTER.md)，
+八核笔记本上，最后一行约 15 分钟。更大的跑数见 [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)「在 Vulcan 集群上跑」，
 或者直接拿别人跑好的数据库。
 
 **不要手写策略文件。** 在 `tools/registry.py` 里加一个原子选项然后重新生成 ——
@@ -498,20 +498,28 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 
 ## 文档
 
-这个项目知道的一切都在 [`docs/`](docs/) 里 —— 完整目录见
-**[`docs/README.md`](docs/README.md)**，按问题查用 [`docs/MAP.md`](docs/MAP.md)。
+这个项目知道的一切都在 [`docs/`](docs/) 里，**十份**，没有别的地方。
+按你想知道什么来查：
 
-四份起步必读：
-
-| | |
+| 你想知道… | 读 |
 |---|---|
-| [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) | **榜上跑的是什么，本地怎么复现** —— 交接先读这个 |
-| [`docs/ANALYSIS.md`](docs/ANALYSIS.md) | 这个比赛里到底什么决定输赢：312,000 局的系统分析 |
-| [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | 第一个小时：搭建、跑通、会咬你的五件事 |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 走到哪、为什么，以及哪些结论被推翻了 |
-| [`docs/VALIDATING.md`](docs/VALIDATING.md) | 我的改动是真的吗 —— 出数之前读 |
-| [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) | 碰排行榜之前读 |
-| [`docs/TODO.md`](docs/TODO.md) | 接下来做什么，以及每条的完成判据 |
+| **榜上跑的是什么，我怎么在本地复现** | [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 交接先读这个 |
+| **这个比赛里到底什么决定输赢** | [`docs/ANALYSIS.md`](docs/ANALYSIS.md) —— 引擎经济学 + 312,000 局受控实验 |
+| 怎么把环境跑起来 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) —— 第一个小时 |
+| 这个项目走到哪、哪些结论被推翻了、哪些路线停了 | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
+| **我的改动是真的吗** | [`docs/VALIDATING.md`](docs/VALIDATING.md) —— 出任何数字之前读 |
+| 命名约定、工具用法、集群、怎么交东西 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
+| 什么时候提交、提交什么、额度怎么算 | [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) |
+| 接下来做什么 | [`docs/TODO.md`](docs/TODO.md) —— 按「不做会怎样」排序 |
+| 某一个具体数字是哪次跑出来的 | [`docs/RUNS.md`](docs/RUNS.md) —— 台账，只增不改 |
+| 当前本地排名 | [`docs/LEADERBOARD.md`](docs/LEADERBOARD.md) —— **生成物**，别手改 |
+
+`CLAUDE.md` 是给 AI 工具自动加载的短规则表（英文），不是给人读的入门文档。
+`reference/docs/` 是比赛官方 README 和 AGENTS，原样保存，不是我们写的。
+
+> **文档数量本身是个约束。** 2026-08-14 这里曾有 28 份、7,700 行，包括两个互相指来
+> 指去的目录页、一份自称是另一份「完整版」的方法论、和四份自己在第一行就声明
+> 已被取代的文档。合并到十份。**加新文档之前先问能不能并进现有的一份。**
 
 ---
 

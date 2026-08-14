@@ -35,7 +35,7 @@ bash tools/bootstrap.sh             # 建立 venv/，并用一局真实对局验
 
 > 如果你**确实**有 Vulcan 集群账号，同一个脚本会自动检测并改走 `module load` 和
 > Compute Canada 的 wheelhouse，两边环境等价。集群相关的一切都收在
-> `docs/CLUSTER.md` 里，其余文档都不假设你有集群。
+> `docs/CONTRIBUTING.md（集群）` 里，其余文档都不假设你有集群。
 
 然后把**你自己的** Kaggle 凭据放进 `.kaggle/`：
 
@@ -166,7 +166,7 @@ python tools/tournament.py roundrobin \
 | 对整个 `bench3` 场地筛一个 agent（约 3 千局） | 约 15 分钟 |
 | 整个策略库的全量筛选（数万局） | 几小时 |
 
-**前三行在笔记本上完全可行**，只有最后一行值得动用集群（`docs/CLUSTER.md`）。
+**前三行在笔记本上完全可行**，只有最后一行值得动用集群（`docs/CONTRIBUTING.md（集群）`）。
 另一个办法是直接拿别人跑好的证据：`python tools/sync.py import dist/arena-meta.sqlite.xz`。
 这份快照带 `runs` / `agents` / `ratings`（每一次实验的形状和排名，0.42 MB），**不带 episodes**
 —— 那是 3.4M 行、几个 GB，git 装不下，而且重跑就能复现。要完整的找有集群的人直接拷。
@@ -195,7 +195,7 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 6. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读
 7. `docs/EVALUATION.md` —— 上面第 2 条的完整版
 
-`docs/MAP.md` 会把其他任何问题路由到回答它的那份文档。
+根目录 `README.md` 的《文档》一节按问题索引全部十份文档。
 
 ## 6. 会咬你的五件事
 
@@ -253,4 +253,4 @@ python tools/d1.py top -n 20            # 或者不下载，直接查远端镜�
 ```
 
 如果你在 Vulcan 集群上工作，还有几条集群专属的注意事项 —— 全都收在
-`docs/CLUSTER.md`，其余文档都不假设你有集群。
+`docs/CONTRIBUTING.md（集群）`，其余文档都不假设你有集群。

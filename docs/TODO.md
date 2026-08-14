@@ -29,7 +29,7 @@ python tools/tracelib.py pull \
 
 **注意**：Kaggle 会限流，而它的失败是静默的（CLI 退出 0、无文件）。不要靠加大 `-j`
 或密集重试提速 —— 重试风暴会刷新那个正在阻塞它的限流。`-j 8` 是实测的安全值，
-`docs/TOOLS.md` 的 `tracelib` 条目有完整的踩坑记录。
+`docs/CONTRIBUTING.md（工具参考）` 的 `tracelib` 条目有完整的踩坑记录。
 
 ---
 

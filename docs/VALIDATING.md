@@ -178,7 +178,7 @@ python tools/tournament.py panel \
 | 一个 agent 对整个 `bench3`（约 3 千局） | 约 15 分钟 |
 | 一次十臂扫描（约 3 万局） | 约 3 小时 |
 
-**前两行在笔记本上完全可行。** 更大的跑数要么用集群（`docs/CLUSTER.md`），要么
+**前两行在笔记本上完全可行。** 更大的跑数要么用集群（`docs/CONTRIBUTING.md（集群）`），要么
 缩小场地 —— `tools/eval.py h2h` 只对一个对手，96 个种子一分钟出结果，足以分辨
 10 分的差距。
 

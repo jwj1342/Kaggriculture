@@ -111,7 +111,7 @@ def _fast_env():
     anyway, and illegal actions are silent no-ops by design.
 
     Measured on three seeds: 3.13s -> 2.61s per episode, **17% faster, with
-    byte-identical results**. Verified, not assumed -- see docs/TOOLS.md.
+    byte-identical results**. Verified, not assumed -- see docs/CONTRIBUTING.md（工具参考）.
 
     Local harness only. Nothing here touches a submitted agent.
     """

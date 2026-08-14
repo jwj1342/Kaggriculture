@@ -105,7 +105,7 @@ clock against the ~9 hours the same work would have taken on one 32-core job.
 
 **3,397,241 episodes total** across 87 runs, plus 737 real ladder episodes. Regenerate these three numbers with `python tools/db.py stats` -- they are the only figures here that drift, and they drift every time anyone runs anything.
 
-`docs/MAP.md` says which document explains which run.
+The `文档` table in the top-level `README.md` indexes every document by question.
 
 Runs #1–#6 ran on an engine with two defects that hurt crop plans much more than
 herd plans, and on a library that could not issue `FERTILIZE`. **Do not compare

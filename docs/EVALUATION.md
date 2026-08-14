@@ -357,7 +357,7 @@ agent 从 66,409 掉到 18,060。
 | 32 核 | 约 43,000 |
 
 一次有效力的 5 分 A/B（384 局）在八核笔记本上约 4 分钟。更大的跑数见
-`docs/CLUSTER.md`，或者直接拿别人跑好的证据（`tools/sync.py import`）。
+`docs/CONTRIBUTING.md（集群）`，或者直接拿别人跑好的证据（`tools/sync.py import`）。
 
 **这个负载是纯 CPU 的 —— 永远不要申请 GPU。** 它是单线程 Python，
 其中 42% 的时间花在框架内部的 `deepcopy` 上。
