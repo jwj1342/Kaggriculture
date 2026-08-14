@@ -963,3 +963,70 @@ BUY_SEED redirects nothing and can destroy a turn's planting.
 That closes shop-response through the market layer. The 34-point spread the shop
 draw controls is reachable only on the production side, and the production side
 is the tape.
+
+## The prospective test of the panel, resolved (2026-08-14)
+
+Written before the result, in `RUNS.md` and `docs/TODO.md`: two agents from the
+same source team, the same market layer, the same packaging, differing only in
+which recorded episode they replay. `k01` scored 92.4% on the fixed ten-opponent
+panel and `k06` 98.5%. Three outcomes were declared in advance -- clearly above,
+level, or clearly below.
+
+```
+submission          eps   W-L    cum loss  trail-18  trail-30  2nd half   score
+55489160  k06        94  74-20     21.3%     27.8%     26.7%    25.5%   2612.3
+55484175  k01        59  46-13     22.0%     27.8%     40.0%    40.0%   2391.6
+```
+
+**Clearly above, by 220.7 points.**
+
+Rule 7 is satisfied in the way that matters, though not in the way it is written.
+`k01` has converged: its trailing-30 loss rate is 40.0%, past the one-third line,
+and its score has turned over (2413.9 -> 2418.2 -> 2421.9 -> 2391.6). `k06` has
+*not* -- 26.7% trailing-30, still winning three in four, still climbing. But it
+has 1.6x the episodes of the converged incumbent and sits 220.7 points above it.
+The rule exists because a climbing agent's score is a floor; a floor that is
+already 220 points clear of a settled comparison can only move away from it.
+
+**Panel win rate predicts the ladder when the source team is held constant.**
+That is the first local measurement in this repo with any validated relation to
+real strength, and it is a pre-registered prediction rather than a correlation
+found afterwards -- `docs/ROADMAP.md` §10.5 is what happens when you look for the
+correlation first.
+
+**It is n=2.** One comparison, in the predicted direction, with the confound that
+killed §10.5 (different source teams) deliberately removed. It does not license
+ranking across teams, and it does not license using the panel as a search
+objective without a second confirmation.
+
+### Two numbers that change with it
+
+**The replay penalty is 630.8 points, not 877.** `カワシギ` is still #1 at 3235.7
+and our copy of their recording now scores 2604.9 on the leaderboard: **80.5%
+retained**, against 73% when measured with `k01`. Picking a better episode from
+the same team recovered about 246 points of the penalty, which is most of what
+plan selection can be worth.
+
+**"Copying recordings cannot reach the prize zone" was too strong.** The top-ten
+threshold is 3061.4 and a perfect copy of the #1 team would be 3235.7 -- the
+ceiling is inside the prize zone. The barrier is retention: reaching tenth from a
+#1 recording needs 94.6% where we get 80.5%. Whether a recording can ever retain
+94.6% of an adaptive agent is a different question, and the honest answer is
+probably not, but the arithmetic no longer rules it out on ceiling alone.
+
+### Where the team stands
+
+```
+4,356 teams.   RL is all you need: #348, 2604.9, top 8.0%
+
+  rank    1  3235.7        1 -> 10    19.37 points per rank
+  rank   10  3061.4       10 -> 20     3.95
+  rank   50  2916.2       50 -> 100    1.20
+  rank  100  2856.3      100 -> 200    1.22
+  rank  348  2604.9  <-  200 -> 348    0.88
+  rank 2000   817.8      348 -> 500    1.16
+```
+
+At our position one point is roughly one rank -- #344 to #352 spans 4.4 points
+across nine teams. +130 reaches #200 and +251 reaches #100. The top ten is a
+different regime: 174 points across nine ranks.
