@@ -134,6 +134,25 @@ Generated, never hand-edit: `agents/lib/`, `agents/spar/`, `docs/LEADERBOARD.md`
 file here. Never edit `episodes` rows; they are history. Digests are ~1.6 KB per
 player — full replays (~27 MB each) are deliberately not stored.
 
+**Ingest is not automatic, and forgetting it is the default failure.** Array
+tasks write JSONL and are kept away from the database on purpose, so a
+tournament ends with its results on disk and nothing in `runs`. On 2026-08-14
+that gap was **2,099,325 episodes across 44 shard directories** — two thirds of
+everything this project had ever computed, including the 477,225-episode
+`duel101` round robin that `docs/ROADMAP.md` §10 rests on. Nothing errored;
+the files were simply never read again.
+
+    python tools/datalake.py status        # database vs shards vs dist/, in one screen
+    python tools/datalake.py sync --prune  # ingest what is missing, then free the JSONL
+
+Run `status` after any tournament and before believing `data/` is complete.
+`--prune` only deletes a shard directory when the database holds *exactly* the
+same episode count under that label — a half-ingested run keeps its files.
+
+`dist/` is the only thing a collaborator with a fresh clone can get, so a
+snapshot that is stale or untracked is invisible to everyone but you. Three of
+the four files in it were both, until `datalake.py export` and a `git add`.
+
 ## Multi-file agents
 
 `tools/package.sh <dir> <name>` builds the tar.gz, with every module at the
