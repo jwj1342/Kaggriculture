@@ -46,11 +46,13 @@ STAGES = [
 
 
 def stage_pool(idx):
-    """Current stage 70%, earlier stages share 30%."""
+    """Current stage 50%, earlier stages share 50%: a stage transition is a
+    distribution cliff (barnyard floods the shared market), and a 70/30 mix
+    measurably eroded mastered skills instead of building new ones."""
     if idx == 0:
         return [(STAGES[0], 1.0)]
-    pool = [(STAGES[idx], 0.7)]
-    w = 0.3 / idx
+    pool = [(STAGES[idx], 0.5)]
+    w = 0.5 / idx
     for j in range(idx):
         pool.append((STAGES[j], w))
     return pool
@@ -215,7 +217,14 @@ def main():
             stage += 1
             recent.clear()
             venv.set_pool(stage_pool(stage))
-            print(f"=== advancing to stage {stage}: {STAGES[stage]} ===", flush=True)
+            # Re-freeze across the cliff: returns change scale at a stage
+            # switch, and letting the policy update against a value net that
+            # has not seen the new distribution tears down what stage k built.
+            args.freeze_policy_until = max(args.freeze_policy_until,
+                                           global_step + 100_000)
+            print(f"=== advancing to stage {stage}: {STAGES[stage]} "
+                  f"(policy frozen until {args.freeze_policy_until:,}) ===",
+                  flush=True)
         it += 1
 
     venv.close()
