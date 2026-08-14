@@ -1,0 +1,212 @@
+#!/usr/bin/env python
+"""Masked two-head PPO for kaggriculture. CPU-only by design (README §2).
+
+    python rl/train_ppo.py --run m1 --n-envs 28 --max-minutes 50
+
+Auto-curriculum: trains against STAGES[k], advancing when the rolling win rate
+against the *current* stage crosses --advance-at (over the last --window
+finished episodes). After advancing, 30% of episodes still sample earlier
+stages so old opponents are not forgotten. Stage index persists in the
+checkpoint; chained short Slurm jobs just keep going (--resume is the default).
+
+Everything printed also lands in rl/runs/<run>/log.csv. Training numbers are
+for steering only -- reported strength comes from tools/eval.py (README §9).
+"""
+
+import argparse
+import csv
+import os
+import sys
+import time
+from collections import deque
+
+import numpy as np
+import torch
+
+_RL = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _RL)
+
+from policy import Policy            # noqa: E402
+from vec_env import VecEnv           # noqa: E402
+import actions as A                  # noqa: E402
+import obs as O                      # noqa: E402
+
+STAGES = [
+    "starter",
+    os.path.join(_RL, "..", "agents", "barnyard.py"),
+    os.path.join(_RL, "..", "agents", "wrapped", "w49.py"),
+    os.path.join(_RL, "..", "agents", "wrapped", "w100.py"),
+]
+
+
+def stage_pool(idx):
+    """Current stage 70%, earlier stages share 30%."""
+    if idx == 0:
+        return [(STAGES[0], 1.0)]
+    pool = [(STAGES[idx], 0.7)]
+    w = 0.3 / idx
+    for j in range(idx):
+        pool.append((STAGES[j], w))
+    return pool
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run", default="m1")
+    ap.add_argument("--n-envs", type=int, default=28)
+    ap.add_argument("--rollout", type=int, default=240)
+    ap.add_argument("--max-minutes", type=float, default=50)
+    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--gamma", type=float, default=0.999)
+    ap.add_argument("--lam", type=float, default=0.95)
+    ap.add_argument("--clip", type=float, default=0.2)
+    ap.add_argument("--epochs", type=int, default=2)
+    ap.add_argument("--minibatches", type=int, default=8)
+    ap.add_argument("--ent-coef", type=float, default=0.01)
+    ap.add_argument("--vf-coef", type=float, default=0.5)
+    ap.add_argument("--shape-w", type=float, default=1.0)
+    ap.add_argument("--win-bonus", type=float, default=3.0)
+    ap.add_argument("--advance-at", type=float, default=0.85)
+    ap.add_argument("--window", type=int, default=200)
+    ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--no-resume", action="store_true")
+    args = ap.parse_args()
+
+    torch.set_num_threads(args.threads)
+    run_dir = os.path.join(_RL, "runs", args.run)
+    os.makedirs(run_dir, exist_ok=True)
+    ckpt_path = os.path.join(run_dir, "latest.pt")
+    csv_path = os.path.join(run_dir, "log.csv")
+
+    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
+    optim = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
+    global_step, stage, it0 = 0, 0, 0
+    if not args.no_resume and os.path.exists(ckpt_path):
+        ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        policy.load_state_dict(ck["model"])
+        optim.load_state_dict(ck["optim"])
+        global_step, stage, it0 = ck["global_step"], ck["stage"], ck["iter"] + 1
+        print(f"resumed: step {global_step:,} stage {stage} iter {it0}", flush=True)
+
+    venv = VecEnv(args.n_envs, stage_pool(stage), shape_w=args.shape_w,
+                  win_bonus=args.win_bonus, base_rng_seed=global_step % 100_000)
+    obs, fm, mm = venv.initial_obs()
+
+    N, T = args.n_envs, args.rollout
+    b_obs = np.zeros((T, N, O.OBS_DIM), dtype=np.float32)
+    b_fm = np.zeros((T, N, A.N_FARMER), dtype=bool)
+    b_mm = np.zeros((T, N, A.N_MARKET), dtype=bool)
+    b_fa = np.zeros((T, N), dtype=np.int64)
+    b_ma = np.zeros((T, N), dtype=np.int64)
+    b_logp = np.zeros((T, N), dtype=np.float32)
+    b_val = np.zeros((T, N), dtype=np.float32)
+    b_rew = np.zeros((T, N), dtype=np.float32)
+    b_done = np.zeros((T, N), dtype=bool)
+
+    recent = deque(maxlen=args.window)          # episodes vs current stage
+    recent_all = deque(maxlen=args.window)      # every episode
+    new_csv = not os.path.exists(csv_path)
+    csv_f = open(csv_path, "a", newline="")
+    csv_w = csv.writer(csv_f)
+    if new_csv:
+        csv_w.writerow(["iter", "step", "stage", "sps", "win", "money",
+                        "opp_money", "eps", "pg", "vf", "ent"])
+
+    t_start = time.time()
+    it = it0
+    while (time.time() - t_start) / 60 < args.max_minutes:
+        t_iter = time.time()
+        for t in range(T):
+            xt = torch.from_numpy(obs)
+            fa, ma, logp, val = policy.act(
+                xt, torch.from_numpy(fm), torch.from_numpy(mm))
+            b_obs[t], b_fm[t], b_mm[t] = obs, fm, mm
+            b_fa[t], b_ma[t] = fa.numpy(), ma.numpy()
+            b_logp[t], b_val[t] = logp.numpy(), val.numpy()
+            obs, fm, mm, rew, done, eps = venv.step(b_fa[t], b_ma[t])
+            b_rew[t], b_done[t] = rew, done
+            for e in eps:
+                recent_all.append(e)
+                if e["opponent"] == STAGES[stage]:
+                    recent.append(e)
+        global_step += T * N
+
+        with torch.no_grad():
+            last_val = policy.act(torch.from_numpy(obs),
+                                  torch.from_numpy(fm),
+                                  torch.from_numpy(mm))[3].numpy()
+        adv = np.zeros((T, N), dtype=np.float32)
+        gae = np.zeros(N, dtype=np.float32)
+        for t in reversed(range(T)):
+            nonterm = ~b_done[t]
+            nxt = last_val if t == T - 1 else b_val[t + 1]
+            delta = b_rew[t] + args.gamma * nxt * nonterm - b_val[t]
+            gae = delta + args.gamma * args.lam * gae * nonterm
+            adv[t] = gae
+        ret = adv + b_val
+
+        f_obs = torch.from_numpy(b_obs.reshape(T * N, -1))
+        f_fm = torch.from_numpy(b_fm.reshape(T * N, -1))
+        f_mm = torch.from_numpy(b_mm.reshape(T * N, -1))
+        f_fa = torch.from_numpy(b_fa.reshape(-1))
+        f_ma = torch.from_numpy(b_ma.reshape(-1))
+        f_logp = torch.from_numpy(b_logp.reshape(-1))
+        f_adv = torch.from_numpy(adv.reshape(-1))
+        f_ret = torch.from_numpy(ret.reshape(-1))
+        f_adv = (f_adv - f_adv.mean()) / (f_adv.std() + 1e-8)
+
+        idx = np.arange(T * N)
+        pg_l = vf_l = ent_l = 0.0
+        for _ in range(args.epochs):
+            np.random.shuffle(idx)
+            for mb in np.array_split(idx, args.minibatches):
+                mb = torch.from_numpy(mb)
+                logp, ent, val = policy.evaluate(
+                    f_obs[mb], f_fm[mb], f_mm[mb], f_fa[mb], f_ma[mb])
+                ratio = (logp - f_logp[mb]).exp()
+                a = f_adv[mb]
+                pg = -torch.min(
+                    ratio * a,
+                    ratio.clamp(1 - args.clip, 1 + args.clip) * a).mean()
+                vf = 0.5 * (val - f_ret[mb]).pow(2).mean()
+                loss = pg + args.vf_coef * vf - args.ent_coef * ent.mean()
+                optim.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+                optim.step()
+                pg_l, vf_l, ent_l = pg.item(), vf.item(), ent.mean().item()
+
+        sps = T * N / (time.time() - t_iter)
+        win = np.mean([e["win"] for e in recent]) if recent else 0.0
+        money = np.mean([e["money"] for e in recent_all]) if recent_all else 0.0
+        omoney = np.mean([e["opp_money"] for e in recent_all]) if recent_all else 0.0
+        print(f"it {it:>4}  step {global_step:>10,}  stage {stage}  "
+              f"sps {sps:>6,.0f}  win {win:5.2f}  money {money:>9,.0f}  "
+              f"opp {omoney:>9,.0f}  eps {len(recent)}  ent {ent_l:5.2f}", flush=True)
+        csv_w.writerow([it, global_step, stage, round(sps), round(win, 3),
+                        round(money), round(omoney), len(recent),
+                        round(pg_l, 4), round(vf_l, 4), round(ent_l, 3)])
+        csv_f.flush()
+
+        if it % 5 == 0 or (time.time() - t_start) / 60 >= args.max_minutes - 2:
+            torch.save({"model": policy.state_dict(), "optim": optim.state_dict(),
+                        "global_step": global_step, "stage": stage, "iter": it},
+                       ckpt_path + ".tmp")
+            os.replace(ckpt_path + ".tmp", ckpt_path)
+
+        if (len(recent) >= args.window // 2 and win >= args.advance_at
+                and stage < len(STAGES) - 1):
+            stage += 1
+            recent.clear()
+            venv.set_pool(stage_pool(stage))
+            print(f"=== advancing to stage {stage}: {STAGES[stage]} ===", flush=True)
+        it += 1
+
+    venv.close()
+    csv_f.close()
+    print(f"clean exit at {(time.time() - t_start) / 60:.1f} min, "
+          f"step {global_step:,}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

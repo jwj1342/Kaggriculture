@@ -43,8 +43,8 @@ C = 24
 _QUADS = ["NE", "SW", "SE"]  # NW is always unlocked
 
 
-def _encode_board(farm, out):
-    """Fill one (C, N, N) block for one farm."""
+def _encode_board(farm, out, day):
+    """Fill one (C, N, N) block for one farm. Single pass."""
     for y in range(N):
         row = farm["tiles"][y]
         for x in range(N):
@@ -62,6 +62,9 @@ def _encode_board(farm, out):
                     out[10, y, x] = t.get("yield_units", 0) / 6.0
                     out[11, y, x] = 1.0 if t.get("watered_today") else 0.0
                     out[13, y, x] = min(t.get("consecutive_unwatered", 0), 2) / 2.0
+                    fert_left = max(0, t.get("fertilized_until_day", -1) - day + 1)
+                    out[12, y, x] = min(fert_left, 3) / 3.0
+                    out[14, y, x] = min(day - t.get("planted_day", day), 12) / 12.0
                 elif "animal" in t:
                     out[15 + ANIMAL_LIST.index(t["animal"]), y, x] = 1.0
                     out[10, y, x] = t.get("yield_units", 0) / 6.0
@@ -75,20 +78,8 @@ def _encode_board(farm, out):
                     out[4, y, x] = 1.0
     fx, fy = farm["farmer"]
     out[22, fy, fx] = 1.0
-    for hx, hy in farm.get("hands", []):
-        out[23, hy, hx] += 0.25
-
-
-def _encode_board_days(farm, out, day):
-    """Second pass for day-dependent channels (fert remaining, plant age)."""
-    for y in range(N):
-        row = farm["tiles"][y]
-        for x in range(N):
-            t = row[x]
-            if isinstance(t, dict) and t.get("kind") == "PLANT":
-                fert_left = max(0, t.get("fertilized_until_day", -1) - day + 1)
-                out[12, y, x] = min(fert_left, 3) / 3.0
-                out[14, y, x] = min(day - t.get("planted_day", day), 12) / 12.0
+    for hpos in farm.get("hands", []):
+        out[23, hpos[1], hpos[0]] += 0.25
 
 
 def _global_features(obs):
@@ -146,10 +137,8 @@ def encode(obs):
     me = obs["player"]
     day = obs.get("day", 0)
     boards = np.zeros((2, C, N, N), dtype=np.float32)
-    _encode_board(obs["farms"][me], boards[0])
-    _encode_board_days(obs["farms"][me], boards[0], day)
-    _encode_board(obs["farms"][1 - me], boards[1])
-    _encode_board_days(obs["farms"][1 - me], boards[1], day)
+    _encode_board(obs["farms"][me], boards[0], day)
+    _encode_board(obs["farms"][1 - me], boards[1], day)
     g = np.asarray(_global_features(obs), dtype=np.float32)
     assert g.shape[0] == G, f"global feature drift: {g.shape[0]} != {G}"
     return np.concatenate([boards.reshape(-1), g])
@@ -172,6 +161,9 @@ def net_worth(obs):
     prices = obs["market"]["prices"]
 
     worth = farm["money"]
+    # Land credit: neutralises the BUY_LAND cash dip in the shaping delta, the
+    # same way seeds/animals are credited at cost.
+    worth += sum(R.LAND_PRICES[:len(farm["unlocked_quadrants"]) - 1])
     for item, n in priv["shed"].items():
         if n <= 0:
             continue
