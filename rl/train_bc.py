@@ -24,6 +24,7 @@ from policy import Policy
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=os.path.join(_RL, "runs", "bc", "data"))
+    ap.add_argument("--pattern", default="shard-*.npz")
     ap.add_argument("--run", default="m2")
     ap.add_argument("--epochs", type=int, default=6)
     ap.add_argument("--batch", type=int, default=2048)
@@ -32,9 +33,9 @@ def main():
     args = ap.parse_args()
 
     torch.set_num_threads(args.threads)
-    shards = sorted(glob.glob(os.path.join(args.data, "shard-*.npz")))
-    assert shards, f"no shards under {args.data}"
-    obs_l, fm_l, mm_l, fa_l, ma_l = [], [], [], [], []
+    shards = sorted(glob.glob(os.path.join(args.data, args.pattern)))
+    assert shards, f"no shards under {args.data}/{args.pattern}"
+    obs_l, fm_l, mm_l, fa_l, ma_l, fex_l = [], [], [], [], [], []
     for s in shards:
         d = np.load(s)
         obs_l.append(d["obs"])
@@ -42,13 +43,19 @@ def main():
         mm_l.append(d["mmask"])
         fa_l.append(d["fa"])
         ma_l.append(d["ma"])
+        fex_l.append(d["fex"] if "fex" in d.files
+                     else np.ones(len(d["fa"]), dtype=bool))
     X = torch.from_numpy(np.concatenate(obs_l)).float()
     FM = torch.from_numpy(np.concatenate(fm_l))
     MM = torch.from_numpy(np.concatenate(mm_l))
     FA = torch.from_numpy(np.concatenate(fa_l).astype(np.int64))
     MA = torch.from_numpy(np.concatenate(ma_l).astype(np.int64))
+    # Oracle-mapped datasets mark rows whose farmer label reproduced the
+    # teacher exactly; unmapped rows contribute nothing to the farmer loss.
+    FEX = torch.from_numpy(np.concatenate(fex_l))
     n = X.shape[0]
-    print(f"{n:,} samples from {len(shards)} shards")
+    print(f"{n:,} samples from {len(shards)} shards "
+          f"(farmer-exact {FEX.float().mean():.2f})")
 
     policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
@@ -62,7 +69,10 @@ def main():
             h = policy.trunk(X[mb])
             flog = policy.farmer(h).masked_fill(~FM[mb], -1e9)
             mlog = policy.market(h).masked_fill(~MM[mb], -1e9)
-            loss = ce(flog, FA[mb]) + ce(mlog, MA[mb])
+            fmask_rows = FEX[mb]
+            floss = (ce(flog[fmask_rows], FA[mb][fmask_rows])
+                     if fmask_rows.any() else flog.sum() * 0.0)
+            loss = floss + ce(mlog, MA[mb])
             optim.zero_grad()
             loss.backward()
             optim.step()
