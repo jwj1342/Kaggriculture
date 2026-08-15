@@ -29,6 +29,8 @@ def main():
     ap.add_argument("--epochs", type=int, default=6)
     ap.add_argument("--batch", type=int, default=2048)
     ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--hidden", type=int, nargs=2, default=[512, 256],
+                    metavar=("H1", "H2"))
     ap.add_argument("--threads", type=int, default=16)
     args = ap.parse_args()
 
@@ -57,7 +59,7 @@ def main():
     print(f"{n:,} samples from {len(shards)} shards "
           f"(farmer-exact {FEX.float().mean():.2f})")
 
-    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
+    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET, *args.hidden)
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     ce = torch.nn.CrossEntropyLoss()
 
@@ -87,6 +89,7 @@ def main():
     os.makedirs(run_dir, exist_ok=True)
     ppo_optim = torch.optim.Adam(policy.parameters(), lr=3e-4, eps=1e-5)
     ck = {"model": policy.state_dict(), "optim": ppo_optim.state_dict(),
+          "hidden": list(args.hidden),
           "global_step": 0, "stage": 0, "iter": -1}
     # bc_init.pt is immutable -- PPO overwrites latest.pt within minutes, and
     # the pristine clone must stay exportable/diagnosable forever.

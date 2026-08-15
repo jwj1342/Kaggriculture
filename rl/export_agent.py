@@ -111,7 +111,8 @@ def main():
     out_dir = os.path.join(args.out, args.name)
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
+    hidden = ck.get("hidden", [512, 256])
+    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET, *hidden)
     # strict=False: pre-value-net checkpoints lack v1/v2 keys, and the value
     # net never ships anyway -- only the policy side is exported.
     policy.load_state_dict(ck["model"], strict=False)

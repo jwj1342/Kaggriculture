@@ -102,6 +102,10 @@ def main():
                          "autonomously with in-worker numpy inference (always "
                          "the np engine); step = the lockstep VecEnv")
     ap.add_argument("--window", type=int, default=200)
+    ap.add_argument("--hidden", type=int, nargs=2, default=[512, 256],
+                    metavar=("H1", "H2"),
+                    help="policy trunk widths; stored in the checkpoint and "
+                         "read back on resume/export")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--no-resume", action="store_true")
     args = ap.parse_args()
@@ -120,11 +124,15 @@ def main():
         except Exception:
             pass
 
-    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
+    hidden = list(args.hidden)
+    if not args.no_resume and os.path.exists(ckpt_path):
+        _peek = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        hidden = list(_peek.get("hidden", hidden))
+    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET, *hidden)
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
     global_step, stage, it0 = 0, 0, 0
     if not args.no_resume and os.path.exists(ckpt_path):
-        ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        ck = _peek
         missing, unexpected = policy.load_state_dict(ck["model"], strict=False)
         if missing or unexpected:
             print(f"arch drift on resume: missing {missing} unexpected {unexpected}",
@@ -329,6 +337,7 @@ def main():
         if stage >= 1 and len(recent) >= 100 and win > best_win:
             best_win = win
             torch.save({"model": policy.state_dict(), "win": win,
+                        "hidden": hidden,
                         "stage": stage, "global_step": global_step},
                        best_path + ".tmp")
             os.replace(best_path + ".tmp", best_path)
@@ -336,6 +345,7 @@ def main():
 
         if it % 5 == 0 or (time.time() - t_start) / 60 >= args.max_minutes - 2:
             torch.save({"model": policy.state_dict(), "optim": optim.state_dict(),
+                        "hidden": hidden,
                         "global_step": global_step, "stage": stage, "iter": it},
                        ckpt_path + ".tmp")
             os.replace(ckpt_path + ".tmp", ckpt_path)
