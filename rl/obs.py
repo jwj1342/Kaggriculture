@@ -26,6 +26,18 @@ if _AGENTS not in sys.path:
 
 import kg_rules as R
 
+# The fused single-pass board analysis (boards block, scan dict, asset sums)
+# lives in actions.py so that an exported agent directory -- exactly this file,
+# actions.py and kg_rules.py, renamed kg_rl_* -- stays self-contained. Resolve
+# the sibling under whichever name this module itself was imported as.
+try:
+    if __name__ == "kg_rl_obs":
+        import kg_rl_actions as _ACT
+    else:
+        import actions as _ACT
+except ImportError:  # pair copied under the exported names, module named else
+    import kg_rl_actions as _ACT
+
 N = 10  # boardSize; the whole repo assumes the default advanced game
 CROP_LIST = list(R.CROPS)          # 5, fixed order
 ANIMAL_LIST = list(R.ANIMALS)      # 3
@@ -38,48 +50,20 @@ SHOP_LIST = sorted(R.SHOPS)        # 8
 # 13 unwatered streak/2          14 plant age/12
 # 15..17 animal one-hot          18 fed       19 cared    20 fert ready
 # 21 unfed streak/2              22 farmer here            23 hands here/4
+#
+# This layout is the contract; the walk that fills it is actions.analyze
+# (fused with the mask scan and the net-worth sums, one pass per farm).
 C = 24
 
 _QUADS = ["NE", "SW", "SE"]  # NW is always unlocked
 
-
-def _encode_board(farm, out, day):
-    """Fill one (C, N, N) block for one farm. Single pass."""
-    for y in range(N):
-        row = farm["tiles"][y]
-        for x in range(N):
-            t = row[x]
-            if t is None:
-                out[0, y, x] = 1.0
-            elif t == "LOCKED":
-                out[1, y, x] = 1.0
-            elif isinstance(t, dict):
-                kind = t.get("kind")
-                if kind == "WEED":
-                    out[2, y, x] = 1.0
-                elif kind == "PLANT":
-                    out[5 + CROP_LIST.index(t["crop"]), y, x] = 1.0
-                    out[10, y, x] = t.get("yield_units", 0) / 6.0
-                    out[11, y, x] = 1.0 if t.get("watered_today") else 0.0
-                    out[13, y, x] = min(t.get("consecutive_unwatered", 0), 2) / 2.0
-                    fert_left = max(0, t.get("fertilized_until_day", -1) - day + 1)
-                    out[12, y, x] = min(fert_left, 3) / 3.0
-                    out[14, y, x] = min(day - t.get("planted_day", day), 12) / 12.0
-                elif "animal" in t:
-                    out[15 + ANIMAL_LIST.index(t["animal"]), y, x] = 1.0
-                    out[10, y, x] = t.get("yield_units", 0) / 6.0
-                    out[18, y, x] = 1.0 if t.get("fed_today") else 0.0
-                    out[19, y, x] = 1.0 if t.get("cared_today") else 0.0
-                    out[20, y, x] = 1.0 if t.get("fertilizer_available") else 0.0
-                    out[21, y, x] = min(t.get("consecutive_unfed", 0), 2) / 2.0
-                elif kind == "COOP":
-                    out[3, y, x] = 1.0
-                elif kind == "PASTURE":
-                    out[4, y, x] = 1.0
-    fx, fy = farm["farmer"]
-    out[22, fy, fx] = 1.0
-    for hpos in farm.get("hands", []):
-        out[23, hpos[1], hpos[0]] += 0.25
+# Per-product constants hoisted out of the per-step loop; the arithmetic in
+# _global_features is unchanged (same ops, same order), only the nested dict
+# lookups are pre-resolved.
+_GF_BASE = [(p, R.MARKET_PARAMS[p]["base"]) for p in PRODUCT_LIST]
+_GF_I0_T = [(p, R.MARKET_PARAMS[p]["I0"], R.MARKET_PARAMS[p]["T"])
+            for p in PRODUCT_LIST]
+_BASE_PRICES = {p: R.MARKET_PARAMS[p]["base"] for p in PRODUCT_LIST}
 
 
 def _global_features(obs):
@@ -105,26 +89,23 @@ def _global_features(obs):
         mine.get("hires_today", 0) / 8.0,
         sum(shed.values()) / R.SHED_CAPACITY,
     ]
-    for p in PRODUCT_LIST:
-        g.append(prices[p] / R.MARKET_PARAMS[p]["base"] / 2.0)
-    for p in PRODUCT_LIST:
-        off = (R.MARKET_PARAMS[p]["I0"] - inv[p]) / R.MARKET_PARAMS[p]["T"]
-        g.append(max(-3.0, min(3.0, off)) / 3.0)
-    for p in PRODUCT_LIST:
-        g.append(min(shed.get(p, 0), 60) / 60.0)
-    for a in ANIMAL_LIST:
-        g.append(min(shed.get(a, 0), 4) / 4.0)
-    for c in CROP_LIST:
-        g.append(min(seeds.get(c, 0), 20) / 20.0)
-    for p in PRODUCT_LIST:
-        g.append(min(carried.get(p, 0), 20) / 20.0)
-    for q in _QUADS:
-        g.append(1.0 if q in mine["unlocked_quadrants"] else 0.0)
-    for q in _QUADS:
-        g.append(1.0 if q in theirs["unlocked_quadrants"] else 0.0)
+    sget = shed.get
+    cget = carried.get
+    mq = mine["unlocked_quadrants"]
+    tq = theirs["unlocked_quadrants"]
     unlocked = obs["town"]["unlocked_shops"]
-    for s in SHOP_LIST:
-        g.append(unlocked.count(s) / 4.0)
+    g += [prices[p] / base / 2.0 for p, base in _GF_BASE]
+    g += [max(-3.0, min(3.0, (i0 - inv[p]) / tt)) / 3.0 for p, i0, tt in _GF_I0_T]
+    g += [min(sget(p, 0), 60) / 60.0 for p in PRODUCT_LIST]
+    g += [min(sget(a, 0), 4) / 4.0 for a in ANIMAL_LIST]
+    g += [min(seeds.get(c, 0), 20) / 20.0 for c in CROP_LIST]
+    g += [min(cget(p, 0), 20) / 20.0 for p in PRODUCT_LIST]
+    g += [1.0 if q in mq else 0.0 for q in _QUADS]
+    g += [1.0 if q in tq else 0.0 for q in _QUADS]
+    cnt = {}
+    for s in unlocked:  # one scan instead of eight .count() passes
+        cnt[s] = cnt.get(s, 0) + 1
+    g += [cnt.get(s, 0) / 4.0 for s in SHOP_LIST]
     g.append(len(unlocked) / 8.0)
     return g
 
@@ -132,16 +113,18 @@ G = 8 + 9 * 4 + 3 + 5 + 3 + 3 + 8 + 1
 OBS_DIM = 2 * C * N * N + G
 
 
+_BOARD_LEN = 2 * C * N * N
+
+
 def encode(obs):
     """Raw obs dict (this player's view) -> float32 vector of OBS_DIM."""
-    me = obs["player"]
-    day = obs.get("day", 0)
-    boards = np.zeros((2, C, N, N), dtype=np.float32)
-    _encode_board(obs["farms"][me], boards[0], day)
-    _encode_board(obs["farms"][1 - me], boards[1], day)
-    g = np.asarray(_global_features(obs), dtype=np.float32)
-    assert g.shape[0] == G, f"global feature drift: {g.shape[0]} != {G}"
-    return np.concatenate([boards.reshape(-1), g])
+    boards = _ACT._analysis(obs).boards
+    g = _global_features(obs)
+    assert len(g) == G, f"global feature drift: {len(g)} != {G}"
+    out = np.empty(OBS_DIM, dtype=np.float32)
+    out[:_BOARD_LEN] = boards.reshape(-1)
+    out[_BOARD_LEN:] = g  # python floats -> float32, same cast as asarray
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -162,7 +145,7 @@ def net_worth(obs):
     me = obs["player"]
     farm = obs["farms"][me]
     priv = obs["private"]
-    prices = {p: R.MARKET_PARAMS[p]["base"] for p in PRODUCT_LIST}
+    prices = _BASE_PRICES  # read-only lookups; hoisted, values unchanged
 
     # End-game decay: over the last five days every non-cash asset ramps
     # linearly to worthless, money never does. Holding through the end is a
@@ -192,18 +175,9 @@ def net_worth(obs):
                 assets += n * prices[item]
             elif item in R.ANIMALS:
                 assets += n * R.ANIMALS[item]["cost"]
-    for y in range(N):
-        for x in range(N):
-            t = farm["tiles"][y][x]
-            if not isinstance(t, dict):
-                continue
-            if t.get("kind") == "PLANT":
-                assets += R.CROPS[t["crop"]]["seed"]
-                assets += t.get("yield_units", 0) * prices[t["crop"]]
-            elif "animal" in t:
-                a = R.ANIMALS[t["animal"]]
-                assets += a["cost"]
-                assets += t.get("yield_units", 0) * prices[a["product"]]
+    # Standing tiles (planted crops at seed cost + yield, placed animals at
+    # cost + yield) come from the fused single pass in actions.analyze.
+    assets += _ACT._analysis(obs).own_assets
     return farm["money"] + decay * assets
 
 
@@ -218,16 +192,5 @@ def opp_visible_worth(obs):
     t = obs.get("day", 0) * 24 + obs.get("hour", 0)
     decay = min(1.0, max(0.0, (720.0 - t) / 120.0))
     assets = float(sum(R.LAND_PRICES[:len(farm["unlocked_quadrants"]) - 1]))
-    for y in range(N):
-        for x in range(N):
-            tile = farm["tiles"][y][x]
-            if not isinstance(tile, dict):
-                continue
-            if tile.get("kind") == "PLANT":
-                assets += R.CROPS[tile["crop"]]["seed"]
-                assets += tile.get("yield_units", 0) * R.MARKET_PARAMS[tile["crop"]]["base"]
-            elif "animal" in tile:
-                a = R.ANIMALS[tile["animal"]]
-                assets += a["cost"]
-                assets += tile.get("yield_units", 0) * R.MARKET_PARAMS[a["product"]]["base"]
+    assets += _ACT._analysis(obs).opp_assets
     return farm["money"] + decay * assets
