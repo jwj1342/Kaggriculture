@@ -257,18 +257,36 @@ def _hands_actions(obs, s):
 
 
 def _market_action(obs, name):
-    _farm, priv, _inv, _pos = _me(obs)
+    """Decode one market-head option into up to 10 engine orders.
+
+    Compound decodes, matched against barnyard's measured throughput (it fires
+    up to 10 orders in one turn; a single-order head liquidates and hires an
+    order of magnitude slower than every opponent in its band):
+    - SELL_<p> on/after the liquidation day sells the *whole shed*, p first.
+    - HIRE is a burst: up to 4 hires this turn while the fib cost stays small.
+    - BUY_WHEAT scales with the herd instead of a flat 5.
+    Head size is unchanged on purpose -- checkpoints keep resuming.
+    """
+    farm, priv, _inv, _pos = _me(obs)
     shed = priv["shed"]
+    day = obs.get("day", 0)
     if name == "NOOP":
         return []
     if name.startswith("SELL_"):
         p = name[len("SELL_"):]
+        if day >= R.LIQUIDATE_DAY:
+            first = [["SELL", p, shed[p]]] if shed.get(p, 0) > 0 else []
+            rest = [["SELL", q, shed[q]] for q in PRODUCT_LIST
+                    if q != p and shed.get(q, 0) > 0]
+            return (first + rest)[:R.MAX_ORDERS]
         n = shed.get(p, 0)
         return [["SELL", p, n]] if n > 0 else []
     if name.startswith("BUY_SEED_"):
         return [["BUY_SEED", name[len("BUY_SEED_"):], 1]]
     if name == "BUY_WHEAT":
-        return [["BUY_PRODUCT", "WHEAT", 5]]
+        herd = sum(1 for row in farm["tiles"] for t in row
+                   if isinstance(t, dict) and "animal" in t)
+        return [["BUY_PRODUCT", "WHEAT", max(5, 2 * herd)]]
     if name == "BUY_FERT":
         return [["BUY_PRODUCT", "FERTILIZER", 1]]
     if name.startswith("BUY_") and name[len("BUY_"):] in R.ANIMALS:
@@ -276,7 +294,13 @@ def _market_action(obs, name):
     if name == "BUY_LAND":
         return [["BUY_LAND"]]
     if name == "HIRE":
-        return [["HIRE"]]
+        n_hands = len(farm.get("hands", []))
+        burst, cost_cap = [], max(4.0, 0.05 * farm["money"])
+        hires = farm.get("hires_today", 0)
+        while (len(burst) < 4 and n_hands + len(burst) < MAX_HANDS
+               and _fib(hires + len(burst)) <= cost_cap):
+            burst.append(["HIRE"])
+        return burst or [["HIRE"]]
     return []
 
 
