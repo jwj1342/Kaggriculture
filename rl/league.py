@@ -43,6 +43,9 @@ ANCHORS = [
     ("anchor-ghost", os.path.join(_AGENTS, "ghosts", "ghost-89825016-0.py")),
     ("anchor-spar-grazier",
      os.path.join(_AGENTS, "spar", "estate-crew-grazier-flood-blind-muck.py")),
+    # The nearest unbeaten roster member belongs in the pool -- one measured
+    # league-hour trained a distribution that did not contain the goal.
+    ("anchor-main", os.path.join(_AGENTS, "enhanced", "main.py")),
 ]
 
 # Promotion floors on per-anchor EMA win rate, banded by anchor strength;
@@ -51,7 +54,9 @@ ANCHORS = [
 ANCHOR_FLOORS = {"anchor-starter": 0.80, "anchor-ghost": 0.50}
 FLOOR_MIN_GAMES = 40
 
-MIX_MIRROR, MIX_HISTORY, MIX_ANCHOR = 0.40, 0.40, 0.20
+# Mirror demoted from 0.40: an hour of league play showed mirror games
+# inflating the rolling win while ghost skill regressed 0.54 -> 0.42.
+MIX_MIRROR, MIX_HISTORY, MIX_ANCHOR = 0.25, 0.25, 0.50
 MIN_GAMES = 200
 GATE = 0.55
 RETIRE_WINRATE = 0.80
@@ -140,13 +145,19 @@ class League:
         out = []
         if mirror is not None:
             out.append((mirror["path"], MIX_MIRROR))
-        if anchors:
-            w = MIX_ANCHOR / len(anchors)
-            out.extend((mm["path"], w) for mm in anchors)
-        if history:
-            raw = [(mm, mm["ema"] * (1 - mm["ema"]) + PFSP_EPS) for mm in history]
+
+        def pfsp(members, budget):
+            raw = [(mm, mm["ema"] * (1 - mm["ema"]) + PFSP_EPS) for mm in members]
             z = sum(r for _, r in raw)
-            out.extend((mm["path"], MIX_HISTORY * r / z) for mm, r in raw)
+            return [(mm["path"], budget * r / z) for mm, r in raw]
+
+        # Variance weighting on anchors too: extreme-EMA anchors (mastered
+        # starter, walled barnyard) fade automatically, contested ones (main,
+        # ghost) absorb the anchor budget.
+        if anchors:
+            out.extend(pfsp(anchors, MIX_ANCHOR))
+        if history:
+            out.extend(pfsp(history, MIX_HISTORY))
         # Missing buckets renormalise implicitly (vec_env normalises weights).
         return out
 
