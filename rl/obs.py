@@ -27,16 +27,17 @@ if _AGENTS not in sys.path:
 import kg_rules as R
 
 # The fused single-pass board analysis (boards block, scan dict, asset sums)
-# lives in actions.py so that an exported agent directory -- exactly this file,
-# actions.py and kg_rules.py, renamed kg_rl_* -- stays self-contained. Resolve
-# the sibling under whichever name this module itself was imported as.
+# lives in actions.py so that an exported agent directory -- this file plus
+# actions.py and kg_rules.py under per-export kg_rl_*_<name> aliases -- stays
+# self-contained. The sibling is found by transforming this module's own
+# import name (obs -> actions), so any per-export suffix carries over and two
+# exports in one process can never cross-bind through the module cache.
+import importlib
 try:
-    if __name__ == "kg_rl_obs":
-        import kg_rl_actions as _ACT
-    else:
-        import actions as _ACT
-except ImportError:  # pair copied under the exported names, module named else
-    import kg_rl_actions as _ACT
+    _ACT = importlib.import_module(
+        __name__.replace("obs", "actions") if "obs" in __name__ else "actions")
+except ImportError:
+    import actions as _ACT
 
 N = 10  # boardSize; the whole repo assumes the default advanced game
 CROP_LIST = list(R.CROPS)          # 5, fixed order
