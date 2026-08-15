@@ -26,9 +26,10 @@ export KG_FAST_ENV=1
 
 RUN=${RUN:-m1}
 SEEDS=${SEEDS:-48}
+CKPT=${CKPT:-latest.pt}
 AGENT="rl/out/groundhog/main.py"
 
-python rl/export_agent.py --ckpt "rl/runs/${RUN}/latest.pt" --name groundhog
+python rl/export_agent.py --ckpt "rl/runs/${RUN}/${CKPT}" --name groundhog
 mkdir -p "rl/runs/${RUN}/eval"
 
 # Ten local opponents spanning every strength band this repo fields:
