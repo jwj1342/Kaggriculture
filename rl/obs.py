@@ -205,3 +205,29 @@ def net_worth(obs):
                 assets += a["cost"]
                 assets += t.get("yield_units", 0) * prices[a["product"]]
     return farm["money"] + decay * assets
+
+
+def opp_visible_worth(obs):
+    """The opponent's *visible* wealth: money plus standing farm assets at
+    base prices (their shed and seeds are private and excluded). Same
+    end-game decay as net_worth. Used by the competitive shaping term -- the
+    game is won on money DIFFERENCE, and suppressing the opponent's market
+    (selling into their lanes) is as valuable as earning."""
+    me = obs["player"]
+    farm = obs["farms"][1 - me]
+    t = obs.get("day", 0) * 24 + obs.get("hour", 0)
+    decay = min(1.0, max(0.0, (720.0 - t) / 120.0))
+    assets = float(sum(R.LAND_PRICES[:len(farm["unlocked_quadrants"]) - 1]))
+    for y in range(N):
+        for x in range(N):
+            tile = farm["tiles"][y][x]
+            if not isinstance(tile, dict):
+                continue
+            if tile.get("kind") == "PLANT":
+                assets += R.CROPS[tile["crop"]]["seed"]
+                assets += tile.get("yield_units", 0) * R.MARKET_PARAMS[tile["crop"]]["base"]
+            elif "animal" in tile:
+                a = R.ANIMALS[tile["animal"]]
+                assets += a["cost"]
+                assets += tile.get("yield_units", 0) * R.MARKET_PARAMS[a["product"]]["base"]
+    return farm["money"] + decay * assets

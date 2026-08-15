@@ -36,17 +36,19 @@ def _worker(remote, wcfg):
     pool = list(wcfg["pool"])            # [(opponent, weight), ...]
     shape_w = wcfg["shape_w"]
     win_bonus = wcfg["win_bonus"]
+    opp_lambda = wcfg.get("opp_lambda", 0.0)
     seed_lo, seed_hi = wcfg["seed_range"]
 
     env = None
     raw = None
     prev_worth = 0.0
+    prev_opp = 0.0
     fcount = np.zeros(A.N_FARMER, dtype=np.float64)
     mcount = np.zeros(A.N_MARKET, dtype=np.float64)
     ep_counter = wcfg["rng_seed"]  # offset so workers alternate out of phase
 
     def new_episode():
-        nonlocal env, raw, prev_worth, ep_counter
+        nonlocal env, raw, prev_worth, prev_opp, ep_counter
         opps, weights = zip(*pool)
         p = np.asarray(weights, dtype=float)
         opp = opps[int(rng.choice(len(opps), p=p / p.sum()))]
@@ -58,6 +60,7 @@ def _worker(remote, wcfg):
         env = KGEnv(opponent=opp, seat=seat)
         raw = env.reset(seed=int(rng.integers(seed_lo, seed_hi)))
         prev_worth = O.net_worth(raw)
+        prev_opp = O.opp_visible_worth(raw) if opp_lambda else 0.0
         fcount[:] = 0.0
         mcount[:] = 0.0
 
@@ -77,6 +80,10 @@ def _worker(remote, wcfg):
             worth = O.net_worth(raw)
             reward = (worth - prev_worth) / 3000.0 * shape_w
             prev_worth = worth
+            if opp_lambda:
+                ow = O.opp_visible_worth(raw)
+                reward -= opp_lambda * (ow - prev_opp) / 3000.0 * shape_w
+                prev_opp = ow
             ep = None
             if done:
                 mine, theirs = env.final_money()
@@ -100,13 +107,14 @@ def _worker(remote, wcfg):
 
 class VecEnv:
     def __init__(self, n_envs, pool, shape_w=1.0, win_bonus=3.0,
-                 seed_range=(0, 10_000), base_rng_seed=0):
+                 seed_range=(0, 10_000), base_rng_seed=0, opp_lambda=0.0):
         self.n = n_envs
         self.remotes, self.procs = [], []
         for i in range(n_envs):
             parent, child = Pipe()
             wcfg = {"pool": pool, "shape_w": shape_w, "win_bonus": win_bonus,
-                    "seed_range": seed_range, "rng_seed": base_rng_seed + i * 9973 + 1}
+                    "seed_range": seed_range, "opp_lambda": opp_lambda,
+                    "rng_seed": base_rng_seed + i * 9973 + 1}
             p = Process(target=_worker, args=(child, wcfg), daemon=True)
             p.start()
             child.close()

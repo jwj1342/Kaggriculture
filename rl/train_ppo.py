@@ -85,6 +85,9 @@ def main():
                     help="population self-play (league.py) instead of the "
                          "stage curriculum")
     ap.add_argument("--league-dir", default=os.path.join(_RL, "league"))
+    ap.add_argument("--opp-lambda", type=float, default=0.0,
+                    help="competitive shaping: subtract this fraction of the "
+                         "opponent's visible-worth delta from the reward")
     ap.add_argument("--window", type=int, default=200)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--no-resume", action="store_true")
@@ -128,7 +131,8 @@ def main():
     else:
         pool0 = stage_pool(stage)
     venv = VecEnv(args.n_envs, pool0, shape_w=args.shape_w,
-                  win_bonus=args.win_bonus, base_rng_seed=global_step % 100_000)
+                  win_bonus=args.win_bonus, base_rng_seed=global_step % 100_000,
+                  opp_lambda=args.opp_lambda)
     obs, fm, mm = venv.initial_obs()
 
     N, T = args.n_envs, args.rollout
