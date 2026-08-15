@@ -15,9 +15,16 @@ Training seeds stay below 10_000 -- tools/eval.py evaluates at 10_000+, and
 that separation is deliberate (README §7).
 """
 
+import multiprocessing as mp
 import os
 import sys
-from multiprocessing import Pipe, Process
+
+# Spawn, not fork: the master holds torch (thread pools, BLAS locks) and a
+# forked child inherits locked mutexes without their owners. Pure-Python
+# workers survived that; the first numpy matmul inside a worker (a league
+# mirror opponent) deadlocked it. Reproduced: fresh process fine, forked
+# worker hangs on the same episode.
+_CTX = mp.get_context("spawn")
 
 import numpy as np
 
@@ -123,11 +130,11 @@ class VecEnv:
         self.n = n_envs
         self.remotes, self.procs = [], []
         for i in range(n_envs):
-            parent, child = Pipe()
+            parent, child = _CTX.Pipe()
             wcfg = {"pool": pool, "shape_w": shape_w, "win_bonus": win_bonus,
                     "seed_range": seed_range, "opp_lambda": opp_lambda,
                     "rng_seed": base_rng_seed + i * 9973 + 1}
-            p = Process(target=_worker, args=(child, wcfg), daemon=True)
+            p = _CTX.Process(target=_worker, args=(child, wcfg), daemon=True)
             p.start()
             child.close()
             self.remotes.append(parent)
