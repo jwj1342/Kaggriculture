@@ -11,6 +11,12 @@ checkpoint; chained short Slurm jobs just keep going (--resume is the default).
 
 Everything printed also lands in rl/runs/<run>/log.csv. Training numbers are
 for steering only -- reported strength comes from tools/eval.py (README §9).
+
+--collect episode swaps the lockstep VecEnv for episode_pool.EpisodePool:
+workers play whole episodes autonomously (in-worker numpy inference, np
+engine), the master publishes weight snapshots per iteration and learns from
+complete trajectories (GAE with terminal bootstrap 0, the workers' collected
+logp as old-logp). The default step path is unchanged.
 """
 
 import argparse
@@ -28,6 +34,7 @@ sys.path.insert(0, _RL)
 
 from policy import Policy            # noqa: E402
 from vec_env import VecEnv           # noqa: E402
+from episode_pool import EpisodePool  # noqa: E402
 import actions as A                  # noqa: E402
 import obs as O                      # noqa: E402
 
@@ -90,6 +97,10 @@ def main():
                          "opponent's visible-worth delta from the reward")
     ap.add_argument("--engine", choices=("kaggle", "np"), default="kaggle",
                     help="np = verified rl/tensor_env port (training only)")
+    ap.add_argument("--collect", choices=("step", "episode"), default="step",
+                    help="episode = EpisodePool workers play whole episodes "
+                         "autonomously with in-worker numpy inference (always "
+                         "the np engine); step = the lockstep VecEnv")
     ap.add_argument("--window", type=int, default=200)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--no-resume", action="store_true")
@@ -132,21 +143,32 @@ def main():
         pool0 = league.pool()
     else:
         pool0 = stage_pool(stage)
-    venv = VecEnv(args.n_envs, pool0, shape_w=args.shape_w,
-                  win_bonus=args.win_bonus, base_rng_seed=global_step % 100_000,
-                  opp_lambda=args.opp_lambda, engine=args.engine)
-    obs, fm, mm = venv.initial_obs()
-
+    episode_mode = args.collect == "episode"
     N, T = args.n_envs, args.rollout
-    b_obs = np.zeros((T, N, O.OBS_DIM), dtype=np.float32)
-    b_fm = np.zeros((T, N, A.N_FARMER), dtype=bool)
-    b_mm = np.zeros((T, N, A.N_MARKET), dtype=bool)
-    b_fa = np.zeros((T, N), dtype=np.int64)
-    b_ma = np.zeros((T, N), dtype=np.int64)
-    b_logp = np.zeros((T, N), dtype=np.float32)
-    b_val = np.zeros((T, N), dtype=np.float32)
-    b_rew = np.zeros((T, N), dtype=np.float32)
-    b_done = np.zeros((T, N), dtype=bool)
+    if episode_mode:
+        if args.engine != "np":
+            print("collect=episode: workers always run the np engine", flush=True)
+        venv = EpisodePool(N, pool0, shape_w=args.shape_w,
+                           win_bonus=args.win_bonus,
+                           opp_lambda=args.opp_lambda,
+                           seed_range=(0, 10_000),
+                           base_rng_seed=global_step % 100_000,
+                           weights_dir=os.path.join(run_dir, "weights"))
+    else:
+        venv = VecEnv(N, pool0, shape_w=args.shape_w,
+                      win_bonus=args.win_bonus,
+                      base_rng_seed=global_step % 100_000,
+                      opp_lambda=args.opp_lambda, engine=args.engine)
+        obs, fm, mm = venv.initial_obs()
+        b_obs = np.zeros((T, N, O.OBS_DIM), dtype=np.float32)
+        b_fm = np.zeros((T, N, A.N_FARMER), dtype=bool)
+        b_mm = np.zeros((T, N, A.N_MARKET), dtype=bool)
+        b_fa = np.zeros((T, N), dtype=np.int64)
+        b_ma = np.zeros((T, N), dtype=np.int64)
+        b_logp = np.zeros((T, N), dtype=np.float32)
+        b_val = np.zeros((T, N), dtype=np.float32)
+        b_rew = np.zeros((T, N), dtype=np.float32)
+        b_done = np.zeros((T, N), dtype=bool)
 
     recent = deque(maxlen=args.window)          # episodes vs current stage
     recent_all = deque(maxlen=args.window)      # every episode
@@ -156,59 +178,117 @@ def main():
     csv_w = csv.writer(csv_f)
     if new_csv:
         csv_w.writerow(["iter", "step", "stage", "sps", "win", "money",
-                        "opp_money", "eps", "pg", "vf", "ent"])
+                        "opp_money", "eps", "pg", "vf", "ent"]
+                       + (["drop"] if episode_mode else []))
+
+    def note_episode(e):
+        nonlocal fp_ema
+        recent_all.append(e)
+        if league is not None:
+            league.record(e["opponent"], e["win"])
+            recent.append(e)
+            if e.get("fp") is not None:
+                fp_ema = (e["fp"] if fp_ema is None
+                          else 0.98 * fp_ema + 0.02 * e["fp"])
+        elif e["opponent"] == STAGES[stage]:
+            recent.append(e)
 
     t_start = time.time()
     it = it0
+    drop_seen = 0
     while (time.time() - t_start) / 60 < args.max_minutes:
         t_iter = time.time()
-        for t in range(T):
-            xt = torch.from_numpy(obs)
-            fa, ma, logp, val = policy.act(
-                xt, torch.from_numpy(fm), torch.from_numpy(mm))
-            b_obs[t], b_fm[t], b_mm[t] = obs, fm, mm
-            b_fa[t], b_ma[t] = fa.numpy(), ma.numpy()
-            b_logp[t], b_val[t] = logp.numpy(), val.numpy()
-            obs, fm, mm, rew, done, eps = venv.step(b_fa[t], b_ma[t])
-            b_rew[t], b_done[t] = rew, done
-            for e in eps:
-                recent_all.append(e)
-                if league is not None:
-                    league.record(e["opponent"], e["win"])
-                    recent.append(e)
-                    if e.get("fp") is not None:
-                        fp_ema = (e["fp"] if fp_ema is None
-                                  else 0.98 * fp_ema + 0.02 * e["fp"])
-                elif e["opponent"] == STAGES[stage]:
-                    recent.append(e)
-        global_step += T * N
+        if episode_mode:
+            # Publish, then let the workers race: they reload at episode
+            # boundaries, so this batch mixes gen==it with gen==it-1 episodes
+            # that were mid-flight (PPO's ratio clip absorbs the lag; the
+            # collected logp is the true behaviour-policy logp either way).
+            venv.publish(policy.state_np(), gen=it)
+            episodes = venv.collect(T * N)
+            for ep in episodes:
+                # Strip the trajectory arrays before the deques: `recent`
+                # holds up to `window` entries and each episode's obs block
+                # is ~7 MB.
+                note_episode({k: ep[k] for k in ("money", "opp_money", "win",
+                                                 "opponent", "seat", "fp")})
+            n_steps = sum(int(ep["rew"].shape[0]) for ep in episodes)
+            global_step += n_steps
+            drop_now = venv.dropped - drop_seen
+            drop_seen = venv.dropped
 
-        with torch.no_grad():
-            last_val = policy.act(torch.from_numpy(obs),
-                                  torch.from_numpy(fm),
-                                  torch.from_numpy(mm))[3].numpy()
-        adv = np.zeros((T, N), dtype=np.float32)
-        gae = np.zeros(N, dtype=np.float32)
-        for t in reversed(range(T)):
-            nonterm = ~b_done[t]
-            nxt = last_val if t == T - 1 else b_val[t + 1]
-            delta = b_rew[t] + args.gamma * nxt * nonterm - b_val[t]
-            gae = delta + args.gamma * args.lam * gae * nonterm
-            adv[t] = gae
-        ret = adv + b_val
+            f_obs = torch.from_numpy(np.concatenate(
+                [ep["obs"] for ep in episodes]).astype(np.float32))
+            f_fm = torch.from_numpy(np.concatenate(
+                [ep["fmask"] for ep in episodes]))
+            f_mm = torch.from_numpy(np.concatenate(
+                [ep["mmask"] for ep in episodes]))
+            f_fa = torch.from_numpy(np.concatenate(
+                [ep["fa"] for ep in episodes]).astype(np.int64))
+            f_ma = torch.from_numpy(np.concatenate(
+                [ep["ma"] for ep in episodes]).astype(np.int64))
+            f_logp = torch.from_numpy(np.concatenate(
+                [ep["logp"] for ep in episodes]))
+            with torch.no_grad():
+                vals = torch.cat([policy.value_of(c) for c in
+                                  torch.split(f_obs, 8192)]).numpy()
+            # GAE over COMPLETE episodes: the terminal next-value is exactly 0
+            # (no bootstrap), episode boundaries never leak into each other.
+            adv = np.empty(n_steps, dtype=np.float32)
+            off = 0
+            for ep in episodes:
+                L = int(ep["rew"].shape[0])
+                v, r = vals[off:off + L], ep["rew"]
+                gae = 0.0
+                for t in reversed(range(L)):
+                    nxt = v[t + 1] if t < L - 1 else 0.0
+                    delta = r[t] + args.gamma * nxt - v[t]
+                    gae = delta + args.gamma * args.lam * gae
+                    adv[off + t] = gae
+                off += L
+            f_adv = torch.from_numpy(adv)
+            f_ret = torch.from_numpy(adv + vals)
+        else:
+            drop_now = 0
+            n_steps = T * N
+            for t in range(T):
+                xt = torch.from_numpy(obs)
+                fa, ma, logp, val = policy.act(
+                    xt, torch.from_numpy(fm), torch.from_numpy(mm))
+                b_obs[t], b_fm[t], b_mm[t] = obs, fm, mm
+                b_fa[t], b_ma[t] = fa.numpy(), ma.numpy()
+                b_logp[t], b_val[t] = logp.numpy(), val.numpy()
+                obs, fm, mm, rew, done, eps = venv.step(b_fa[t], b_ma[t])
+                b_rew[t], b_done[t] = rew, done
+                for e in eps:
+                    note_episode(e)
+            global_step += T * N
 
-        f_obs = torch.from_numpy(b_obs.reshape(T * N, -1))
-        f_fm = torch.from_numpy(b_fm.reshape(T * N, -1))
-        f_mm = torch.from_numpy(b_mm.reshape(T * N, -1))
-        f_fa = torch.from_numpy(b_fa.reshape(-1))
-        f_ma = torch.from_numpy(b_ma.reshape(-1))
-        f_logp = torch.from_numpy(b_logp.reshape(-1))
-        f_adv = torch.from_numpy(adv.reshape(-1))
-        f_ret = torch.from_numpy(ret.reshape(-1))
+            with torch.no_grad():
+                last_val = policy.act(torch.from_numpy(obs),
+                                      torch.from_numpy(fm),
+                                      torch.from_numpy(mm))[3].numpy()
+            adv = np.zeros((T, N), dtype=np.float32)
+            gae = np.zeros(N, dtype=np.float32)
+            for t in reversed(range(T)):
+                nonterm = ~b_done[t]
+                nxt = last_val if t == T - 1 else b_val[t + 1]
+                delta = b_rew[t] + args.gamma * nxt * nonterm - b_val[t]
+                gae = delta + args.gamma * args.lam * gae * nonterm
+                adv[t] = gae
+            ret = adv + b_val
+
+            f_obs = torch.from_numpy(b_obs.reshape(T * N, -1))
+            f_fm = torch.from_numpy(b_fm.reshape(T * N, -1))
+            f_mm = torch.from_numpy(b_mm.reshape(T * N, -1))
+            f_fa = torch.from_numpy(b_fa.reshape(-1))
+            f_ma = torch.from_numpy(b_ma.reshape(-1))
+            f_logp = torch.from_numpy(b_logp.reshape(-1))
+            f_adv = torch.from_numpy(adv.reshape(-1))
+            f_ret = torch.from_numpy(ret.reshape(-1))
         f_adv = (f_adv - f_adv.mean()) / (f_adv.std() + 1e-8)
 
         pg_on = 0.0 if global_step < args.freeze_policy_until else 1.0
-        idx = np.arange(T * N)
+        idx = np.arange(f_obs.shape[0])
         pg_l = vf_l = ent_l = 0.0
         for _ in range(args.epochs):
             np.random.shuffle(idx)
@@ -229,16 +309,18 @@ def main():
                 optim.step()
                 pg_l, vf_l, ent_l = pg.item(), vf.item(), ent.mean().item()
 
-        sps = T * N / (time.time() - t_iter)
+        sps = n_steps / (time.time() - t_iter)
         win = np.mean([e["win"] for e in recent]) if recent else 0.0
         money = np.mean([e["money"] for e in recent_all]) if recent_all else 0.0
         omoney = np.mean([e["opp_money"] for e in recent_all]) if recent_all else 0.0
         print(f"it {it:>4}  step {global_step:>10,}  stage {stage}  "
               f"sps {sps:>6,.0f}  win {win:5.2f}  money {money:>9,.0f}  "
-              f"opp {omoney:>9,.0f}  eps {len(recent)}  ent {ent_l:5.2f}", flush=True)
+              f"opp {omoney:>9,.0f}  eps {len(recent)}  ent {ent_l:5.2f}"
+              + (f"  drop {drop_now}" if episode_mode else ""), flush=True)
         csv_w.writerow([it, global_step, stage, round(sps), round(win, 3),
                         round(money), round(omoney), len(recent),
-                        round(pg_l, 4), round(vf_l, 4), round(ent_l, 3)])
+                        round(pg_l, 4), round(vf_l, 4), round(ent_l, 3)]
+                       + ([drop_now] if episode_mode else []))
         csv_f.flush()
 
         # Peak checkpoint: training oscillates (rise, diffuse, re-climb), so

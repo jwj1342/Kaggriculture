@@ -68,7 +68,9 @@ class Policy(nn.Module):
         entropy = fd.entropy() + md.entropy()
         return logp, entropy, v
 
-    def export_npz(self, path):
+    def state_np(self):
+        """Policy-side weights as float32 numpy arrays -- the npz payload
+        (export_npz and episode_pool.EpisodePool.publish ship these keys)."""
         w = {
             "l1w": self.l1.weight.detach().cpu().numpy(),
             "l1b": self.l1.bias.detach().cpu().numpy(),
@@ -79,4 +81,7 @@ class Policy(nn.Module):
             "mw": self.market.weight.detach().cpu().numpy(),
             "mb": self.market.bias.detach().cpu().numpy(),
         }
-        np.savez(path, **{k: v.astype(np.float32) for k, v in w.items()})
+        return {k: v.astype(np.float32) for k, v in w.items()}
+
+    def export_npz(self, path):
+        np.savez(path, **self.state_np())
