@@ -49,10 +49,11 @@ def _worker_body(remote, wcfg):
     sys.path.insert(0, _RL)
     import actions as A
     import obs as O
-    if os.environ.get("KG_ENGINE") == "np":
+    if wcfg.get("engine") == "np" or os.environ.get("KG_ENGINE") == "np":
         # Verified byte-exact port (rl/tensor_env/verify.py gate) -- ~13x
-        # end-to-end. Evaluation never uses this path; tools/eval.py stays on
-        # the reference engine.
+        # engine-side. Evaluation never uses this path; tools/eval.py stays on
+        # the reference engine. Passed via wcfg because this cluster's sbatch
+        # does not forward the submission environment.
         sys.path.insert(0, os.path.join(_RL, "tensor_env"))
         from adapter import KGEnvNP as KGEnv
     else:
@@ -133,13 +134,15 @@ def _worker_body(remote, wcfg):
 
 class VecEnv:
     def __init__(self, n_envs, pool, shape_w=1.0, win_bonus=3.0,
-                 seed_range=(0, 10_000), base_rng_seed=0, opp_lambda=0.0):
+                 seed_range=(0, 10_000), base_rng_seed=0, opp_lambda=0.0,
+                 engine="kaggle"):
         self.n = n_envs
         self.remotes, self.procs = [], []
         for i in range(n_envs):
             parent, child = _CTX.Pipe()
             wcfg = {"pool": pool, "shape_w": shape_w, "win_bonus": win_bonus,
                     "seed_range": seed_range, "opp_lambda": opp_lambda,
+                    "engine": engine,
                     "rng_seed": base_rng_seed + i * 9973 + 1}
             p = _CTX.Process(target=_worker, args=(child, wcfg), daemon=True)
             p.start()
