@@ -73,7 +73,7 @@ def main():
     ap.add_argument("--clip", type=float, default=0.2)
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--minibatches", type=int, default=8)
-    ap.add_argument("--ent-coef", type=float, default=0.01)
+    ap.add_argument("--ent-coef", type=float, default=0.003)
     ap.add_argument("--vf-coef", type=float, default=0.5)
     ap.add_argument("--shape-w", type=float, default=1.0)
     ap.add_argument("--win-bonus", type=float, default=3.0)
@@ -94,7 +94,15 @@ def main():
     run_dir = os.path.join(_RL, "runs", args.run)
     os.makedirs(run_dir, exist_ok=True)
     ckpt_path = os.path.join(run_dir, "latest.pt")
+    best_path = os.path.join(run_dir, "best.pt")
     csv_path = os.path.join(run_dir, "log.csv")
+    best_win = -1.0
+    if os.path.exists(best_path):
+        try:
+            best_win = float(torch.load(best_path, map_location="cpu",
+                                        weights_only=False).get("win", -1.0))
+        except Exception:
+            pass
 
     policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
@@ -226,6 +234,17 @@ def main():
                         round(money), round(omoney), len(recent),
                         round(pg_l, 4), round(vf_l, 4), round(ent_l, 3)])
         csv_f.flush()
+
+        # Peak checkpoint: training oscillates (rise, diffuse, re-climb), so
+        # the deliverable is the best rolling-win policy at the ghost stage or
+        # beyond, never whatever the chain happened to end on.
+        if stage >= 1 and len(recent) >= 100 and win > best_win:
+            best_win = win
+            torch.save({"model": policy.state_dict(), "win": win,
+                        "stage": stage, "global_step": global_step},
+                       best_path + ".tmp")
+            os.replace(best_path + ".tmp", best_path)
+            print(f"    best.pt <- win {win:.2f} at step {global_step:,}", flush=True)
 
         if it % 5 == 0 or (time.time() - t_start) / 60 >= args.max_minutes - 2:
             torch.save({"model": policy.state_dict(), "optim": optim.state_dict(),
