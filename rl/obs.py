@@ -179,7 +179,11 @@ def net_worth(obs):
     # Standing tiles (planted crops at seed cost + yield, placed animals at
     # cost + yield) come from the fused single pass in actions.analyze.
     assets += _ACT._analysis(obs).own_assets
-    return farm["money"] + decay * assets
+    # Liquidity premium: the first $800 of cash count 1.5x. All-in openings
+    # collapsed ~40% of episodes (a bad first weed roll with $0 left means no
+    # re-seeding, ever); pricing a reserve into the potential is the credit
+    # signal PPO could not extract from uniformly-dead trajectories.
+    return farm["money"] + 0.5 * min(farm["money"], 800.0) + decay * assets
 
 
 def opp_visible_worth(obs):

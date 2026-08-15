@@ -473,7 +473,10 @@ def _market_action(obs, name):
         return [["BUY_LAND"]]
     if name == "HIRE":
         n_hands = len(farm.get("hands", []))
-        burst, cost_cap = [], max(4.0, 0.05 * farm["money"])
+        # No floor under the budget cap: max(4, ...) let a bankrupt policy
+        # keep hiring at fib pennies -- collapsed episodes showed 66-99 hires
+        # on ~$0. Below $80 of cash the burst is simply empty.
+        burst, cost_cap = [], 0.05 * farm["money"]
         hires = farm.get("hires_today", 0)
         while (len(burst) < 4 and n_hands + len(burst) < MAX_HANDS
                and _fib(hires + len(burst)) <= cost_cap):
