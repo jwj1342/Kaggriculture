@@ -49,7 +49,14 @@ def _worker_body(remote, wcfg):
     sys.path.insert(0, _RL)
     import actions as A
     import obs as O
-    from kg_env import KGEnv
+    if os.environ.get("KG_ENGINE") == "np":
+        # Verified byte-exact port (rl/tensor_env/verify.py gate) -- ~13x
+        # end-to-end. Evaluation never uses this path; tools/eval.py stays on
+        # the reference engine.
+        sys.path.insert(0, os.path.join(_RL, "tensor_env"))
+        from adapter import KGEnvNP as KGEnv
+    else:
+        from kg_env import KGEnv
 
     rng = np.random.default_rng(wcfg["rng_seed"])
     pool = list(wcfg["pool"])            # [(opponent, weight), ...]
