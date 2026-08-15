@@ -46,13 +46,18 @@ def _map_step(obs, raw, A):
             f_label, f_exact = int(fi), True
             break
     m_label, m_match = A._M_IDX["NOOP"], False
-    orders = raw.get("market") or []
-    if orders and isinstance(orders[0], list) and orders[0]:
-        first = orders[0]
+    orders = [o for o in (raw.get("market") or [])
+              if isinstance(o, list) and o]
+    # Teacher combos bury their SELL orders behind hires/buys; matching only
+    # the first order labelled every selling turn NOOP and produced a clone
+    # that spends to $0 and never sells. Prefer any SELL in the combo, then
+    # fall back to first-order matching.
+    target = next((o for o in orders if o[0] == "SELL"), orders[0] if orders else None)
+    if target is not None:
         for mi in np.flatnonzero(mmask):
             ours = A._market_action(obs, A.MARKET_ACTIONS[mi])
-            if ours and ours[0][0] == first[0] \
-                    and (len(first) < 2 or len(ours[0]) < 2 or ours[0][1] == first[1]):
+            if ours and ours[0][0] == target[0] \
+                    and (len(target) < 2 or len(ours[0]) < 2 or ours[0][1] == target[1]):
                 m_label, m_match = int(mi), True
                 break
     return f_label, f_exact, m_label, m_match
