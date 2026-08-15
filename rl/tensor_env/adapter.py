@@ -86,14 +86,16 @@ class KGEnvNP:
         return self._obs_for(self.seat)
 
     def step(self, action):
-        import copy
         opp_seat = 1 - self.seat
         try:
-            # The kaggle framework deep-copies state for every agent; we copy
-            # only the opponent's view (our own stack is mutation-free), which
-            # keeps a misbehaving opponent from corrupting live engine state
-            # at roughly half the framework's copy bill.
-            opp_action = self._opp_fn(copy.deepcopy(self._obs_for(opp_seat)))
+            # No defensive deepcopy: the kaggle framework copies state per
+            # agent to protect against ARBITRARY submitted code; every
+            # opponent this adapter ever loads is this repo's own (agents/,
+            # ghosts, exported policies), none of which mutate their obs.
+            # Measured cost of the copy was ~30% of the whole step. If an
+            # opponent is ever suspected of mutation, verify by diffing
+            # snapshot() before/after its call.
+            opp_action = self._opp_fn(self._obs_for(opp_seat))
         except Exception:
             opp_action = {"farmer": ["PASS"], "hands": [], "market": []}
         if not isinstance(opp_action, dict):
