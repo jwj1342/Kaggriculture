@@ -27,6 +27,18 @@ if _RL not in sys.path:
 
 
 def _worker(remote, wcfg):
+    try:
+        _worker_body(remote, wcfg)
+    except Exception:
+        import traceback
+        try:
+            remote.send(("__worker_error__", traceback.format_exc()))
+        except Exception:
+            pass
+        raise
+
+
+def _worker_body(remote, wcfg):
     sys.path.insert(0, _RL)
     import actions as A
     import obs as O
@@ -129,7 +141,17 @@ class VecEnv:
     def step(self, f_idx, m_idx):
         for i, r in enumerate(self.remotes):
             r.send(("step", (int(f_idx[i]), int(m_idx[i]))))
-        out = [r.recv() for r in self.remotes]
+        out = []
+        for i, r in enumerate(self.remotes):
+            if not r.poll(600):
+                raise RuntimeError(
+                    f"vec worker {i} unresponsive for 600s -- likely stuck "
+                    f"inside its episode; check that worker's opponent")
+            msg = r.recv()
+            if isinstance(msg, tuple) and len(msg) == 2 \
+                    and msg[0] == "__worker_error__":
+                raise RuntimeError(f"vec worker {i} crashed:\n{msg[1]}")
+            out.append(msg)
         obs, fm, mm = self._collect_obs([(o[0], o[1], o[2]) for o in out])
         rew = np.asarray([o[3] for o in out], dtype=np.float32)
         done = np.asarray([o[4] for o in out], dtype=bool)

@@ -261,9 +261,11 @@ def main():
             if promoted:
                 print(f"=== promoted into league: {promoted} ===", flush=True)
             if promoted or it % 10 == 0:
+                print("league: refreshing mirror + pool", flush=True)
                 league.refresh_mirror(policy)
                 league._save()
                 venv.set_pool(league.pool())
+                print("league: pool refreshed", flush=True)
             if it % 25 == 0:
                 print(league.summary(), flush=True)
         elif (len(recent) >= args.window // 2 and win >= args.advance_at
