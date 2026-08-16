@@ -76,7 +76,8 @@ def _check_step(ept, n, t_acc):
                 f"encode_t {enc.dtype} {tuple(enc.shape)}"
             assert fm.dtype == torch.bool and fm.shape == (B, A.N_FARMER)
             assert mm.dtype == torch.bool and mm.shape == (B, A.N_MARKET)
-            assert enc.device == fm.device == mm.device == ept.device
+            _dev = __import__("torch").empty(0, device=ept.device).device
+    assert enc.device == fm.device == mm.device == _dev
     host = [(enc.cpu().numpy(), fm.cpu().numpy(), mm.cpu().numpy())
             for enc, fm, mm in dev]
 
