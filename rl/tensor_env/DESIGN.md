@@ -115,7 +115,58 @@ per-unit 结算循环（两名玩家同价快照、逐单位提交、每单指�
    无操作填充，注意不要让"最长对局"拖垮批（720 步定长，天然对齐,
    风险主要在市场单位循环内，见 B1.5）。
 
-## 附录 A：张量状态布局（B0 阶段补全）
+## 附录 A：张量状态布局（B0，已定稿 2026-08-16）
 
-开工 B0 时在此逐字段列出：名称、shape、dtype、对应 engine_np 状态项、
-初始化值。评审通过前 B1 不动工。
+约定：`B`=批内对局数，`P`=2 玩家，`N`=10，`H`=32（雇工上限，fib 成本使
+实际雇佣远低于此；越界断言报错而非静默截断），`I`=12 件套（9 产品+3 动物,
+顺序 = kg_rules.PRODUCTS + ANIMALS），`C5`=5 作物，`S8`=8 商店（sorted 序）。
+所有对局同步复位、同一 step 计数（720 定长，天然 lockstep）。
+
+### 棋盘（每格）
+
+| 字段 | shape/dtype | 对应 engine_np | 初始化 |
+|---|---|---|---|
+| `tile_kind` | (B,P,N,N) int8 | None=0 / LOCKED=1 / WEED=2 / COOP=3 / PASTURE=4 / PLANT=5 | NW 象限 0，其余 1 |
+| `tile_animal` | (B,P,N,N) int8 | 无动物 −1；否则动物 idx（仅 kind∈{3,4} 时有效） | −1 |
+| `tile_crop` | (B,P,N,N) int8 | plant["crop"] idx（仅 kind=5 有效） | 0 |
+| `yield_units` | (B,P,N,N) int8 | plant/animal 共用（引擎里两者互斥同格） | 0 |
+| `planted_day` | (B,P,N,N) int16 | plant["planted_day"] | 0 |
+| `placed_day` | (B,P,N,N) int16 | animal["placed_day"]（与上分开存，刷新公式不同） | 0 |
+| `watered_today` | (B,P,N,N) bool | plant["watered_today"] | False |
+| `consec_unwatered` | (B,P,N,N) int8 | plant["consecutive_unwatered"] | 0 |
+| `max_lifespan_step` | (B,P,N,N) int32 | plant["max_lifespan_step"]（−1 表 ongoing） | 0 |
+| `fert_until_day` | (B,P,N,N) int16 | plant["fertilized_until_day"]（−1 语义保留） | 0 |
+| `fed_today` / `cared_today` / `fert_avail` | 各 (B,P,N,N) bool | animal 三态 | False |
+| `consec_unfed` | (B,P,N,N) int8 | animal["consecutive_unfed"] | 0 |
+| `pending_care` | (B,P,N,N) int8 | animal["pending_care_bonus"] | 0 |
+
+### 农场标量 / 单位
+
+| 字段 | shape/dtype | 对应 | 初始化 |
+|---|---|---|---|
+| `money` | (B,P) float64 | farm["money"]（参考为 float，运算次序照抄） | 3000.0 |
+| `farmer_xy` | (B,P,2) int8 | farm["farmer"] | 出生点 (4,4) |
+| `hands_xy` | (B,P,H,2) int8 | farm["hands"]（前 `hands_n` 个有效） | 0 |
+| `hands_n` | (B,P) int8 | len(hands) | 0 |
+| `hires_today` | (B,P) int16 | farm["hires_today"] | 0 |
+| `quad_unlocked` | (B,P,3) bool | NE/SW/SE ∈ unlocked_quadrants | False |
+| `unit_inv` | (B,P,1+H,I) int16 | private["inventories"]（0 号=农夫） | 0 |
+| `shed` | (B,P,I) int16 | private["shed"] | 0 |
+| `seeds` | (B,P,C5) int16 | private["seeds"] | 0 |
+
+### 市场 / 城镇 / 时钟
+
+| 字段 | shape/dtype | 对应 | 初始化 |
+|---|---|---|---|
+| `mkt_inv` | (B,9) int32 | market["inventory"]（双方共享） | 10000 |
+| `mkt_price` | (B,9) int32 | market["prices"]（`int(round())` 后整型落地） | base |
+| `shops_seq` | (B,S8) int8 | town["unlocked_shops"] 抽取序（−1 填充；顺序参与 snapshot 判等） | −1 |
+| `step` | python int | 全批同步计数 | 0 |
+| `done` / `reward` | (B,) bool / (B,P) float64 | 终局态 | False / 0 |
+| `ep_seed` | (B,) host int64 | 每日 RNG 的种子（D2：日界 CPU 段用） | 构造参数 |
+
+### snapshot 契约
+
+`snapshot(lane)` 从张量重建与 `engine_np.Episode.snapshot()` **完全同构**的
+dict（含 tiles 的 None/"LOCKED"/dict 三态、dict 键序、shops 列表序）——
+所有验收门都在这个重建层上判等，张量内部表示自由，重建必须无损。
