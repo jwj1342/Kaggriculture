@@ -129,15 +129,67 @@ MLP 直接吃扁平向量；棋盘段保留了 (通道, y, x) 结构，v1 想上
   卖到 $1 地板的单位不进市场库存。如果学习曲线涨而 eval 胜率不涨，先查这里。
   **汇报数字永远来自 `tools/eval.py`，不来自训练曲线。**
 
-## 6. 网络选择
+## 6. 网络架构与 actor-critic 参考（`rl/policy.py`）
 
-- **v0：MLP**。`obs(~5.5k) → 512 → 256 → {farmer 头, market 头, value 头}`，
-  约 3M 参数。理由：环境近乎全知、观测已手工特征化，先让管道证明自己。
-- **刻意保持小**：提交端约束是 1 s/回合纯 CPU，而且计划**导出 npz 用 numpy
-  写前向**——提交包不带 torch 依赖，`package.sh` 直接打包，规避 Kaggle 端
-  环境不确定性。这个尺寸的 MLP numpy 前向 <1 ms。
-- v1 升级项（按需，不预支）：棋盘段上小 CNN；若发现需要记忆（对手建模、
-  市场趋势）再加 GRU——先试帧堆叠（价格近 k 步差分进观测），大概率够。
+给合作者的完整参考：结构、每个函数是什么、在哪条路径上被谁调用。
+
+### 6.1 结构（两张独立的网，刻意不共享）
+
+```
+actor（策略侧，会被导出）           critic（价值侧，永不导出）
+obs (4867)                          obs (4867)
+  │ l1: Linear 4867→512, relu        │ v1: Linear 4867→256, relu
+  │ l2: Linear 512→256, relu         │ v2: Linear 256→256, relu
+  ├─ farmer: Linear 256→23 logits    └─ value: Linear 256→1
+  └─ market: Linear 256→22 logits
+```
+
+- 观测 4867 维 = 两张 (24,10,10) 棋盘块（自己+对手）+ 67 维全局向量（§3）。
+- **actor 与 critic 零共享参数**——不是风格偏好，是事故结论（§11 缺陷 2）：
+  共享主干时"只训 value 的热身"仍会顺着主干反传、拆掉 BC 克隆好的策略
+  （实测 30k 教师塌到 $200）。分开之后 `--freeze-policy-until` 才真正成立。
+- 初始化：主干正交初始化 gain√2；**两个动作头 gain 1e-4（近零）**——未训练
+  策略在合法动作上近似均匀，探索从掩码指向的地方开始而不是 logit 空间的
+  随机角落。隐藏层尺寸随检查点携带（`--hidden H1 H2`，恢复/导出端自适应）。
+
+### 6.2 因子化动作与掩码机制
+
+两个头各是一个独立的 Categorical；**联合动作 = (farmer, market) 一对**，
+联合 log-prob = 两头 log-prob 之和，联合熵 = 两头熵之和。采样前对 logits
+`masked_fill(mask==False, -1e9)`——非法动作零概率、零梯度（§4b）。
+
+### 6.3 函数逐个说（policy.py 的公共接口）
+
+| 函数 | 输入 → 输出 | 谁在什么路径上调用 |
+|---|---|---|
+| `trunk(x)` | obs → 256 维策略特征 | forward/evaluate 内部；BC 训练直接用它接头算 CE |
+| `value_of(x)` | obs → V(s) 标量 | critic 独立前向；GAE 的价值来源 |
+| `forward(x, fmask, mmask)` | → (farmer 分布, market 分布, V) | act/evaluate 的公共底座 |
+| `act(x, fm, mm, deterministic)` | → (fa, ma, joint logp, V)，no_grad | **采集路径**：锁步 VecEnv 模式下主进程每步调用（采样）；评测/部署用 argmax 等价物 |
+| `evaluate(x, fm, mm, fa, ma)` | → (新 logp, 熵, V) | **更新路径**：PPO minibatch 里对存储的动作重算 logp——`ratio = exp(new_logp − old_logp)` 的分子 |
+| `state_np()` | → 8 个 float32 数组（l1w/l1b/l2w/l2b/fw/fb/mw/mb） | 权重快照：episode_pool 按代际发布给 worker；export_npz 落盘 |
+| `export_npz(path)` | 写 weights.npz | 导出 agent / 联赛镜像刷新 |
+
+### 6.4 三条路径上的 actor-critic 分工
+
+- **采集（episode 模式，现行）**：worker 内用 `state_np()` 快照做 **numpy
+  前向**（减最大值的 softmax 采样，数学与 torch 侧一致），记录 (obs, 掩码,
+  动作, logp, reward)。critic 不进 worker——价值在主进程算。
+- **更新（train_ppo.py）**：`value_of` 对整批 obs 出 V → 逐局 GAE
+  （γ=0.999, λ=0.95，episode 模式终局 bootstrap=0，因为回合定长无截断）→
+  优势标准化 → `evaluate` 出新 logp/熵 → PPO 裁剪目标（clip 0.2）+
+  0.5·value MSE − 0.003·熵，梯度裁剪 0.5，Adam 1e-4。
+  `--freeze-policy-until N`：global_step < N 时策略项置零、只训 critic
+  （BC 后热身 + 每次课程晋级自动重冻结 100k 步）。
+- **部署（导出 agent）**：只带 actor 的 8 个数组，numpy 前向 + 掩码 +
+  **argmax**（确定性）。critic 不随部署走——它只服务训练期的优势估计。
+
+### 6.5 尺寸与升级项
+
+- 默认 512/256 约 3M 参数（actor 侧 ~2.6M）：1 s/回合纯 CPU 约束下 numpy
+  前向 <1ms；容量实验的前置条件见 `TODO.md` #6。
+- v1 升级项（按需，不预支）：棋盘段小 CNN（编码已保留 (C,y,x) 结构）；
+  需要记忆再加 GRU——先试帧堆叠（价格近 k 步差分进观测），大概率够。
 
 ## 7. 训练方法
 
