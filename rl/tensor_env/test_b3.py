@@ -71,13 +71,13 @@ def _check_step(ept, n, t_acc):
     t_acc["dev"] += time.perf_counter() - t0
 
     if n == 0:
+        want_dev = torch.empty(0, device=ept.device).device
         for enc, fm, mm in dev:
             assert enc.dtype == torch.float32 and enc.shape == (B, O.OBS_DIM), \
                 f"encode_t {enc.dtype} {tuple(enc.shape)}"
             assert fm.dtype == torch.bool and fm.shape == (B, A.N_FARMER)
             assert mm.dtype == torch.bool and mm.shape == (B, A.N_MARKET)
-            _dev = __import__("torch").empty(0, device=ept.device).device
-    assert enc.device == fm.device == mm.device == _dev
+            assert enc.device == fm.device == mm.device == want_dev
     host = [(enc.cpu().numpy(), fm.cpu().numpy(), mm.cpu().numpy())
             for enc, fm, mm in dev]
 
