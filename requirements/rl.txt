@@ -1,13 +1,18 @@
 # The rl/ + rl/tensor_env/ training/experimentation stack. Optional -- no
 # agent, tool or test outside rl/ imports any of this.
 #
-# Personal machine (CPU is fine; CUDA picked up automatically if present):
+# TorchRL is the training framework (EnvBase batched env + collectors + GAE +
+# swappable loss modules). The torch pin follows the Alliance wheelhouse:
+# tensordict 0.11 requires torch ~= 2.10.0, so newer torch does NOT work with
+# these wheels. Personal machines resolve the same versions from PyPI:
 #
 #     pip install -r requirements/rl.txt
 #
-# On the Vulcan cluster use the wheelhouse instead (inside a job/salloc,
-# never on the login node):
+# On the cluster install from the wheelhouse (inside a job, never on the
+# login node):
 #
-#     pip install --no-index torch
+#     pip install --no-index -r requirements/rl.txt
 
-torch>=2.5
+torch~=2.10.0
+torchrl==0.11.*
+tensordict==0.11.*
