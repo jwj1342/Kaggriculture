@@ -45,6 +45,7 @@ try:
 except ImportError:                      # flat imports (verify_t.py pattern)
     import engine_np as E
     import engine_t as ET
+cst, sel, sel0, anyt, isel = ET.cst, ET.sel, ET.sel0, ET.anyt, ET.isel  # B4b kernel idioms
 
 _RL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _RL not in sys.path:
@@ -93,9 +94,29 @@ _STRUCT_IS_COOP = [R.ANIMALS[a]["structure"] == "COOP" for a in ANIMAL_LIST]
 _FIB_MAX = 78                            # last n with fib(n) exact in float64
 
 
+def _f32_div_exact():
+    """The five fractional board channels divide a small non-negative integer
+    (yield <= 6, fert_left <= 3, consec <= 2, age <= 12) by 6/3/2/12. The
+    reference does the division in float64 and casts to float32; _boards
+    divides in float32 directly. Prove on the whole int8 domain (a superset
+    of every reachable numerator) that the two agree bit for bit."""
+    a = torch.arange(-128, 128, dtype=torch.float64)
+    for d in (6.0, 3.0, 2.0, 12.0):
+        ref = (a / d).to(torch.float32).view(torch.int32)
+        got = (a.to(torch.float32) / d).view(torch.int32)
+        if not torch.equal(ref, got):
+            return False
+    return True
+
+
+_F32_DIV_EXACT = _f32_div_exact()
+assert _F32_DIV_EXACT, "float32 channel division is not bit-exact on this build"
+
+
 class _Tables:
     __slots__ = ("base", "i0", "big_t", "crop_first", "land_prices",
-                 "fib", "shop_ar")
+                 "fib", "shop_ar", "crop_first_i8", "seed_cost", "animal_cost",
+                 "struct_coop", "deadline", "perm")
 
 
 _CACHE = {}
@@ -118,6 +139,12 @@ def _tables(device):
         t.fib = torch.tensor([float(_fib(i)) for i in range(_FIB_MAX + 1)],
                              dtype=f64, device=device)
         t.shop_ar = torch.arange(len(ET.SHOP_SORTED), device=device)
+        t.crop_first_i8 = torch.tensor(ET.CROP_FIRST, dtype=torch.int8, device=device)
+        t.seed_cost = torch.tensor(_SEED_COST, dtype=f64, device=device)
+        t.animal_cost = torch.tensor(_ANIMAL_COST, dtype=f64, device=device)
+        t.struct_coop = torch.tensor(_STRUCT_IS_COOP, dtype=torch.bool, device=device)
+        t.deadline = torch.tensor(_PLANT_DEADLINE, dtype=torch.int64, device=device)
+        t.perm = (torch.tensor([0, 1], device=device), torch.tensor([1, 0], device=device))
         _CACHE[key] = t
     return t
 
@@ -126,60 +153,81 @@ def _tables(device):
 # board block: (B, P, C, N, N) float32, obs.py channel layout
 # ---------------------------------------------------------------------------
 
-def _boards(ep):
-    """Both farms' channel blocks, player-agnostic (encode_t reorders to
-    own-farm-first). Mirrors actions.analyze's writes channel by channel;
-    stale per-tile fields (a decayed plant's watered flag, an escaped
-    animal's cared flag) are masked out exactly as the snapshot masks them
-    by omitting the keys."""
-    dev = ep.device
-    B, P, n = ep.B, ep.NUM_PLAYERS, ep.N
+def _boards(ep, player, out):
+    """Own-farm-first channel blocks written into out (B, 2, C, N*N) float32.
+    Mirrors actions.analyze's writes channel by channel; stale per-tile
+    fields (a decayed plant's watered flag, an escaped animal's cared flag)
+    are masked out exactly as the snapshot masks them by omitting the keys.
+
+    B4b: comparisons against cached int8 constants; every channel is first
+    an int8 plane (indicators, or the masked integer numerator of a
+    fractional channel -- x >= 0 on every masked-in tile, so masked-out is
+    +0.0 exactly as torch.where(mask, x / d, 0.0)) in ONE int8 buffer that
+    is converted to float32 in a single pass; the five fractional channels
+    are then divided in place in float32, which _F32_DIV_EXACT proves equal
+    to the reference's float64-then-cast on the whole reachable domain."""
+    B, n = ep.B, ep.N
     day = ep._step // ep.turns_per_day
-    f32, f64, i64 = torch.float32, torch.float64, torch.int64
+    f32, i8, i64 = torch.float32, torch.int8, torch.int64
+    NN = n * n
+    perm = _tables(ep.device).perm[player]                   # own-first order
 
-    kind = ep.kind
-    anim = ep.animal >= 0                # only ever true on COOP/PASTURE
-    plant = kind == ET.K_PLANT
+    def own_first(x):                                        # (B, P, ...) -> (B, 2, NN)
+        return x.index_select(1, perm).view(B, 2, NN)
 
-    ch = torch.zeros((B, P, C, n, n), dtype=f32, device=dev)
-    ch[:, :, 0] = (kind == ET.K_EMPTY).to(f32)
-    ch[:, :, 1] = (kind == ET.K_LOCKED).to(f32)
-    ch[:, :, 2] = (kind == ET.K_WEED).to(f32)
-    ch[:, :, 3] = ((kind == ET.K_COOP) & ~anim).to(f32)
-    ch[:, :, 4] = ((kind == ET.K_PASTURE) & ~anim).to(f32)
+    kind = own_first(ep.kind)
+    animal = own_first(ep.animal)
+    c = lambda v: cst(kind, v)
+    anim = animal >= c(0)                # only ever true on COOP/PASTURE
+    plant = kind == c(ET.K_PLANT)
+    m8 = plant.view(i8)
+    a8 = anim.view(i8)
+
+    buf = torch.empty((B, 2, C, NN), dtype=i8, device=ep.device)
+
+    def put(k, x):
+        buf[:, :, k].copy_(x.view(i8) if x.dtype == torch.bool else x)
+
+    put(0, kind == c(ET.K_EMPTY))
+    put(1, kind == c(ET.K_LOCKED))
+    put(2, kind == c(ET.K_WEED))
+    put(3, (kind == c(ET.K_COOP)) & ~anim)
+    put(4, (kind == c(ET.K_PASTURE)) & ~anim)
+    crop = own_first(ep.crop)
     for ci in range(len(CROP_LIST)):     # channel loop, not a lane loop
-        ch[:, :, 5 + ci] = (plant & (ep.crop == ci)).to(f32)
-
-    yu = ep.yield_units.to(f64)
-    ch[:, :, 10] = torch.where(plant | anim, yu / 6.0, 0.0).to(f32)
-    ch[:, :, 11] = (ep.watered & plant).to(f32)
-    fert_left = (ep.fert_until.to(i64) - day + 1).clamp(min=0, max=3)
-    ch[:, :, 12] = torch.where(plant, fert_left.to(f64) / 3.0, 0.0).to(f32)
-    cuw = ep.consec_unwatered.to(i64).clamp(max=2)
-    ch[:, :, 13] = torch.where(plant, cuw.to(f64) / 2.0, 0.0).to(f32)
-    age = (day - ep.planted_day.to(i64)).clamp(max=12)
-    ch[:, :, 14] = torch.where(plant, age.to(f64) / 12.0, 0.0).to(f32)
-
+        put(5 + ci, plant & (crop == c(ci)))
+    put(10, own_first(ep.yield_units) * (plant | anim).view(i8))          # / 6
+    put(11, own_first(ep.watered) & plant)
+    put(12, (own_first(ep.fert_until) - (day - 1)).clamp(min=0, max=3).to(i8) * m8)  # / 3
+    put(13, own_first(ep.consec_unwatered).clamp(max=2) * m8)            # / 2
+    put(14, (day - own_first(ep.planted_day)).clamp(max=12).to(i8) * m8)  # / 12
     for ai in range(len(ANIMAL_LIST)):
-        ch[:, :, 15 + ai] = (ep.animal == ai).to(f32)
-    ch[:, :, 18] = (ep.fed & anim).to(f32)
-    ch[:, :, 19] = (ep.cared & anim).to(f32)
-    ch[:, :, 20] = (ep.fert_avail & anim).to(f32)
-    cuf = ep.consec_unfed.to(i64).clamp(max=2)
-    ch[:, :, 21] = torch.where(anim, cuf.to(f64) / 2.0, 0.0).to(f32)
+        put(15 + ai, animal == c(ai))
+    put(18, own_first(ep.fed) & anim)
+    put(19, own_first(ep.cared) & anim)
+    put(20, own_first(ep.fert_avail) & anim)
+    put(21, own_first(ep.consec_unfed).clamp(max=2) * a8)                # / 2
+    buf[:, :, 22:24].zero_()
 
-    flat = ch.view(B, P, C, n * n)
-    fidx = ep.farmer_xy[:, :, 1].to(i64) * n + ep.farmer_xy[:, :, 0].to(i64)
-    flat[:, :, 22].scatter_(2, fidx.unsqueeze(-1), 1.0)
+    out.copy_(buf)                                           # one int8 -> f32 pass
+    out[:, :, 10].div_(6.0)
+    out[:, :, 12].div_(3.0)
+    out[:, :, 13].div_(2.0)
+    out[:, :, 14].div_(12.0)
+    out[:, :, 21].div_(2.0)
+
+    fxy = ep.farmer_xy.index_select(1, perm).to(i64)
+    fidx = fxy[..., 1] * n + fxy[..., 0]
+    out[:, :, 22].scatter_(2, fidx.unsqueeze(-1), 1.0)
     # Hands: += 0.25 per hand on its tile. Counts are small and 0.25 is a
     # power of two, so every partial sum is exact and the scatter_add order
     # cannot matter. Invalid slots contribute +0.0 at flat index 0 (their
     # stale coordinates are still in range, the contribution is zero).
-    hidx = ep.hands_xy[:, :, :, 1].to(i64) * n + ep.hands_xy[:, :, :, 0].to(i64)
-    valid = (torch.arange(ep.H, device=dev).view(1, 1, -1)
-             < ep.hands_n.to(i64).unsqueeze(-1))
-    flat[:, :, 23].scatter_add_(2, hidx, valid.to(f32) * 0.25)
-    return ch
+    hxy = ep.hands_xy.index_select(1, perm).to(i64)
+    hidx = hxy[..., 1] * n + hxy[..., 0]
+    valid = (torch.arange(ep.H, device=ep.device).view(1, 1, -1)
+             < ep.hands_n.index_select(1, perm).to(i64).unsqueeze(-1))
+    out[:, :, 23].scatter_add_(2, hidx, valid.to(f32) * 0.25)
 
 
 # ---------------------------------------------------------------------------
@@ -227,10 +275,13 @@ def _globals(ep, player):
 
 def encode_t(ep, player):
     """obs.encode for every lane at `player`'s perspective: (B, OBS_DIM)
-    float32 on ep.device -- own farm block, opponent block, globals."""
-    boards = _boards(ep)[:, [player, 1 - player]]            # own-first copy
-    g = _globals(ep, player).to(torch.float32)
-    return torch.cat([boards.reshape(ep.B, -1), g], dim=1)
+    float32 on ep.device -- own farm block, opponent block, globals. Written
+    straight into one buffer (no reorder / cat copies)."""
+    B, n = ep.B, ep.N
+    out = torch.empty((B, OBS_DIM), dtype=torch.float32, device=ep.device)
+    _boards(ep, player, out[:, :2 * C * n * n].view(B, 2, C, n * n))
+    out[:, 2 * C * n * n:].copy_(_globals(ep, player))       # f64 -> f32 cast
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -238,82 +289,93 @@ def encode_t(ep, player):
 # ---------------------------------------------------------------------------
 
 def masks_t(ep, player):
-    """((B, 23) bool, (B, 22) bool) on ep.device."""
+    """((B, 23) bool, (B, 22) bool) on ep.device.
+
+    B4b form: the ten "is there any tile such that ..." predicates are one
+    (B, 10, 100) stack reduced once; comparisons run against cached int8
+    constants; the per-crop / per-animal / per-product column blocks are
+    broadcast ops instead of per-column loops. Same booleans, fewer kernels."""
     dev = ep.device
     B, n = ep.B, ep.N
     day = ep._step // ep.turns_per_day
     t = _tables(dev)
-    f64, i64 = torch.float64, torch.int64
+    f64, i64, i8 = torch.float64, torch.int64, torch.int8
 
-    kind = ep.kind[:, player]
-    anim = ep.animal[:, player] >= 0
-    plant = kind == ET.K_PLANT
-    yu_pos = ep.yield_units[:, player] > 0
+    kind = ep.kind[:, player].reshape(B, n * n)
+    c = lambda v: cst(kind, v)
+    anim = ep.animal[:, player].reshape(B, n * n) >= c(0)
+    plant = kind == c(ET.K_PLANT)
+    yu_pos = ep.yield_units[:, player].reshape(B, n * n) > c(0)
+    age8 = (day - ep.planted_day[:, player].reshape(B, n * n)).to(i8)
+    cf8 = isel(t.crop_first_i8, ep.crop[:, player].reshape(B, n * n).int())
+    fert_due = (ep.fert_until[:, player].reshape(B, n * n) - day).to(i8) < c(0)
+    preds = torch.stack([
+        (plant & yu_pos & (age8 >= cf8)) | (anim & yu_pos),      # harvest
+        plant & ~ep.watered[:, player].reshape(B, n * n),        # unwatered
+        plant & fert_due,                                        # unfert
+        anim & ~ep.fed[:, player].reshape(B, n * n),             # unfed
+        anim & ~ep.cared[:, player].reshape(B, n * n),           # uncared
+        anim & ep.fert_avail[:, player].reshape(B, n * n),       # fert_ready
+        kind == c(ET.K_WEED),                                    # weeds
+        kind == c(ET.K_EMPTY),                                   # empties
+        (kind == c(ET.K_COOP)) & ~anim,                          # coop_free
+        (kind == c(ET.K_PASTURE)) & ~anim,                       # pasture_free
+    ], dim=1)                                                    # (B, 10, 100)
+    anyp = preds.view(i8).sum(-1, dtype=torch.int32) != 0        # (B, 10)
+    (harvest, unwatered, unfert, unfed, uncared, fert_ready, weeds, empties,
+     coop_free, pasture_free) = anyp.unbind(1)
 
-    def anyt(m):
-        return m.view(B, -1).any(-1)
-
-    crop_first = t.crop_first[ep.crop[:, player].to(i64)]
-    age = day - ep.planted_day[:, player].to(i64)
-    harvest = anyt((plant & yu_pos & (age >= crop_first)) | (anim & yu_pos))
-    unwatered = anyt(plant & ~ep.watered[:, player])
-    unfert = anyt(plant & (ep.fert_until[:, player].to(i64) < day))
-    unfed = anyt(anim & ~ep.fed[:, player])
-    uncared = anyt(anim & ~ep.cared[:, player])
-    fert_ready = anyt(anim & ep.fert_avail[:, player])
-    weeds = anyt(kind == ET.K_WEED)
-    empties = anyt(kind == ET.K_EMPTY)
-    coop_free = anyt((kind == ET.K_COOP) & ~anim)
-    pasture_free = anyt((kind == ET.K_PASTURE) & ~anim)
-
-    inv0 = ep.unit_inv[:, player, 0]                         # farmer carry
-    shed = ep.shed[:, player]
-    has_wheat = (inv0[:, ET.WHEAT_I] > 0) | (shed[:, ET.WHEAT_I] > 0)
-    has_fert = (inv0[:, ET.FERT_I] > 0) | (shed[:, ET.FERT_I] > 0)
-    fx = ep.farmer_xy[:, player, 0].to(i64)
-    fy = ep.farmer_xy[:, player, 1].to(i64)
+    inv0 = ep.unit_inv[:, player, 0]                         # (B, 12) farmer carry
+    shed = ep.shed[:, player]                                # (B, 12)
+    have = (inv0 > 0) | (shed > 0)                           # (B, 12)
+    has_wheat = have[:, ET.WHEAT_I]
+    has_fert = have[:, ET.FERT_I]
+    fx = ep.farmer_xy[:, player, 0]
+    fy = ep.farmer_xy[:, player, 1]
     tr = torch.ones(B, dtype=torch.bool, device=dev)
-    fl = torch.zeros(B, dtype=torch.bool, device=dev)
+    seeds = ep.seeds_t[:, player]                            # (B, 5)
+    open_c = (day <= t.deadline)                             # (5,) host-day gate
+    plant_cols = empties.unsqueeze(-1) & (seeds > 0) & open_c
+    place_cols = (have[:, ET.N_MKT:]
+                  & torch.where(t.struct_coop, coop_free.unsqueeze(-1),
+                                pasture_free.unsqueeze(-1)))
+    fm = torch.cat([
+        torch.stack([
+            tr,                              # PASS
+            fy > 0, fy < n - 1, fx < n - 1, fx > 0,
+            unwatered,                       # WATER
+            harvest,                         # HARVEST
+            unfed & has_wheat,               # FEED
+            uncared,                         # CARE
+            fert_ready,                      # COLLECT_FERT
+            unfert & has_fert,               # FERTILIZE
+            weeds,                           # DIG_WEED
+            empties,                         # BUILD_COOP
+            empties,                         # BUILD_PASTURE
+            (inv0 > 0).any(-1),              # DROP
+        ], dim=1),
+        plant_cols,                          # PLANT_<crop>
+        place_cols,                          # PLACE_<animal>
+    ], dim=1)
 
-    cols = [
-        tr,                              # PASS
-        fy > 0, fy < n - 1, fx < n - 1, fx > 0,
-        unwatered,                       # WATER
-        harvest,                         # HARVEST
-        unfed & has_wheat,               # FEED
-        uncared,                         # CARE
-        fert_ready,                      # COLLECT_FERT
-        unfert & has_fert,               # FERTILIZE
-        weeds,                           # DIG_WEED
-        empties,                         # BUILD_COOP
-        empties,                         # BUILD_PASTURE
-        (inv0 > 0).any(-1),              # DROP
-    ]
-    seeds = ep.seeds_t[:, player]
-    for ci in range(len(CROP_LIST)):     # PLANT_<crop>: deadline is host-side
-        cols.append(empties & (seeds[:, ci] > 0)
-                    if day <= _PLANT_DEADLINE[ci] else fl)
-    for ai in range(len(ANIMAL_LIST)):   # PLACE_<animal>
-        have = (inv0[:, ET.N_MKT + ai] > 0) | (shed[:, ET.N_MKT + ai] > 0)
-        cols.append(have & (coop_free if _STRUCT_IS_COOP[ai] else pasture_free))
-    fm = torch.stack(cols, dim=1)
-
-    money = ep.money[:, player]          # float64; int comparisons are exact
-    mcols = [tr]                         # NOOP
-    for pi in range(ET.N_MKT):           # SELL_<p>
-        mcols.append(shed[:, pi] > 0)
-    for ci in range(len(CROP_LIST)):     # BUY_SEED_<c>
-        mcols.append((money >= _SEED_COST[ci])
-                     if day <= _PLANT_DEADLINE[ci] else fl)
+    money = ep.money[:, player]              # float64; int comparisons are exact
+    money_u = money.unsqueeze(-1)
     room = shed.to(i64).sum(-1) < R.SHED_CAPACITY
-    mcols.append(room & (money >= (ep.mkt_price[:, 0].to(i64) * 5).to(f64)))
-    mcols.append(room & (money >= ep.mkt_price[:, ET.FERT_I].to(f64)))
-    for ai in range(len(ANIMAL_LIST)):   # BUY_<animal>
-        mcols.append(room & (money >= _ANIMAL_COST[ai]))
     n_extra = ep.quad_unlocked[:, player].to(i64).sum(-1)
     land_price = t.land_prices[n_extra.clamp(max=len(E.LAND_PRICES) - 1)]
-    mcols.append((n_extra < len(E.LAND_PRICES)) & (money >= land_price))
     hires = ep.hires_today[:, player].to(i64).clamp(max=_FIB_MAX)
-    mcols.append((ep.hands_n[:, player] < A.MAX_HANDS) & (money >= t.fib[hires]))
-    mm = torch.stack(mcols, dim=1)
+    mm = torch.cat([
+        tr.unsqueeze(-1),                                    # NOOP
+        shed[:, :ET.N_MKT] > 0,                              # SELL_<p>
+        (money_u >= t.seed_cost) & open_c,                   # BUY_SEED_<c>
+        torch.stack([
+            room & (money >= (ep.mkt_price[:, 0].to(i64) * 5).to(f64)),
+            room & (money >= ep.mkt_price[:, ET.FERT_I].to(f64)),
+        ], dim=1),
+        room.unsqueeze(-1) & (money_u >= t.animal_cost),     # BUY_<animal>
+        torch.stack([
+            (n_extra < len(E.LAND_PRICES)) & (money >= land_price),
+            (ep.hands_n[:, player] < A.MAX_HANDS) & (money >= t.fib[hires]),
+        ], dim=1),
+    ], dim=1)
     return fm, mm

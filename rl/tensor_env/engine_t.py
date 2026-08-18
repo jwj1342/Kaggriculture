@@ -12,17 +12,30 @@ Design decisions honoured here:
       once on the host and gathering from the table thereafter.
   D2  hybrid stepping: the per-turn phases are tensor ops; the end-of-day RNG
       segment (row-major weed draws whose count depends on each farm's empty
-      tiles, and the shop unlock draw) runs on the host with
+      tiles, and the shop unlock draw) is keyed by
       random.Random((seed * 1_000_003) ^ day) per lane, exactly mirroring
-      engine_np._end_of_day's call order, then writes back to the tensors.
+      engine_np._end_of_day's call order. B4b form (_eod_rng): the host
+      pulls each lane's raw MT19937 word stream for the day in one
+      getrandbits call; the draw ranks, the float reconstruction, the weed
+      compare/scatter and the shop choice's rejection walk are one batched
+      device pass (an exact host replay covers the 2^-32 spare-exhaustion
+      case).
   D3  the market per-unit lockstep loop stays serial over the unit index but
-      each iteration quotes and commits over (B,) index tensors.
+      each iteration quotes and commits both players over (B, 2) tensors
+      (one host sync per iteration, the loop-termination test).
 
-Host-side python is confined to: per-lane action parsing/dispatch (bounded by
-B x units), the atomic HIRE / BUY_LAND orders, the end-of-day RNG segment and
-capacity-ordered inventory drops, and snapshot reconstruction. The bulk
-per-tile phases (plant decay, daily plant/animal refresh transitions, town
-consumption, price refresh) are tensor ops over (B, P, N, N) / (B, 9).
+Host-side python is confined to: step_raw's per-lane action parsing/dispatch
+(the verification interface; the training path is engine_t_idx.step_idx),
+step_raw's atomic HIRE / BUY_LAND orders and its end-of-day inventory drop,
+the per-lane-per-day MT19937 word pull, and snapshot reconstruction. The
+bulk per-tile phases (plant decay, daily plant/animal refresh transitions,
+town consumption, price refresh) are tensor ops over (B, P, N, N) / (B, 9)
+built from the B4b kernel idioms below (cst / sel / sel0 / anyt / isel).
+
+Deferred errors: the price-table range guard and the max-hands guard set a
+device flag instead of syncing the host mid-step; _check_err raises at the
+end of the same step (state after the flagging point is undefined, as it
+was before -- both conditions are unreachable in real play).
 
 One piece of host metadata augments the Appendix A tensors: per-unit item
 insertion order (`_inv_ord`). engine_np's inventories are dicts, and the two
@@ -34,6 +47,7 @@ byte-exactness requires remembering it. Counts stay authoritative in
 
 import random
 
+import numpy as np
 import torch
 
 try:
@@ -95,6 +109,60 @@ for _shop in SHOP_SORTED:
 
 # Market order op codes (0 = dead / no order).
 OP_DEAD, OP_SELL, OP_BUYP, OP_SEED, OP_ANIMAL = 0, 1, 2, 3, 4
+
+
+# ---------------------------------------------------------------------------
+# B4b kernel idioms (measured on the CPU build, torch 2.13, one thread,
+# (B, P, 100) = 204,800 elements): torch.where / masked_fill_ ~1.0-1.4 ms;
+# a comparison against a python scalar ~130 us but against a same-dtype
+# int8/bool tensor ~7 us; .any(-1) ~320 us but an int8 view summed to int32
+# ~50 us; advanced indexing tab[idx] 3-4x slower than index_select. Every
+# helper below is exact by construction (pure integer / boolean identities);
+# they exist so the hot paths never call the slow kernels.
+# ---------------------------------------------------------------------------
+
+_CONST_CACHE = {}
+
+
+def cst(like, value, dtype=None):
+    """Cached constant tensor with `like`'s shape / device (dtype override
+    optional). Never mutate the result."""
+    dtype = like.dtype if dtype is None else dtype
+    key = (str(like.device), tuple(like.shape), dtype, value)
+    t = _CONST_CACHE.get(key)
+    if t is None:
+        t = torch.full(like.shape, value, dtype=dtype, device=like.device)
+        _CONST_CACHE[key] = t
+    return t
+
+
+def sel(mask, a, b):
+    """torch.where(mask, a, b) for equal-shape/dtype a, b: bool via
+    (m & a) | (~m & b); integers via b ^ ((a ^ b) & -m) with the 0/-1 mask
+    widened to the operand dtype."""
+    if a.dtype == torch.bool:
+        return (mask & a) | (b & ~mask)
+    if a.dtype == torch.int8:
+        mneg = -mask.view(torch.int8)
+    else:
+        mneg = -mask.to(a.dtype)
+    return b ^ ((a ^ b) & mneg)
+
+
+def sel0(mask, a):
+    """torch.where(mask, a, 0) for an integer tensor a."""
+    m = mask.view(torch.int8) if a.dtype == torch.int8 else mask.to(a.dtype)
+    return a * m
+
+
+def anyt(mask):
+    """mask.any(-1) for a bool tensor."""
+    return mask.view(torch.int8).sum(-1, dtype=torch.int32) != 0
+
+
+def isel(table, idx):
+    """table[idx] for a 1-D table and an integer index tensor of any shape."""
+    return table.index_select(0, idx.reshape(-1)).view(idx.shape)
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +287,9 @@ class EpisodeT:
         self.hour = 0
         self.done = False
         self.reward = torch.zeros((B, P), dtype=torch.float64, device=dev)
+        # Deferred device-side error flags: [price table range, hands overflow]
+        # (checked once per step by _check_err -- no mid-step host syncs).
+        self._err = torch.zeros(2, dtype=torch.bool, device=dev)
 
         # Item insertion order per (lane, player, unit) -- see module docstring.
         self._inv_ord = [[[[]] for _ in range(P)] for _ in range(B)]
@@ -226,6 +297,7 @@ class EpisodeT:
         # ---- device lookup tables ----
         t32 = lambda v: torch.tensor(v, dtype=torch.int32, device=dev)
         self._price_t = _price_table(dev)
+        self._price_tT = self._price_t.t().contiguous()      # (W, 9) for gather
         self._ar9 = torch.arange(N_MKT, dtype=torch.int64, device=dev)
         self._crop_first_t = t32(CROP_FIRST)
         self._crop_int_t = t32(CROP_INTERVAL).clamp(min=1)   # 0 only on non-ongoing
@@ -292,6 +364,7 @@ class EpisodeT:
         self._decay_plants(step)
         if (step + 1) % self.turns_per_day == 0:
             self._end_of_day(day)
+        self._check_err()
 
         next_step = step + 1
         self._step = next_step
@@ -622,96 +695,91 @@ class EpisodeT:
             self._refresh_prices()
 
     def _market_lockstep(self, op, item, rem):
-        """Per-unit loop: serial over the unit index, (B,) tensors within."""
-        dev = self.device
+        """Per-unit loop: serial over the unit index, (B, 2) tensor ops within.
+
+        Every iteration quotes BOTH players at the pre-commit inventory, then
+        commits both -- exactly the reference order (p0 then p1), which is
+        legal to fuse because a commit reads only the committing player's own
+        shed / money and the two players' writes to the shared market
+        inventory are additive (scatter_add_ accumulates duplicates). Money
+        stays an integer-valued float64 throughout (every price and cost is an
+        integer), so the fused where/add sequence is bit-identical to the
+        reference's sequential += / -=. No per-lane python and a single host
+        sync per iteration (the loop-termination any()); the price-table
+        range check is accumulated on device and raised once after the loop
+        (B4b -- the raise moves from mid-loop to loop end, state otherwise
+        identical; the range is unreachable in real play).
+        """
         B = self.B
-        alive = op != OP_DEAD
-        f64 = torch.float64
-        for _esc in range(100_000):             # engine's escape counter
-            live = alive & (rem > 0)
+        f64, i64 = torch.float64, torch.int64
+        i16, i32 = torch.int16, torch.int32
+        is_sell = op == OP_SELL
+        is_buyp = op == OP_BUYP
+        is_seed = op == OP_SEED
+        is_anim = op == OP_ANIMAL
+        is_mkt = is_sell | is_buyp
+        item9 = item.clamp(0, N_MKT - 1)               # SELL/BUYP item (dead: 0)
+        item5 = item.clamp(0, len(CROP_NAMES) - 1)     # SEED item
+        item3 = item.clamp(0, len(ANIMAL_NAMES) - 1)   # ANIMAL item
+        static_price = torch.where(is_seed, self._crop_cost_t[item5],
+                                   self._animal_cost_t[item3])
+        shed_tgt = torch.where(is_anim, item3 + N_MKT, item9).unsqueeze(-1)
+        item9u = item9.unsqueeze(-1)
+        item5u = item5.unsqueeze(-1)
+        item9w = item9 * _PRICE_W                      # row offset in the flat table
+        buy_adj = is_buyp.to(i64)                      # BUYP quotes at inv - 1
+        cap = self.shed_capacity
+        # A dead order is rem == 0 (a failed commit zeroes rem), so liveness
+        # is rem > 0 alone. Own-shed count of the traded product and the shed
+        # total are tracked incrementally (they only move by this loop).
+        rem = torch.where(op != OP_DEAD, rem, torch.zeros_like(rem))
+        live = rem > 0
+        shed_at = self.shed.gather(2, item9u).squeeze(-1).to(i16)
+        shed_sum = self.shed.sum(-1)
+        oob = torch.zeros_like(live)
+        for _esc in range(100_000):                     # engine's escape counter
+            # -- quote both players at pre-commit inventory --
+            iv = self.mkt_inv.gather(1, item9).to(i64) - buy_adj - _PRICE_LO
+            ivc = iv.clamp(0, _PRICE_W - 1)
+            oob |= iv != ivc
+            price = torch.where(is_mkt, torch.take(self._price_t, item9w + ivc),
+                                static_price)
+            pf = price.to(f64)
+            # -- commit (both players; conditions read own farm only) --
+            room = shed_sum < cap
+            can_pay = self.money >= pf
+            ok_sell = live & is_sell & (shed_at > 0)
+            ok_buyp = live & is_buyp & can_pay & room
+            ok_seed = live & is_seed & can_pay
+            ok_anim = live & is_anim & can_pay & room
+            ok_buy = ok_buyp | ok_seed | ok_anim
+            ok = ok_sell | ok_buy
+            self.money = torch.where(ok_sell, self.money + pf, self.money)
+            self.money = torch.where(ok_buy, self.money - pf, self.money)
+            sd9 = ok_buyp.to(i16) - ok_sell.to(i16)         # product shed delta
+            sd = sd9 + ok_anim.to(i16)                       # + animal shed delta
+            self.shed.scatter_add_(2, shed_tgt, sd.unsqueeze(-1))
+            shed_at += sd9
+            shed_sum += sd
+            self.seeds_t.scatter_add_(2, item5u, ok_seed.to(i16).unsqueeze(-1))
+            md = (ok_sell & (price > 1)).to(i32) - ok_buyp.to(i32)
+            self.mkt_inv.scatter_add_(1, item9, md)     # $1 sales add no supply
+            rem = torch.where(live & ~ok, torch.zeros_like(rem), rem - ok.to(i64))
+            live = rem > 0
             if not bool(live.any()):
                 break
-            # -- quote both players at pre-commit inventory --
-            price = torch.zeros((B, 2), dtype=torch.int64, device=dev)
-            m = live & (op == OP_SELL)
-            if bool(m.any()):
-                l, pp = m.nonzero(as_tuple=True)
-                it = item[l, pp]
-                price[l, pp] = self._price_at(it, self.mkt_inv[l, it].to(torch.int64))
-            m = live & (op == OP_BUYP)
-            if bool(m.any()):
-                # Quoted at post-buy inventory (inventory - 1).
-                l, pp = m.nonzero(as_tuple=True)
-                it = item[l, pp]
-                price[l, pp] = self._price_at(it, self.mkt_inv[l, it].to(torch.int64) - 1)
-            m = live & (op == OP_SEED)
-            if bool(m.any()):
-                l, pp = m.nonzero(as_tuple=True)
-                price[l, pp] = self._crop_cost_t[item[l, pp]]
-            m = live & (op == OP_ANIMAL)
-            if bool(m.any()):
-                l, pp = m.nonzero(as_tuple=True)
-                price[l, pp] = self._animal_cost_t[item[l, pp]]
+        self._err[0] |= oob.any()
 
-            # -- commit, player order; a failed commit kills the order --
-            for p in range(self.NUM_PLAYERS):
-                lv = live[:, p]
-                if not bool(lv.any()):
-                    continue
-                opp = op[:, p]
-
-                m = lv & (opp == OP_SELL)
-                if bool(m.any()):
-                    l = m.nonzero(as_tuple=True)[0]
-                    it = item[l, p]
-                    ok = self.shed[l, p, it] > 0
-                    lo, ito = l[ok], it[ok]
-                    pr = price[lo, p]
-                    self.shed[lo, p, ito] -= 1
-                    self.money[lo, p] += pr.to(f64)
-                    inc = pr > 1                # $1 sales do not add supply
-                    self.mkt_inv[lo[inc], ito[inc]] += 1
-                    rem[lo, p] -= 1
-                    alive[l[~ok], p] = False
-
-                m = lv & (opp == OP_BUYP)
-                if bool(m.any()):
-                    l = m.nonzero(as_tuple=True)[0]
-                    it = item[l, p]
-                    pr = price[l, p]
-                    ok = ((self.money[l, p] >= pr.to(f64))
-                          & (self.shed[l, p].sum(-1) < self.shed_capacity))
-                    lo, ito, po = l[ok], it[ok], pr[ok]
-                    self.money[lo, p] -= po.to(f64)
-                    self.shed[lo, p, ito] += 1
-                    self.mkt_inv[lo, ito] -= 1
-                    rem[lo, p] -= 1
-                    alive[l[~ok], p] = False
-
-                m = lv & (opp == OP_SEED)
-                if bool(m.any()):
-                    l = m.nonzero(as_tuple=True)[0]
-                    it = item[l, p]
-                    pr = price[l, p]
-                    ok = self.money[l, p] >= pr.to(f64)
-                    lo, ito, po = l[ok], it[ok], pr[ok]
-                    self.money[lo, p] -= po.to(f64)
-                    self.seeds_t[lo, p, ito] += 1
-                    rem[lo, p] -= 1
-                    alive[l[~ok], p] = False
-
-                m = lv & (opp == OP_ANIMAL)
-                if bool(m.any()):
-                    l = m.nonzero(as_tuple=True)[0]
-                    it = item[l, p]
-                    pr = price[l, p]
-                    ok = ((self.money[l, p] >= pr.to(f64))
-                          & (self.shed[l, p].sum(-1) < self.shed_capacity))
-                    lo, ito, po = l[ok], it[ok], pr[ok]
-                    self.money[lo, p] -= po.to(f64)
-                    self.shed[lo, p, N_MKT + ito] += 1
-                    rem[lo, p] -= 1
-                    alive[l[~ok], p] = False
+    def _check_err(self):
+        """Raise the deferred device-side error flags (once per step)."""
+        if bool(self._err.any()):
+            flags = self._err.tolist()
+            self._err.zero_()
+            if flags[0]:
+                raise RuntimeError(
+                    f"market inventory outside price table [{_PRICE_LO}, "
+                    f"{_PRICE_HI}); widen the bounds")
+            raise OverflowError(f"more than {self.H} hands in some lane")
 
     def _do_hire(self, lane, p):
         hires = int(self.hires_today[lane, p])
@@ -757,18 +825,21 @@ class EpisodeT:
     # ------------------------------------------------------------------
 
     def _price_at(self, items, invs):
+        """Table lookup; an out-of-range inventory sets the deferred error
+        flag (raised by _check_err at the end of the step) instead of syncing
+        the host here."""
         iv = invs - _PRICE_LO
-        if iv.numel():
-            lo, hi = int(iv.min()), int(iv.max())
-            if lo < 0 or hi >= _PRICE_W:
-                raise RuntimeError(
-                    f"market inventory {min(lo, hi) + _PRICE_LO} outside price "
-                    f"table [{_PRICE_LO}, {_PRICE_HI}); widen the bounds")
-        return self._price_t[items, iv]
+        ivc = iv.clamp(0, _PRICE_W - 1)
+        self._err[0] |= (iv != ivc).any()
+        return torch.take(self._price_t, ivc + items * _PRICE_W)
 
     def _refresh_prices(self):
-        self.mkt_price = self._price_at(
-            self._ar9, self.mkt_inv.to(torch.int64)).to(torch.int32)
+        """All nine prices from the current inventory (one gather on the
+        transposed table)."""
+        iv = self.mkt_inv.to(torch.int64) - _PRICE_LO
+        ivc = iv.clamp(0, _PRICE_W - 1)
+        self._err[0] |= (iv != ivc).any()
+        self.mkt_price = self._price_tT.gather(0, ivc).to(torch.int32)
 
     def _town_consume(self, step):
         if step % self.town_shop_sell_interval == 0:
@@ -781,101 +852,170 @@ class EpisodeT:
         self._refresh_prices()
 
     def _decay_plants(self, step):
-        m = ((self.kind == K_PLANT) & (self.mls >= 0) & (self.mls <= step)
-             & (torch.remainder(step - self.mls.to(torch.int32), 2) == 0))
-        if not bool(m.any()):
-            return
-        self.yield_units[m] -= 1
-        w = m & (self.yield_units <= 0)
-        self.kind[w] = K_WEED
-        self.animal[w] = -1
+        """Every 2 steps from max_lifespan_step a finished plant loses a
+        yield unit; at <= 0 it becomes a weed. mls >= 0 excludes ongoing
+        crops (-1); a live PLANT never sits more than 12 steps past its mls
+        (yield <= 6), so step - mls saturated to int8 keeps its parity."""
+        kind = self.kind
+        d = (step - self.mls).clamp(-1, 127).to(torch.int8)      # >= 0 <=> mls <= step
+        m = ((kind == cst(kind, K_PLANT)) & (self.mls >= 0)
+             & (d >= cst(d, 0)) & ((d & 1) == cst(d, 0)))
+        self.yield_units.sub_(m.view(torch.int8))
+        w = m & (self.yield_units <= cst(kind, 0))
+        self.kind = sel(w, cst(kind, K_WEED), kind)
+        self.animal = sel(w, cst(kind, -1), self.animal)
 
     # ------------------------------------------------------------------
     # end of day (engine_np._end_of_day; D2 hybrid)
     # ------------------------------------------------------------------
 
-    def _end_of_day(self, day):
+    def _end_of_day(self, day, seq_drop=False):
+        """engine_np._end_of_day. Phase order there is per player: plant
+        refresh, animal refresh, weeds (RNG), inventory drop, unit reset --
+        then the shop unlock draw. Neither refresh nor drop touches RNG or the
+        set of empty tiles, and farms are independent, so hoisting all
+        refreshes before all RNG and all drops after preserves the byte
+        stream and the state.
+
+        seq_drop=True (step_idx) deposits inventories from the tensor
+        insertion-order ranks (_ord_seq); the default walks the host lists
+        (_inv_ord, step_raw)."""
+        self._eod_refresh(day)
+        self._eod_rng(day)
+        if seq_drop:
+            self._eod_drop_seq()
+        else:
+            self._eod_drop_host()
+        self.farmer_xy[:, :, 0] = self._spawn[0]
+        self.farmer_xy[:, :, 1] = self._spawn[1]
+        self.hands_n.zero_()
+        self.hires_today.zero_()
+
+    def _eod_refresh(self, day):
+        """Daily plant + animal refresh: pure tensor transitions (no RNG).
+        B4b: int8/bool selects (sel/sel0), int32 tables via index_select."""
         tpd = self.turns_per_day
         next_day = day + 1
+        i8, i32 = torch.int8, torch.int32
+        kind = self.kind
+        c = lambda v: cst(kind, v)
 
-        # -- daily plant refresh (no RNG: pure tensor transition) --
-        plant = self.kind == K_PLANT
+        # -- daily plant refresh --
+        plant = kind == c(K_PLANT)
         was_watered = self.watered & plant
-        self.consec_unwatered = torch.where(
-            plant, torch.where(was_watered, 0, self.consec_unwatered + 1),
-            self.consec_unwatered)
+        cuw = self.consec_unwatered
+        self.consec_unwatered = sel(plant, sel0(~was_watered, cuw + c(1)), cuw)
         self.watered = self.watered & ~plant
-        to_weed = plant & (self.consec_unwatered >= 2)
-        self.kind[to_weed] = K_WEED
+        to_weed = plant & (self.consec_unwatered >= c(2))
+        kind = self.kind = sel(to_weed, c(K_WEED), kind)
         alive_p = plant & ~to_weed
-        ci = self.crop.long()
-        ongoing = self._crop_ongoing_t[ci]
-        interval = self._crop_int_t[ci]
-        maxy = self._crop_maxy_t[ci]
-        dsf = next_day - self.planted_day.to(torch.int32) - self._crop_first_t[ci]
+        ci = self.crop.int()
+        ongoing = isel(self._crop_ongoing_t, ci)
+        interval = isel(self._crop_int_t, ci)
+        maxy = isel(self._crop_maxy_t, ci)
+        dsf = next_day - self.planted_day.to(i32) - isel(self._crop_first_t, ci)
         prodm = (alive_p & ongoing & (dsf >= 0)
                  & (torch.remainder(dsf, interval) == 0))
         pcount = torch.div(dsf, interval, rounding_mode="floor") + 1
         prodm = prodm & (pcount <= maxy)
         # Fertilizer bonus only applies on watered days.
-        fert = was_watered & (self.fert_until.to(torch.int32) >= day)
-        newy = torch.minimum(maxy, self.yield_units.to(torch.int32)
-                             + torch.where(fert, 2, 1))
-        self.yield_units = torch.where(prodm, newy.to(torch.int8), self.yield_units)
+        fert = was_watered & ((self.fert_until - day).to(i8) >= c(0))
+        newy = torch.minimum(maxy, self.yield_units.to(i32) + 1 + fert.to(i32))
+        self.yield_units = sel(prodm, newy.to(i8), self.yield_units)
         setml = prodm & (pcount == maxy)
-        self.mls = torch.where(setml, (next_day + 1) * tpd, self.mls)
+        self.mls = sel(setml, cst(self.mls, (next_day + 1) * tpd), self.mls)
 
-        # -- daily animal refresh (no RNG) --
-        anim = self.animal >= 0
+        # -- daily animal refresh --
+        anim = self.animal >= c(0)
         fed = self.fed
-        self.consec_unfed = torch.where(
-            anim, torch.where(fed, 0, self.consec_unfed + 1), self.consec_unfed)
-        escape = anim & (self.consec_unfed >= 2)
-        self.animal[escape] = -1                # animal escapes; structure remains
+        cuf = self.consec_unfed
+        self.consec_unfed = sel(anim, sel0(~fed, cuf + c(1)), cuf)
+        escape = anim & (self.consec_unfed >= c(2))
+        self.animal = sel(escape, c(-1), self.animal)   # escapes; structure remains
         alive_a = anim & ~escape
-        ai = self.animal.clamp(min=0).long()
-        a_int = self._animal_int_t[ai]
-        a_max = self._animal_max_t[ai]
-        dsf_a = next_day - self.placed_day.to(torch.int32) - self._animal_first_t[ai]
+        ai = self.animal.clamp(min=0).int()
+        a_int = isel(self._animal_int_t, ai)
+        a_max = isel(self._animal_max_t, ai)
+        dsf_a = next_day - self.placed_day.to(i32) - isel(self._animal_first_t, ai)
         prod_a = alive_a & (dsf_a >= 0) & (torch.remainder(dsf_a, a_int) == 0)
         # Care bonus only consumed on a fed production day.
-        bonus = torch.where(fed, self.pending.to(torch.int32), 0)
-        newy_a = torch.minimum(a_max, self.yield_units.to(torch.int32) + 1 + bonus)
-        self.yield_units = torch.where(prod_a, newy_a.to(torch.int8), self.yield_units)
-        self.pending = torch.where(prod_a, 0, self.pending)
+        bonus = sel0(fed, self.pending).to(i32)
+        newy_a = torch.minimum(a_max, self.yield_units.to(i32) + 1 + bonus)
+        self.yield_units = sel(prod_a, newy_a.to(i8), self.yield_units)
+        self.pending = sel0(~prod_a, self.pending)
         care_acc = alive_a & self.cared & fed
-        self.pending = torch.where(care_acc, self.pending + 1, self.pending)
+        self.pending = sel(care_acc, self.pending + c(1), self.pending)
         self.fert_avail = self.fert_avail | alive_a
         self.fed = self.fed & ~alive_a
         self.cared = self.cared & ~alive_a
 
-        # -- weeds + shop unlock: the CPU RNG segment (D2) --
-        # RNG call order per lane: P0's empty tiles row-major, then P1's, then
-        # (every unlock day) rng.choice(sorted(SHOPS)). The intervening
-        # refresh/drop phases consume no RNG, so hoisting them preserves the
-        # byte stream.
-        empty = (self.kind == K_EMPTY).cpu().tolist()   # [lane][p][y][x]
-        wl, wp, wy, wx = [], [], [], []
-        N = self.N
-        for lane in range(self.B):
-            rng = random.Random((self.seeds[lane] * 1_000_003) ^ day)
-            for p in range(self.NUM_PLAYERS):
-                lane_empty = empty[lane][p]
-                for y in range(N):
-                    row = lane_empty[y]
-                    for x in range(N):
-                        if row[x] and rng.random() < self.weed_spawn_chance:
-                            wl.append(lane); wp.append(p); wy.append(y); wx.append(x)
-            if next_day > 0 and next_day % self.town_shop_unlock_interval == 0:
-                if self._shops_len[lane] < E.MAX_SHOP_INSTANCES:
-                    name = rng.choice(SHOP_SORTED)
-                    self.shops_seq[lane, self._shops_len[lane]] = SHOP_IDX[name]
-                    self._shops_len[lane] += 1
-        if wl:
-            self.kind[wl, wp, wy, wx] = K_WEED
+    # -- the RNG segment (D2, B4b precomputed-stream form) ------------------
+    # Per lane and day the reference draws rng = Random((seed*1_000_003)^day),
+    # then rng.random() once per EMPTY tile of P0 in row-major order, then
+    # once per empty tile of P1, then (unlock days, while < MAX shops)
+    # rng.choice(sorted(SHOPS)). rng.random() consumes two 32-bit MT words
+    # ((a>>5)*2^26 + (b>>6)) * 2^-53; choice(8 items) is getrandbits(4) with
+    # rejection while >= 8, one word each. So the whole segment is a function
+    # of the lane's raw MT word stream and its empty count: the words are
+    # pulled once per lane per day on the host (getrandbits(32*W) IS W
+    # successive genrand_uint32 outputs, little-endian), and everything else
+    # -- rank of each empty tile in draw order, float reconstruction (exact:
+    # every intermediate is an integer < 2^53), the < chance compare, the
+    # weed scatter and the shop choice with its rejection walk -- is one
+    # batched pass on the device.
+    _CHOICE_SPARE = 32          # rejection words reserved per lane (P(miss) = 2^-32,
+                                # exact host fallback covers it anyway)
 
-        # -- drop every unit inventory into the shed (host: order-dependent
-        #    near capacity), then reset units for the new day --
+    def _rng_words(self, day, W):
+        """(B, W) int64: the first W MT19937 outputs of every lane's day RNG."""
+        nb = 4 * W
+        buf = b"".join(
+            random.Random((s * 1_000_003) ^ day).getrandbits(32 * W).to_bytes(nb, "little")
+            for s in self.seeds)
+        arr = np.frombuffer(buf, dtype=np.uint32).astype(np.int64).reshape(self.B, W)
+        return torch.from_numpy(arr).to(self.device)
+
+    def _eod_rng(self, day):
+        B, P, N = self.B, self.NUM_PLAYERS, self.N
+        f64, i64 = torch.float64, torch.int64
+        next_day = day + 1
+        unlock = (next_day > 0 and next_day % self.town_shop_unlock_interval == 0
+                  and self._shops_len[0] < E.MAX_SHOP_INSTANCES)
+        ef = (self.kind == K_EMPTY).view(B, P * N * N)   # (p, y, x) row-major == draw order
+        cnt = ef.to(i64).cumsum(-1)
+        n_l = cnt[:, -1]                                  # draws per lane
+        n_max = int(n_l.max())                            # one host sync per day
+        W = 2 * n_max + (self._CHOICE_SPARE if unlock else 0)
+        if W == 0:
+            return
+        words = self._rng_words(day, W)
+        if n_max > 0:
+            ia = (2 * (cnt - 1)).clamp(min=0)             # word pair of each tile's draw
+            a = words.gather(1, ia) >> 5
+            b = words.gather(1, ia + 1) >> 6
+            val = (a.to(f64) * 67108864.0 + b.to(f64)) * (1.0 / 9007199254740992.0)
+            hit = ef & (val < self.weed_spawn_chance)
+            self.kind.masked_fill_(hit.view(B, P, N, N), K_WEED)
+        if unlock:
+            L = self._shops_len[0]                        # uniform across lanes
+            off = (2 * n_l).unsqueeze(1) + torch.arange(
+                self._CHOICE_SPARE, dtype=i64, device=self.device)
+            ws = words.gather(1, off) >> 28               # getrandbits(4) sequence
+            okm = ws < len(SHOP_SORTED)
+            first = okm.to(torch.int8).argmax(1)          # first accepted draw
+            choice = ws.gather(1, first.unsqueeze(1)).squeeze(1)
+            if not bool(okm.any(1).all()):                # exhausted spare: exact replay
+                for lane in (~okm.any(1)).nonzero().flatten().tolist():
+                    rng = random.Random((self.seeds[lane] * 1_000_003) ^ day)
+                    for _ in range(int(n_l[lane])):
+                        rng.random()
+                    choice[lane] = SHOP_IDX[rng.choice(SHOP_SORTED)]
+            self.shops_seq[:, L] = choice.to(torch.int8)
+            self._shops_len = [L + 1] * B
+
+    def _eod_drop_host(self):
+        """Drop every unit inventory into the shed, items in dict insertion
+        order (host lists), capacity-limited; then reset units."""
         for lane in range(self.B):
             for p in range(self.NUM_PLAYERS):
                 n_units = 1 + int(self.hands_n[lane, p])
@@ -887,10 +1027,34 @@ class EpisodeT:
                             self.shed[lane, p, idx] += take
                 self.unit_inv[lane, p] = 0
                 self._inv_ord[lane][p] = [[]]
-        self.farmer_xy[:, :, 0] = self._spawn[0]
-        self.farmer_xy[:, :, 1] = self._spawn[1]
-        self.hands_n.zero_()
-        self.hires_today.zero_()
+        if getattr(self, "_idx_carry", None) is not None:
+            self._idx_carry.zero_()
+
+    def _eod_drop_seq(self):
+        """Same deposit from the tensor insertion ranks (engine_t_idx's
+        _ord_seq), batched: units in slot order, items by rank within a unit;
+        a greedy capacity fill in that order is closed-form -- take_k =
+        min(n_k, max(0, room_0 - sum_{j<k} n_j)) -- so one argsort + cumsum +
+        scatter_add replaces the serial walk."""
+        B, P, I = self.B, self.NUM_PLAYERS, len(ITEMS)
+        i64 = torch.int64
+        U = 1 + int(self.hands_n.max())
+        cnt = self.unit_inv[:, :, :U, :].to(i64).reshape(B, P, U * I)
+        seq = self._ord_seq[:, :, :U, :].to(i64).reshape(B, P, U * I)
+        uoff = (torch.arange(U, dtype=i64, device=self.device) << 32
+                ).repeat_interleave(I)
+        key = torch.where(cnt > 0, seq + uoff, 1 << 62)
+        order = key.argsort(-1)
+        n_sorted = cnt.gather(2, order)
+        before = n_sorted.cumsum(-1) - n_sorted
+        room0 = (self.shed_capacity - self.shed.to(i64).sum(-1)).clamp(min=0)
+        take = torch.minimum(n_sorted, (room0.unsqueeze(-1) - before).clamp(min=0))
+        self.shed.scatter_add_(2, order % I, take.to(torch.int16))
+        self.unit_inv.zero_()
+        self._ord_seq.zero_()
+        self._idx_carry.zero_()
+        for lane in range(B):
+            self._inv_ord[lane] = [[[]] for _ in range(P)]
 
     # ------------------------------------------------------------------
     # snapshot (byte-compatible with engine_np.Episode.snapshot)
