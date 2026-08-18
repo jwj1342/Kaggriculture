@@ -134,8 +134,11 @@ def main():
     assert isinstance(act, dict) and set(act) == {"farmer", "hands", "market"}, act
     assert act["farmer"] != ["PASS"] or act["market"], \
         "exported agent answers PASS/no-op on the opening state -- suspicious"
-    print(f"exported {out_dir}  (ckpt step {ck.get('global_step'):,}, "
-          f"stage {ck.get('stage')})")
+    # rl-baseline checkpoints carry global_step/stage; torchrl ones iter/algo
+    step = ck.get("global_step", ck.get("iter"))
+    step_s = f"{step:,}" if isinstance(step, int) else "?"
+    print(f"exported {out_dir}  (ckpt step {step_s}, "
+          f"stage {ck.get('stage', ck.get('algo'))})")
     print(f"opening action: {act['farmer']} market {act['market']}")
 
 
