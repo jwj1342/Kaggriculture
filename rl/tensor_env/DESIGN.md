@@ -191,3 +191,24 @@ per-unit 结算循环（两名玩家同价快照、逐单位提交、每单指�
 `snapshot(lane)` 从张量重建与 `engine_np.Episode.snapshot()` **完全同构**的
 dict（含 tiles 的 None/"LOCKED"/dict 三态、dict 键序、shops 列表序）——
 所有验收门都在这个重建层上判等，张量内部表示自由，重建必须无损。
+
+## 附录 B：B4c 训练闭环设计（开工前定稿）
+
+目标：采集与 PPO 更新同驻一张卡，零宿主往返，对张量 starter 出现可复现的
+学习曲线（定性对照 CPU 管线：rl-baseline 上 BC 起步对 starter 从 ~40%
+爬到 >90%；这里从零起步，验收只要求单调爬升并越过 50%）。
+
+### 组件（全部新文件，`rl/tensor_env/train_t.py` 为入口）
+
+| 组件 | 说明 |
+|---|---|
+| `PolicyT` | 与 rl-baseline `policy.py` 同构（actor 4867→512→256→双头，critic 独立 4867→256→256→1）;可选 `--hidden` |
+| 采集器 | 单进程、单设备：`ep=EpisodeT(B)`, 每步 `encode_t`+`masks_t`（双方视角）→ actor 前向 → 掩码采样 (B,2) 索引 → `step_idx`;对手席位由 `opponents_t.starter_actions` 或镜像策略提供;轨迹存设备端 (T,B,…) 缓冲 |
+| 奖励 | 势函数塑形（与 rl-baseline 同：基准价 net_worth，终局衰减、流动性溢价）**在设备上**从张量状态直算 + 终局 ±win_bonus；不再走 obs dict |
+| PPO | 逐局 GAE（终局 bootstrap=0，定长 720）、优势标准化、裁剪目标、独立 critic、熵项、梯度裁剪——同 rl-baseline 系数 |
+| 门 `test_b4c.py` | (i) 设备端势函数 vs CPU `obs.net_worth` 逐位一致（gate 复用 test_b3 模式）；(ii) 一次 ≤10 分钟的小训练（B=256，CPU 或 GPU）胜率单调爬升过 50%；(iii) 端到端 lane-steps/s 报告 |
+
+### 纪律
+- 评测仍在参考引擎（`tools/eval.py`）：导出 numpy agent（沿用 rl-baseline
+  的 export_agent 契约）后跑，训练引擎偏差只能表现为 train/eval 失配。
+- 不动 engine_t / features_t 的语义；B4c 只**消费**它们。
