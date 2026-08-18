@@ -1030,3 +1030,67 @@ probably not, but the arithmetic no longer rules it out on ceiling alone.
 At our position one point is roughly one rank -- #344 to #352 spans 4.4 points
 across nine teams. +130 reaches #200 and +251 reaches #100. The top ten is a
 different regime: 174 points across nine ranks.
+
+## The TorchRL unification A/B (2026-08-18, one H100, 2 × 44.2M lane-steps)
+
+The `rl-baseline` and `tensorize` branches merged to main today, with TorchRL
+as the training framework gluing them: `EpisodeT` wrapped as a batched
+`EnvBase` (`rl/tensor_env/trl_env.py`), the masked two-head policy as a custom
+distribution (bit-exact against the hand-written math, `test_trl.py` gate i),
+and the update loop as swappable loss modules (`rl/train.py --algo ppo|a2c`).
+Per the repo rule -- an engine-adjacent change gets an A/B, not an argument --
+both trainers ran the same budget on the same GPU before the hand-written
+loops were declared superseded.
+
+Setup: B=1024 episodes per iteration, 60 iterations, seed 0, learner vs the
+tensor starter, identical coefficients (GAE 0.999/0.95, clip 0.2, entropy
+0.003, Adam 1e-4). `slurm/rl_ab.sh`, job 20053670 (arm A) / 20057312 (arm B).
+
+```
+arm  trainer                 steps        win@36  final win  final money  mean sps
+A    train_t.py (hand)       44,175,360    1.000     1.000       14,859     49,177
+B    rl/train.py (torchrl)   44,175,360    1.000     1.000       24,966     46,440
+```
+
+Arm B's curve: 0.014 (it 12) -> 0.47 (it 18) -> 0.92 (it 30) -> 1.000 (it 36
+on), against arm A's 1.000 from it 30. Same milestone, one-arm-later; the
+TorchRL arm then keeps improving the margin (24,966 vs 14,859 final money)
+where the hand arm plateaus at ~14k. Framework tax on throughput: -5.6%.
+
+Caveats, so this table is not over-read: money-vs-starter is the shaped
+training objective, not a ladder statement; the two arms share coefficients
+but not sampling RNG paths, so curves are not lane-comparable -- equality of
+the mathematics is established by the bit-exact gates in
+`rl/tensor_env/test_trl.py`, and this A/B only had to show the framework does
+not *lose* anything at equal budget. It gained instead.
+
+Two failures on the way, both now in the code as comments: the first arm-B
+attempt OOMed inside torchrl's GAE (`torch.stack` of obs + next.obs wanted
+26.7 GiB on top of the collector's two 29 GiB copies; fixed with
+`shifted=True` + buffer-reuse collection), and the first eval-chain attempt
+died printing checkpoint metadata (`global_step` is the rl-baseline key,
+torchrl checkpoints carry `iter`). The dependency-chained eval job followed a
+failed parent and had to be cancelled -- `afterok` on an OOM-bound job wastes
+a queue slot, nothing more.
+
+The acceptance chain then ran end to end on the arm-B checkpoint: export as
+`pitchfork` (numpy agent + weights.npz) -> ten-opponent roster, 48 seeds a
+side, 96 episodes per pair (`slurm/rl_eval.sh` with RUN/CKPT/NAME env vars,
+job 20059228, 2.5 minutes at -j 32):
+
+```
+opponent            games    win                 margin
+random                96   100.0% [96.2,100.0]  +20,615   BEATEN
+starter               96   100.0% [96.2,100.0]  +16,562   BEATEN
+ghost-89825016-0      96    44.8% [35.2, 54.7]   -3,158   unresolved
+ghost-89830307-0      96    40.6% [31.3, 50.6]   -3,492   unresolved
+barnyard/enhanced/ledger_lena/spar x2/w49        0.0%     LOST
+```
+
+2/10 beaten. This checkpoint is the A/B artifact -- plain PPO against the
+starter, no BC, no curriculum, no league -- so what this table certifies is
+the pipeline, not the agent: a torchrl checkpoint now flows unmodified
+through export -> roster -> scorecard (`rl/eval_summary.py --run trl-ab`).
+The closed line needed BC + curriculum + league to reach its 4/10; those are
+the hooks to wire into `rl/train.py` next (the league's opponents are already
+representable on-device via `trl_env.FrozenPolicyOpponent`).

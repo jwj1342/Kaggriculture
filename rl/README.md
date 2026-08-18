@@ -26,8 +26,11 @@ CPU 线与 GPU 线的二元性由 TorchRL 消掉：`EpisodeT` 本就是设备无
 同名同序（checkpoint 键 `model` + `hidden`，`export_agent.py`、weights.npz
 八数组契约、`tools/package.sh` 提交管线原样可用）；`TwoHeadMasked` 分布与
 手写掩码双头数学逐位一致（`test_trl.py` 门 (i)）。`train_ppo.py` 与
-`tensor_env/train_t.py` 是被取代的两代手写循环，暂留作 A/B 对照臂，
-A/B 通过后退役。
+`tensor_env/train_t.py` 是被取代的两代手写循环。A/B 已跑（2026-08-18，
+`docs/RUNS.md`）：同预算 44.2M 步双臂均至对 starter win 1.000，TorchRL 臂
+终段 money 更高（24,966 vs 14,859）、吞吐仅 -5.6%。按 §11 惯例代码保留：
+`train_t.py` 继续作 A/B 对照臂（`slurm/rl_ab.sh`），`train_ppo.py` 及其
+采集栈（`episode_pool.py`/`vec_env.py`）是第一代的记录。
 
 > ## 终局判词（2026-08-15，给后来者——先读这个）
 >
