@@ -28,26 +28,37 @@ cd "$PROJECT"
 source "$PROJECT/setup_env.sh"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 
+export PYTORCH_ALLOC_CONF=expandable_segments:True
+
 B=${B:-1024}
 ITERS=${ITERS:-60}
 SEED=${SEED:-0}
+ARMS=${ARMS:-hand trl}          # ARMS=trl sbatch ... reruns one arm only
 OUT=rl/runs/trl-ab
 mkdir -p "$OUT"
 
-echo "host=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) job=${SLURM_JOB_ID} B=$B iters=$ITERS seed=$SEED"
+echo "host=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) job=${SLURM_JOB_ID} B=$B iters=$ITERS seed=$SEED arms=$ARMS"
 
-echo "=== arm A: hand-written PPO (train_t.py) ==="
-python rl/tensor_env/train_t.py --device cuda --B "$B" --iters "$ITERS" \
-    --seed "$SEED" --obs-half \
-    --log "$OUT/hand.csv" --save "$OUT/hand.pt"
-
-echo "=== arm B: TorchRL trainer (rl/train.py) ==="
-python rl/train.py --device cuda --B "$B" --iters "$ITERS" \
-    --seed "$SEED" \
-    --log "$OUT/trl.csv" --save "$OUT/trl.pt"
+for arm in $ARMS; do
+    case $arm in
+    hand)
+        echo "=== arm A: hand-written PPO (train_t.py) ==="
+        python rl/tensor_env/train_t.py --device cuda --B "$B" --iters "$ITERS" \
+            --seed "$SEED" --obs-half \
+            --log "$OUT/hand.csv" --save "$OUT/hand.pt"
+        ;;
+    trl)
+        echo "=== arm B: TorchRL trainer (rl/train.py) ==="
+        python rl/train.py --device cuda --B "$B" --iters "$ITERS" \
+            --seed "$SEED" \
+            --log "$OUT/trl.csv" --save "$OUT/trl.pt"
+        ;;
+    esac
+done
 
 echo "=== curves (iter, win, money) ==="
 for arm in hand trl; do
+    [ -f "$OUT/$arm.csv" ] || continue
     echo "--- $arm"
     awk -F, 'NR==1 || NR%6==2 {print $1", win="$4", money="$5}' "$OUT/$arm.csv"
 done

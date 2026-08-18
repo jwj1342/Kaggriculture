@@ -137,8 +137,13 @@ def train(args, log_fn=None):
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
         v_hidden=args.v_hidden, device=dev)
+    # shifted=True: value of obs and next-obs in ONE forward over T+1 steps
+    # instead of torch.stack-ing two full copies of the batch (a 26.7 GiB
+    # allocation at B=1024 that OOMed an 80 GB H100); valid because a batch
+    # is whole episodes -- obs[t+1] == next.obs[t] except at the terminal,
+    # where the value is masked by `terminated` anyway.
     adv_mod = GAE(gamma=args.gamma, lmbda=args.lam, value_network=critic,
-                  average_gae=False)
+                  average_gae=False, shifted=True)
     loss_mod = make_loss(args.algo, actor, critic, args).to(dev)
     optim = torch.optim.Adam(loss_mod.parameters(), lr=args.lr, eps=1e-5)
 
@@ -148,9 +153,14 @@ def train(args, log_fn=None):
     # (asserted bit-exactly in rl/tensor_env/test_trl.py gate (ii))
     ep_len = args.steps - 1
     frames = args.B * ep_len
-    collector = SyncDataCollector(
-        env, actor, frames_per_batch=frames,
-        total_frames=frames * args.iters, device=dev)
+    col_kw = dict(frames_per_batch=frames, total_frames=frames * args.iters,
+                  device=dev)
+    if "return_same_td" in inspect.signature(SyncDataCollector.__init__).parameters:
+        # hand back the internal buffer instead of a clone (halves on-device
+        # residency); safe because each batch is fully consumed -- the replay
+        # buffer copies the keys it keeps -- before the next collect overwrites it
+        col_kw["return_same_td"] = True
+    collector = SyncDataCollector(env, actor, **col_kw)
     rb = ReplayBuffer(storage=LazyTensorStorage(frames, device=dev),
                       sampler=SamplerWithoutReplacement(),
                       batch_size=frames // args.minibatches)
