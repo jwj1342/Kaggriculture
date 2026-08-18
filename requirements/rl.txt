@@ -1,0 +1,13 @@
+# The rl/ + rl/tensor_env/ training/experimentation stack. Optional -- no
+# agent, tool or test outside rl/ imports any of this.
+#
+# Personal machine (CPU is fine; CUDA picked up automatically if present):
+#
+#     pip install -r requirements/rl.txt
+#
+# On the Vulcan cluster use the wheelhouse instead (inside a job/salloc,
+# never on the login node):
+#
+#     pip install --no-index torch
+
+torch>=2.5
