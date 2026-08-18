@@ -17,7 +17,7 @@
 # gets 10-30 minutes of work -- short tasks backfill into idle time far more
 # easily than one long job, which is the whole point of sharding here.
 #
-#SBATCH --account=aip-zhouyang
+#SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-tourney-array
 #SBATCH --time=03:00:00
 #SBATCH --cpus-per-task=64

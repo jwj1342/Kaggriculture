@@ -4,7 +4,7 @@
 #   sbatch slurm/tournament.sh panel --lib agents/lib --seeds 8
 #   sbatch slurm/tournament.sh roundrobin --from-run latest --top 24 --seeds 24
 #
-#SBATCH --account=aip-zhouyang
+#SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-tourney
 #SBATCH --time=06:00:00
 #SBATCH --cpus-per-task=32

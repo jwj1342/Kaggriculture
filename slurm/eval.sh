@@ -4,7 +4,7 @@
 #   sbatch slurm/eval.sh h2h agents/v2.py agents/barnyard.py --seeds 192
 #   sbatch slurm/eval.sh pool agents/v2.py agents/barnyard.py --vs starter --seeds 96
 #
-#SBATCH --account=aip-zhouyang
+#SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-eval
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=32
