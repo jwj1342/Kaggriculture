@@ -210,11 +210,14 @@ def _boards(ep, player, out):
     buf[:, :, 22:24].zero_()
 
     out.copy_(buf)                                           # one int8 -> f32 pass
-    out[:, :, 10].div_(6.0)
-    out[:, :, 12].div_(3.0)
-    out[:, :, 13].div_(2.0)
-    out[:, :, 14].div_(12.0)
-    out[:, :, 21].div_(2.0)
+    # Fractional channels: divide in float64 and cast, exactly the reference's
+    # arithmetic. A float32 in-place divide was bit-exact on CPU (proved over
+    # the int8 domain at import) but CUDA's f32 division differs by 1 ulp at
+    # 5/12 (measured: 0.4166667 vs 0.41666666) -- device libm is not the
+    # oracle, the reference's double-then-cast is. Cost is negligible: five
+    # (B,2,100) planes.
+    for ch, d in ((10, 6.0), (12, 3.0), (13, 2.0), (14, 12.0), (21, 2.0)):
+        out[:, :, ch].copy_(buf[:, :, ch].to(torch.float64).div_(d))
 
     fxy = ep.farmer_xy.index_select(1, perm).to(i64)
     fidx = fxy[..., 1] * n + fxy[..., 0]
