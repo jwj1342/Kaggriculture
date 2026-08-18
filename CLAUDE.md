@@ -16,7 +16,9 @@ Vulcan; do not add cluster-only assumptions to anything outside `slurm/`.
 
 Dependencies are in `requirements/`, split by install semantics:
 `base.txt` (normal), `nodeps.txt` (`--no-deps`), `lock.txt` (generated audit
-snapshot, cluster-specific). `kaggle-environments` is `--no-deps` on purpose —
+snapshot, cluster-specific), `rl.txt` (optional, `rl/` training only —
+torch is pinned `~=2.10.0` because the wheelhouse tensordict requires it;
+install inside a job via `sbatch slurm/rl_setup.sh`). `kaggle-environments` is `--no-deps` on purpose —
 its 19 declared dependencies include `open_spiel`, which fails to build; only
 three are actually needed. Import errors for *other* environments (`lux_ai_s3`,
 `halite`, `open_spiel_env`) print to stderr and are expected.
@@ -96,6 +98,9 @@ regenerate. Keep the axes orthogonal.
 Never run heavy work on the login node. One episode (~2.7 s) is fine; tournaments
 go through Slurm. CPU-only — **never request a GPU**; the workload is
 single-threaded Python and 42% of it is `deepcopy` inside the framework.
+The one exception is `rl/` training: the batched tensor engine is real GPU
+work (`slurm/rl_ab.sh`; rationale in `rl/tensor_env/DESIGN.md` §5). Evaluation
+(`tools/eval.py`, `slurm/rl_eval.sh`) always runs the reference engine on CPU.
 
 Shard anything big: `sbatch --array=0-47 --cpus-per-task=32 --mem=40G
 --time=00:30:00 slurm/tournament_array.sh ...` then
@@ -118,6 +123,11 @@ registering a manifest concurrently corrupted it (recovered in full — see
 -> `tools/tournament.py` -> `data/arena.sqlite` -> `tools/leaderboard.py` ->
 `docs/LEADERBOARD.md` + `site/leaderboard.html`. README "How it fits together"
 has the diagram.
+
+`rl/` is the TorchRL training line (own README): byte-verified engine ports +
+`rl/train.py` (swappable losses, `--device` is the CPU/GPU switch). Its
+checkpoints flow through `rl/export_agent.py` into the same eval/submit
+pipeline as every other agent.
 
 `agents/spar/` is the same generator on the `ladder` plan: opponents
 reconstructed from real ladder replays. Keep it in every field — before it

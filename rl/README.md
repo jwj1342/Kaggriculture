@@ -1,8 +1,33 @@
-# rl/ — 强化学习基线
+# rl/ — 强化学习线
 
-`rl-baseline` 分支的实验线：一个每回合读取棋盘状态、在 720 步时序上学习的
-模型驱动 agent。本文件是初版方案的全部选择及其理由；代码是方案的落地。
+每回合读取棋盘状态、在 720 步时序上学习的模型驱动 agent。这条线经历了两代：
+`rl-baseline`（手写 CPU PPO，按收敛证据收口，判词与复盘见下）与 `tensorize`
+（GPU 批量张量引擎，`tensor_env/README.md`）；2026-08-18 两者并入 `main`，
+以 **TorchRL 作为统一训练框架**粘合。本文其余部分是初版方案的全部选择及其
+理由，以及它的复盘——**§13 的结构性结论至今成立**，统一层解决的是工程形态
+（一套引擎、一套策略、可换算法），不是那面结构的墙。
 **这条线是研究性质的，一切最终验收仍走 `docs/VALIDATING.md` 的规矩。**
+
+## TorchRL 统一层（2026-08-18 起）
+
+CPU 线与 GPU 线的二元性由 TorchRL 消掉：`EpisodeT` 本就是设备无关的批量
+引擎，包一层 `EnvBase`（`tensor_env/trl_env.py`，VMAS/Brax 同款模式）后，
+`--device cpu/cuda` 就是全部切换。采集是 TorchRL collector，优势估计是
+`GAE`，更新是可替换的 loss 模块——**换算法 = 换 `--algo`**（ppo/a2c；往
+`rl/train.py` 的 `_LOSSES` 加一行即是第三个）。
+
+    pip install --no-index -r requirements/rl.txt  # 作业内装；torch 锁 ~=2.10.0（wheelhouse tensordict 的硬要求）
+    python rl/tensor_env/test_trl.py               # 四道门：策略/环境/GAE 逐位对齐 + 双算法冒烟（CPU，分钟级）
+    python rl/train.py --device cuda --B 1024 --iters 60     # A/B 规模；--device cpu 同一份代码
+    sbatch slurm/rl_ab.sh                                    # 手写 vs TorchRL 同预算 A/B（本仓库唯一 GPU 作业）
+    RUN=trl-ab CKPT=trl.pt NAME=<name> sbatch slurm/rl_eval.sh   # 导出 numpy agent + 十对手花名册 h2h
+
+组件对应：`tensor_env/trl_policy.py` 的 ActorNet/CriticNet 与 `policy_t.py`
+同名同序（checkpoint 键 `model` + `hidden`，`export_agent.py`、weights.npz
+八数组契约、`tools/package.sh` 提交管线原样可用）；`TwoHeadMasked` 分布与
+手写掩码双头数学逐位一致（`test_trl.py` 门 (i)）。`train_ppo.py` 与
+`tensor_env/train_t.py` 是被取代的两代手写循环，暂留作 A/B 对照臂，
+A/B 通过后退役。
 
 > ## 终局判词（2026-08-15，给后来者——先读这个）
 >

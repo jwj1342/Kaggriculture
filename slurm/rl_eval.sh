@@ -4,6 +4,7 @@
 #
 #   sbatch slurm/rl_eval.sh                   # default run m1, 48 seeds
 #   RUN=m1 SEEDS=96 sbatch slurm/rl_eval.sh   # heavier pass
+#   RUN=trl-ab CKPT=trl.pt NAME=pitchfork sbatch slurm/rl_eval.sh   # torchrl run
 #
 # Results land in rl/runs/<run>/eval/<opponent-basename>.json plus the stdout
 # tables in the job log. The verdict lines from tools/eval.py (Wilson interval
@@ -27,9 +28,10 @@ export KG_FAST_ENV=1
 RUN=${RUN:-m1}
 SEEDS=${SEEDS:-48}
 CKPT=${CKPT:-latest.pt}
-AGENT="rl/out/groundhog/main.py"
+NAME=${NAME:-groundhog}
+AGENT="rl/out/${NAME}/main.py"
 
-python rl/export_agent.py --ckpt "rl/runs/${RUN}/${CKPT}" --name groundhog
+python rl/export_agent.py --ckpt "rl/runs/${RUN}/${CKPT}" --name "${NAME}"
 mkdir -p "rl/runs/${RUN}/eval"
 
 # Ten local opponents spanning every strength band this repo fields:

@@ -17,7 +17,7 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
 
 ### → 离开了几天？读 [`docs/ROADMAP.md`](docs/ROADMAP.md)，它开头就讲哪些结论被推翻了。
 
-### → 想跑几万倍速的批量对局、或在 GPU 上训练？读 [`rl/tensor_env/README.md`](rl/tensor_env/README.md)（`tensorize` 分支）—— 与竞赛引擎逐字节一致的张量引擎，单卡 22.8 万步/秒，PPO 18 分钟学会打赢基线；RL 线的复盘在 `rl-baseline` 分支的 `rl/README.md`。
+### → 想跑几万倍速的批量对局、或训练 RL agent？读 [`rl/README.md`](rl/README.md) —— 与竞赛引擎逐字节一致的张量引擎（单卡 22.8 万步/秒，[`rl/tensor_env/README.md`](rl/tensor_env/README.md)）+ TorchRL 统一训练层（`rl/train.py`，`--algo` 换算法，`--device` 换 CPU/GPU）；第一代手写线的复盘也在那里。
 
 ### → 只想知道榜上跑的是什么？读 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 场上两个提交对应本地哪两个、怎么一模一样地重建、以及为什么现在不要提交。
 

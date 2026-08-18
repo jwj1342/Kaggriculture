@@ -35,8 +35,12 @@ fi
 
 [ -f "$SRC/main.py" ] || { echo "error: $SRC/main.py not found" >&2; exit 1; }
 
-cp "$SRC"/*.py "$OUT"/
-tar -czf "$OUT/submission.tar.gz" -C "$SRC" $(cd "$SRC" && ls *.py)
+# .py plus data files an RL export needs beside them (weights.npz); a tar
+# without the weights would make the agent PASS every turn -- the episode
+# check below catches it, but only because the files travel here.
+FILES=$(cd "$SRC" && ls *.py *.npz 2>/dev/null)
+for f in $FILES; do cp "$SRC/$f" "$OUT"/; done
+tar -czf "$OUT/submission.tar.gz" -C "$SRC" $FILES
 
 # --- verify the archive is loadable the way Kaggle will load it -------------
 TMP="$(mktemp -d)"

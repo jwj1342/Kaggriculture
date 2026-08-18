@@ -5,7 +5,9 @@
 > 与竞赛参考引擎**逐字节一致**（CPU 与 CUDA 双设备验证），单张 L40S 每秒推进
 > **22.8 万对局步**，GPU 端 PPO **18 分钟**从零学会打赢基线。
 
-**分支状态：B0–B4 七个阶段全部完成并过门**（2026-08-18）。设计宪法与逐阶段
+**B0–B4 七个阶段全部完成并过门，2026-08-18 与 `rl-baseline` 一起并入
+`main`**；其上是 TorchRL 统一层（本目录 `trl_env.py`/`trl_policy.py`，训练
+入口 `rl/train.py`，见 `rl/README.md`「TorchRL 统一层」）。设计宪法与逐阶段
 数字见 `DESIGN.md`；本文是给合作者的入口：架构、每个文件是什么、怎么用、
 怎么验证。**没有任何 Slurm/集群假设**——笔记本 CPU 能跑全部功能与全部门。
 
@@ -38,8 +40,11 @@ engine_t.py      批量张量引擎 EpisodeT (B 局 lockstep, CPU/CUDA 同一代
    │      ⇑ test_b4c.py (i)：与 CPU 参照 obs.net_worth 逐位相等
    ├─ opponents_t.py    张量态 starter 对手（(B,) gather 直取决策）
    │      ⇑ test_b4a.py：与参考 starter 逐动作一致
-   └─ policy_t.py + train_t.py   同驻 GPU 的 PPO 训练闭环
-          ⇑ test_b4c.py (iii)：学习曲线门
+   ├─ policy_t.py + train_t.py   同驻 GPU 的手写 PPO 闭环（A/B 对照臂）
+   │      ⇑ test_b4c.py (iii)：学习曲线门
+   └─ trl_env.py + trl_policy.py   TorchRL 统一层：EnvBase 批量环境 + 双头掩码分布
+          ⇑ test_trl.py：策略/环境/GAE 与手写路径逐位对齐 + 双算法训练冒烟
+          （训练入口 rl/train.py，loss 可替换）
 ```
 
 每个 `⇑` 都是全状态/全向量的**精确判等**（`verify.first_diff`、
@@ -60,7 +65,10 @@ engine_t.py      批量张量引擎 EpisodeT (B 局 lockstep, CPU/CUDA 同一代
 | `potential_t.py` | `net_worth_t(ep,p)→(B,)f64` | 与 `rl/obs.py::net_worth` 同语义：基准价、土地记账、终局衰减、流动性溢价 |
 | `opponents_t.py` | `starter_actions` / `starter_indices` | 训练路径用索引形式；文档化的近似：market 头单选（参考 starter 偶发同回合买+卖） |
 | `policy_t.py` | `PolicyT`：actor 4867→512→256→双头（掩码 −1e9），critic 独立 4867→256→256→1 | 与 rl-baseline `policy.py` 同构，可 `--hidden` |
-| `train_t.py` | 同驻设备的采集 + PPO（GAE γ=0.999 λ=0.95、clip 0.2、独立 critic、熵 0.003） | 轨迹缓冲在设备上，每步零宿主往返 |
+| `train_t.py` | 同驻设备的采集 + 手写 PPO（GAE γ=0.999 λ=0.95、clip 0.2、独立 critic、熵 0.003） | 被 `rl/train.py`（TorchRL）取代，保留作 A/B 对照臂（`slurm/rl_ab.sh`） |
+| `trl_env.py` | **TorchRL 统一层**：`KGTensorEnv(EnvBase)`，batch_size=[B] 的批量环境（VMAS/Brax 模式），对手内置（starter / 冻结权重 argmax） | 语义 = `train_t.collect` 逐位复刻；完整局 = `episode_steps - 1` 步、lockstep 终局、全局 reset；`money`/`opp_money` 随观测携带 |
+| `trl_policy.py` | `ActorNet`/`CriticNet`（与 `PolicyT` 同名同序参数，checkpoint/导出契约不变）+ `TwoHeadMasked` 联合分布 | 掩码双头数学与手写逐位一致；A2C 的解析熵经 `HAS_ENTROPY` 注册 |
+| `test_trl.py` | 统一层的四道门 | (i) 策略逐位 (ii) 环境逐位 (iii) GAE (iv) specs + ppo/a2c 冒烟 |
 | `bench.py` / `profile_t.py` | 引擎对比基准（含双卡 map-reduce 原型）/ 逐阶段剖析器 | 数字见 §5 |
 | `test_*.py`, `verify_t.py` | 验收门 | 见 §4 |
 | `adapter.py`, `test_fused.py` | rl-baseline 继承的 engine_np gym 适配与融合特征门 | — |
