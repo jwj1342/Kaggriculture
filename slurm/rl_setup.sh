@@ -4,7 +4,7 @@
 #
 #   sbatch slurm/rl_setup.sh
 #
-#SBATCH --account=aip-zhouyang
+#SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-rl-setup
 #SBATCH --time=00:15:00
 #SBATCH --cpus-per-task=4

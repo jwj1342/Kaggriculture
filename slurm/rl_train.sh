@@ -6,7 +6,7 @@
 #
 #   sbatch slurm/rl_train.sh --run m1 --n-envs 28
 #
-#SBATCH --account=aip-zhouyang
+#SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-rl-train
 #SBATCH --time=00:55:00
 #SBATCH --cpus-per-task=32

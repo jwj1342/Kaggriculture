@@ -4,7 +4,7 @@
 #
 #   RUN=m2 sbatch slurm/rl_bc.sh
 #
-#SBATCH --account=aip-zhouyang
+#SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-rl-bc
 #SBATCH --time=00:40:00
 #SBATCH --cpus-per-task=32

@@ -9,7 +9,7 @@
 # tables in the job log. The verdict lines from tools/eval.py (Wilson interval
 # vs 50%) are what counts -- README §9.
 #
-#SBATCH --account=aip-zhouyang
+#SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-rl-eval
 #SBATCH --time=00:55:00
 #SBATCH --cpus-per-task=32
