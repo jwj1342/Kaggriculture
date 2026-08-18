@@ -173,7 +173,11 @@ def train(args, log_fn=None):
         adv = td["advantage"]
         td["advantage"] = (adv - adv.mean()) / (adv.std() + 1e-8)
 
-        flat = td.reshape(-1)
+        # only what the loss reads: dropping next.observation / logits halves
+        # the replay copy (at B=1024 the full batch is ~29 GB of float32 obs)
+        flat = td.reshape(-1).select(
+            "observation", "farmer_mask", "market_mask", "action",
+            "sample_log_prob", "advantage", "value_target")
         stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0}
         n_mb = 0
         for _ in range(args.epochs):
