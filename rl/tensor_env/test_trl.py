@@ -12,6 +12,11 @@
        fixed-length batches (allclose; the vectorised form reorders floats).
  (iv)  check_env_specs, then a 2-iteration train smoke for --algo ppo and
        --algo a2c: finite losses, records shaped as promised.
+ (v)   the old line's hooks: OpponentPool curriculum advance + FIFO
+       attribution; then an end-to-end chain -- BC-style --init-from with
+       --freeze-policy-until (actor bit-identical after a critic-only
+       iteration), league snapshots on disk, --resume continuing iteration
+       count, seed stream, records and pool state.
 """
 
 import os
@@ -178,10 +183,85 @@ def gate_train_smoke():
               f"win {records[-1]['win']:.2f}  PASS")
 
 
+def gate_hooks():
+    import tempfile
+
+    from trl_pool import OpponentPool
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # a second curriculum stage that is a frozen random policy on disk
+        torch.manual_seed(1)
+        opp_net = ActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16)
+        opp_npz = os.path.join(tmp, "stage2.npz")
+        opp_net.export_npz(opp_npz)
+
+        pool = OpponentPool(["starter", opp_npz], "cpu", advance_at=0.85,
+                            min_records=3, league=True,
+                            snapshot_dir=os.path.join(tmp, "snaps"), seed=0)
+        for _ in range(4):
+            pool.sample()
+        assert pool.record(0.9) is None and pool.record(0.9) is None  # < min_records
+        assert pool.record(0.99) == "advanced" and pool.stage == 1
+        assert pool.record(0.5) is None  # 4th pending belonged to stage 0's queue
+        pool.add_snapshot(opp_net, "snap-test")
+        assert os.path.exists(os.path.join(tmp, "snaps", "snap-test.npz"))
+        st = pool.state()
+        pool2 = OpponentPool(["starter", opp_npz], "cpu", league=True,
+                             snapshot_dir=os.path.join(tmp, "snaps"), seed=0)
+        pool2.load_state(st)
+        assert pool2.stage == 1 and len(pool2.snapshots) == 1
+        print("gate (v)   pool: curriculum advance, FIFO attribution, "
+              "snapshot round-trip  PASS")
+
+        sys.path.insert(0, _RL)
+        import train as trl_train
+
+        # BC-style init + frozen policy: the actor must not move
+        torch.manual_seed(2)
+        init_actor = ActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET)
+        init_critic = CriticNet(O.OBS_DIM)
+        init_ck = os.path.join(tmp, "bc_init.pt")
+        torch.save({"model": merged_state_dict(init_actor, init_critic)}, init_ck)
+        save = os.path.join(tmp, "run", "latest.pt")
+        args = trl_train.parse_args(
+            ["--device", "cpu", "--B", "4", "--iters", "1", "--steps", "96",
+             "--seed", "5", "--threads", "2", "--quiet",
+             "--init-from", init_ck, "--freeze-policy-until", "10000000",
+             "--opponents", "starter", "--league", "--snapshot-every", "1",
+             "--save", save])
+        (actor_net, critic_net), recs = trl_train.train(args, log_fn=lambda s: None)
+        for (k1, p1), (k2, p2) in zip(init_actor.state_dict().items(),
+                                      actor_net.state_dict().items()):
+            assert k1 == k2 and torch.equal(p1, p2.cpu()), f"actor moved: {k1}"
+        assert not torch.equal(init_critic.v1.weight,
+                               critic_net.v1.weight.cpu()), "critic did not train"
+        assert os.path.exists(os.path.join(tmp, "run", "best.pt"))
+        assert os.path.exists(os.path.join(tmp, "run", "snapshots", "snap-0000.npz"))
+        print("gate (v)   init-from + freeze: actor bit-identical, critic trained, "
+              "best.pt + snapshot written  PASS")
+
+        # resume: two more iterations continue the count, seeds and pool
+        args = trl_train.parse_args(
+            ["--device", "cpu", "--B", "4", "--iters", "3", "--steps", "96",
+             "--seed", "5", "--threads", "2", "--quiet",
+             "--opponents", "starter", "--league", "--snapshot-every", "1",
+             "--save", save, "--resume", save])
+        _, recs2 = trl_train.train(args, log_fn=lambda s: None)
+        assert [r["iter"] for r in recs2] == [0, 1, 2], recs2
+        ck = torch.load(save, map_location="cpu", weights_only=False)
+        assert ck["iter"] == 2 and len(ck["records"]) == 3
+        # the collector auto-resets after every batch, so the index moves
+        # strictly forward across the resume -- seeds are never reused
+        assert ck["episode_index"] >= 4 and ck["pool"] is not None
+        print("gate (v)   resume: iteration count, seed stream and pool state "
+              "continue  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
     gate_gae_parity()
     gate_env_parity()
     gate_train_smoke()
+    gate_hooks()
     print("test_trl: all gates PASS")

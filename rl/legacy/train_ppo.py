@@ -29,7 +29,7 @@ from collections import deque
 import numpy as np
 import torch
 
-_RL = os.path.dirname(os.path.abspath(__file__))
+_RL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _RL)
 
 from policy import Policy            # noqa: E402

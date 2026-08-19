@@ -68,6 +68,7 @@ engine_t.py      批量张量引擎 EpisodeT (B 局 lockstep, CPU/CUDA 同一代
 | `train_t.py` | 同驻设备的采集 + 手写 PPO（GAE γ=0.999 λ=0.95、clip 0.2、独立 critic、熵 0.003） | 被 `rl/train.py`（TorchRL）取代，保留作 A/B 对照臂（`slurm/rl_ab.sh`） |
 | `trl_env.py` | **TorchRL 统一层**：`KGTensorEnv(EnvBase)`，batch_size=[B] 的批量环境（VMAS/Brax 模式），对手内置（starter / 冻结权重 argmax） | 语义 = `train_t.collect` 逐位复刻；完整局 = `episode_steps - 1` 步、lockstep 终局、全局 reset；`money`/`opp_money` 随观测携带 |
 | `trl_policy.py` | `ActorNet`/`CriticNet`（与 `PolicyT` 同名同序参数，checkpoint/导出契约不变）+ `TwoHeadMasked` 联合分布 | 掩码双头数学与手写逐位一致；A2C 的解析熵经 `HAS_ENTROPY` 注册 |
+| `trl_pool.py` | 设备端对手池：课程晋级门 + league 自博弈快照（rl/league.py 与旧课程的移植，系数照抄） | FIFO 归因（collector 在 yield 前已为下一批 reset）；对手须张量可表示（starter / 导出权重） |
 | `test_trl.py` | 统一层的四道门 | (i) 策略逐位 (ii) 环境逐位 (iii) GAE (iv) specs + ppo/a2c 冒烟 |
 | `bench.py` / `profile_t.py` | 引擎对比基准（含双卡 map-reduce 原型）/ 逐阶段剖析器 | 数字见 §5 |
 | `test_*.py`, `verify_t.py` | 验收门 | 见 §4 |

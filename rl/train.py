@@ -44,7 +44,8 @@ import torch
 import actions as A
 import obs as O
 from trl_env import KGTensorEnv
-from trl_policy import build_actor_critic, merged_state_dict
+from trl_policy import (build_actor_critic, load_merged_state_dict,
+                        merged_state_dict)
 
 try:  # torchrl >= 0.12 name; SyncDataCollector is deprecated for removal in 0.13
     from torchrl.collectors import Collector as SyncDataCollector
@@ -82,6 +83,26 @@ def build_parser():
                     help="learner seat: fixed 0 / 1, or alternating per episode batch")
     ap.add_argument("--opponent", default="starter",
                     help='"starter", or a checkpoint .pt / weights .npz played greedily')
+    # -- the old line's hooks, ported (rl/README.md "TorchRL 统一层") ---------
+    ap.add_argument("--config", default="",
+                    help="YAML of defaults (keys = flag names); CLI still overrides")
+    ap.add_argument("--init-from", default="",
+                    help="load model weights before training (BC init / warm start)")
+    ap.add_argument("--resume", default="",
+                    help="checkpoint to continue from: model + optimizer + seed "
+                         "stream + curriculum/pool state (chained slurm jobs)")
+    ap.add_argument("--freeze-policy-until", type=int, default=0,
+                    help="critic-only updates for the first N lane-steps "
+                         "(protects a BC-cloned policy during value warm-up)")
+    ap.add_argument("--opponents", default="",
+                    help="comma-separated curriculum stages (starter and/or "
+                         "npz//pt paths); takes precedence over --opponent")
+    ap.add_argument("--advance-at", type=float, default=0.85,
+                    help="rolling-win gate to advance the curriculum stage")
+    ap.add_argument("--league", action="store_true",
+                    help="mix self-snapshots into the opponent pool (0.25 mass)")
+    ap.add_argument("--snapshot-every", type=int, default=5,
+                    help="league: snapshot the actor every N iterations")
     ap.add_argument("--steps", type=int, default=720, help="episode length")
     ap.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = leave)")
     ap.add_argument("--max-minutes", type=float, default=0.0,
@@ -90,6 +111,26 @@ def build_parser():
     ap.add_argument("--save", default="", help="checkpoint path after each iteration")
     ap.add_argument("--quiet", action="store_true")
     return ap
+
+
+def parse_args(argv=None):
+    """--config YAML becomes parser defaults, so the precedence is
+    built-in < config file < command line (the sota-implementations
+    convention, without the hydra dependency)."""
+    ap = build_parser()
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", default="")
+    known, _ = pre.parse_known_args(argv)
+    if known.config:
+        import yaml
+        with open(known.config) as f:
+            cfg = yaml.safe_load(f) or {}
+        cfg = {str(k).replace("-", "_"): v for k, v in cfg.items()}
+        unknown = sorted(set(cfg) - {a.dest for a in ap._actions})
+        if unknown:
+            ap.error(f"unknown keys in {known.config}: {unknown}")
+        ap.set_defaults(**cfg)
+    return ap.parse_args(argv)
 
 
 def _filtered(cls, **kw):
@@ -137,6 +178,22 @@ def train(args, log_fn=None):
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
         v_hidden=args.v_hidden, device=dev)
+    if args.init_from:
+        ck = torch.load(args.init_from, map_location="cpu", weights_only=False)
+        load_merged_state_dict(actor_net, critic_net,
+                               ck.get("model") or ck.get("state_dict") or ck)
+        log_fn(f"initialised from {args.init_from}")
+
+    pool = None
+    if args.opponents:
+        from trl_pool import OpponentPool
+        snap_dir = (os.path.join(os.path.dirname(os.path.abspath(args.save)),
+                                 "snapshots") if args.save else "")
+        pool = OpponentPool(
+            [s.strip() for s in args.opponents.split(",") if s.strip()],
+            dev, advance_at=args.advance_at, league=args.league,
+            snapshot_dir=snap_dir, seed=args.seed)
+        env.opponent_sampler = pool.sample
     # shifted=True: value of obs and next-obs in ONE forward over T+1 steps
     # instead of torch.stack-ing two full copies of the batch (a 26.7 GiB
     # allocation at B=1024 that OOMed an 80 GB H100); valid because a batch
@@ -147,13 +204,32 @@ def train(args, log_fn=None):
     loss_mod = make_loss(args.algo, actor, critic, args).to(dev)
     optim = torch.optim.Adam(loss_mod.parameters(), lr=args.lr, eps=1e-5)
 
+    start_it, total_steps, best_win = 0, 0, -1.0
+    prev_records = []
+    if args.resume and os.path.exists(args.resume):
+        ck = torch.load(args.resume, map_location=dev, weights_only=False)
+        load_merged_state_dict(actor_net, critic_net, ck["model"])
+        if ck.get("optim"):
+            optim.load_state_dict(ck["optim"])
+        env._episode_index = int(ck.get("episode_index", 0))
+        start_it = int(ck.get("iter", -1)) + 1
+        total_steps = int(ck.get("total_steps", 0))
+        best_win = float(ck.get("best_win", -1.0))
+        if pool is not None and ck.get("pool"):
+            pool.load_state(ck["pool"])
+        prev_records = list(ck.get("records", []))
+        log_fn(f"resumed {args.resume}: iter {start_it}, "
+               f"episode_index {env._episode_index}"
+               + (f", {pool.describe()}" if pool else ""))
+
     # the engine flags done while executing action index episode_steps - 2
     # (kaggle DONE semantics), so a complete episode is episode_steps - 1
     # actions and one collector batch == one batch of complete episodes
     # (asserted bit-exactly in rl/tensor_env/test_trl.py gate (ii))
     ep_len = args.steps - 1
     frames = args.B * ep_len
-    col_kw = dict(frames_per_batch=frames, total_frames=frames * args.iters,
+    col_kw = dict(frames_per_batch=frames,
+                  total_frames=frames * max(0, args.iters - start_it),
                   device=dev)
     if "return_same_td" in inspect.signature(SyncDataCollector.__init__).parameters:
         # hand back the internal buffer instead of a clone (halves on-device
@@ -165,19 +241,22 @@ def train(args, log_fn=None):
                       sampler=SamplerWithoutReplacement(),
                       batch_size=frames // args.minibatches)
 
-    records = []
+    records = list(prev_records)
     writer = fh = None
     if args.log:
         os.makedirs(os.path.dirname(os.path.abspath(args.log)), exist_ok=True)
-        fh = open(args.log, "w", newline="")
+        append = start_it > 0 and os.path.exists(args.log)
+        fh = open(args.log, "a" if append else "w", newline="")
         writer = csv.writer(fh)
-        writer.writerow(["iter", "steps", "sps", "win", "money", "opp_money",
-                         "pg", "vf", "ent", "sec"])
+        if not append:
+            writer.writerow(["iter", "steps", "sps", "win", "money", "opp_money",
+                             "pg", "vf", "ent", "sec"])
     t_start = time.time()
-    total_steps = 0
-    for it, td in enumerate(collector):
+    for i, td in enumerate(collector):
+        it = start_it + i
         t0 = time.time()
-        t_col = t0 - (records[-1]["_t_end"] if records else t_start)
+        t_col = t0 - (records[-1].get("_t_end", t_start) if records else t_start)
+        frozen = total_steps < args.freeze_policy_until
         with torch.no_grad():
             adv_mod(td)
         adv = td["advantage"]
@@ -196,7 +275,11 @@ def train(args, log_fn=None):
             for _ in range(args.minibatches):
                 mb = rb.sample()
                 loss_td = loss_mod(mb)
-                loss = sum(v for k, v in loss_td.items() if k.startswith("loss_"))
+                if frozen:  # value warm-up: the policy must not move
+                    loss = loss_td["loss_critic"]
+                else:
+                    loss = sum(v for k, v in loss_td.items()
+                               if k.startswith("loss_"))
                 optim.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(loss_mod.parameters(), 0.5)
@@ -219,7 +302,7 @@ def train(args, log_fn=None):
                + 0.5 * (money == omoney).float().mean()).item()
         n_steps = td.numel()
         total_steps += n_steps
-        sec = t_end - (records[-1]["_t_end"] if records else t_start)
+        sec = t_end - (records[-1].get("_t_end", t_start) if records else t_start)
         rec = {"iter": it, "steps": total_steps, "n_steps": n_steps,
                "sps": n_steps / sec, "win": win,
                "money": money.mean().item(), "opp_money": omoney.mean().item(),
@@ -229,6 +312,14 @@ def train(args, log_fn=None):
                f"win {win:5.3f}  money {rec['money']:>9,.0f}  opp {rec['opp_money']:>8,.0f}  "
                f"pg {stats['pg']:+.4f}  vf {stats['vf']:.4f}  ent {stats['ent']:.3f}  "
                f"{sec:5.1f}s (collect {t_col:4.1f}s)")
+        if pool is not None:
+            if pool.record(win) == "advanced":
+                log_fn(f"      curriculum advanced: {pool.describe()}")
+            elif it % 10 == 0:
+                log_fn(f"      pool: {pool.describe()}")
+            if (args.league and args.snapshot_every > 0
+                    and it % args.snapshot_every == 0):
+                pool.add_snapshot(actor_net, f"snap-{it:04d}")
         if writer:
             writer.writerow([it, total_steps, round(rec["sps"]), round(win, 4),
                              round(rec["money"]), round(rec["opp_money"]),
@@ -236,12 +327,23 @@ def train(args, log_fn=None):
                              round(stats["ent"], 4), round(sec, 2)])
             fh.flush()
         if args.save:
-            torch.save({"model": merged_state_dict(actor_net, critic_net),
-                        "hidden": list(args.hidden), "v_hidden": args.v_hidden,
-                        "algo": args.algo, "args": vars(args), "iter": it,
-                        "records": [{k: v for k, v in r.items() if k != "_t_end"}
-                                    for r in records]},
-                       args.save)
+            ckpt = {"model": merged_state_dict(actor_net, critic_net),
+                    "optim": optim.state_dict(),
+                    "hidden": list(args.hidden), "v_hidden": args.v_hidden,
+                    "algo": args.algo, "args": vars(args), "iter": it,
+                    "episode_index": env._episode_index,
+                    "total_steps": total_steps, "best_win": best_win,
+                    "pool": pool.state() if pool is not None else None,
+                    "records": [{k: v for k, v in r.items() if k != "_t_end"}
+                                for r in records]}
+            torch.save(ckpt, args.save)
+            # peak ratchet (the old line's best.pt): a policy can regress
+            # after its peak; the best checkpoint is what eval/export wants
+            if win > best_win:
+                best_win = win
+                ckpt["best_win"] = best_win
+                torch.save(ckpt, os.path.join(
+                    os.path.dirname(os.path.abspath(args.save)), "best.pt"))
         if args.max_minutes > 0 and (t_end - t_start) / 60.0 >= args.max_minutes:
             break
     collector.shutdown()
@@ -251,7 +353,7 @@ def train(args, log_fn=None):
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    args = parse_args(argv)
     _, records = train(args, log_fn=(lambda *a, **k: None) if args.quiet else None)
     if records:
         r = records[-1]

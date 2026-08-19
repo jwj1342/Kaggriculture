@@ -1,0 +1,10 @@
+# Arm B of the hand-vs-torchrl A/B (docs/RUNS.md 2026-08-18), standalone:
+#
+#     python rl/train.py --config rl/configs/ab.yaml --save rl/runs/trl-ab/trl.pt
+#
+# Keys are rl/train.py flag names; the command line still overrides.
+device: cuda
+B: 1024
+iters: 60
+seed: 0
+algo: ppo

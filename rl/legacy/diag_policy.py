@@ -11,7 +11,7 @@ from collections import Counter
 
 import numpy as np
 
-_RL = os.path.dirname(os.path.abspath(__file__))
+_RL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _RL)
 
 

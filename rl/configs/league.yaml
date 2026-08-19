@@ -1,0 +1,19 @@
+# Curriculum + self-play league on the tensor path:
+#
+#     sbatch slurm/rl_train.sh --config rl/configs/league.yaml \
+#         --save rl/runs/<run>/latest.pt --resume rl/runs/<run>/latest.pt
+#
+# `opponents` lists the ordered curriculum stages; each must be
+# tensor-representable -- "starter", or exported weights (npz / checkpoint),
+# e.g. "starter,rl/out/pitchfork/weights.npz". Scripted opponents (barnyard,
+# ghosts, spar) are NOT representable on device yet; they stay in the
+# kaggle-env eval world (slurm/rl_eval.sh). See rl/TODO.md.
+device: cuda
+B: 1024
+iters: 200
+algo: ppo
+seat: alt
+opponents: starter
+league: true
+snapshot_every: 5
+advance_at: 0.85

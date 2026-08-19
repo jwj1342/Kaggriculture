@@ -51,23 +51,37 @@ from trl_policy import ActorNet, NEG
 
 
 class FrozenPolicyOpponent:
-    """A past checkpoint / exported weights.npz played greedily (argmax over
-    masked logits) -- the behaviour of an exported numpy agent, so league
-    members and submissions are represented faithfully on device."""
+    """A past checkpoint / exported weights.npz / in-memory snapshot played
+    greedily (argmax over masked logits) -- the behaviour of an exported
+    numpy agent, so league members and submissions are represented
+    faithfully on device."""
 
     def __init__(self, path, device="cpu"):
         if path.endswith(".npz"):
-            w = dict(np.load(path))
-            sd = {"l1.weight": w["l1w"], "l1.bias": w["l1b"],
-                  "l2.weight": w["l2w"], "l2.bias": w["l2b"],
-                  "farmer.weight": w["fw"], "farmer.bias": w["fb"],
-                  "market.weight": w["mw"], "market.bias": w["mb"]}
-            sd = {k: torch.as_tensor(v) for k, v in sd.items()}
+            sd = self._npz_to_sd(dict(np.load(path)))
         else:
             ck = torch.load(path, map_location="cpu", weights_only=False)
             full = ck.get("model") or ck.get("state_dict")
             sd = {k: v for k, v in full.items()
                   if k.split(".")[0] in ("l1", "l2", "farmer", "market")}
+        self._build(sd, device)
+
+    @staticmethod
+    def _npz_to_sd(w):
+        sd = {"l1.weight": w["l1w"], "l1.bias": w["l1b"],
+              "l2.weight": w["l2w"], "l2.bias": w["l2b"],
+              "farmer.weight": w["fw"], "farmer.bias": w["fb"],
+              "market.weight": w["mw"], "market.bias": w["mb"]}
+        return {k: torch.as_tensor(v) for k, v in sd.items()}
+
+    @classmethod
+    def from_state_np(cls, arrays, device="cpu"):
+        """Build from ActorNet.state_np() arrays (league self-snapshots)."""
+        self = cls.__new__(cls)
+        self._build(cls._npz_to_sd(arrays), device)
+        return self
+
+    def _build(self, sd, device):
         h1, obs_dim = sd["l1.weight"].shape
         h2 = sd["l2.weight"].shape[0]
         net = ActorNet(obs_dim, sd["farmer.weight"].shape[0],
@@ -106,6 +120,9 @@ class KGTensorEnv(EnvBase):
         self.base_seed = int(base_seed)
         self.win_bonus = float(win_bonus)
         self.opp_fn = _make_opponent(opponent, self.device)
+        # when set (e.g. trl_pool.OpponentPool.sample), called at every reset
+        # to pick the next episode batch's opponent
+        self.opponent_sampler = None
         self._ep = None
         self._episode_index = 0
         self._prev_w = None
@@ -152,6 +169,8 @@ class KGTensorEnv(EnvBase):
                 "lanes terminate in lockstep; partial resets cannot happen"
         if self.alternate_seat and self._episode_index > 0:
             self.seat = 1 - self.seat
+        if self.opponent_sampler is not None:
+            self.opp_fn = self.opponent_sampler()
         seeds = [self.base_seed * 1_000_003 + self._episode_index * self.B + i
                  for i in range(self.B)]
         self._episode_index += 1

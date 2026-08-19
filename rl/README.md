@@ -21,6 +21,8 @@ CPU 线与 GPU 线的二元性由 TorchRL 消掉：`EpisodeT` 本就是设备无
     python rl/train.py --device cuda --B 1024 --iters 60     # A/B 规模；--device cpu 同一份代码
     sbatch slurm/rl_ab.sh                                    # 手写 vs TorchRL 同预算 A/B（本仓库唯一 GPU 作业）
     RUN=trl-ab CKPT=trl.pt NAME=<name> sbatch slurm/rl_eval.sh   # 导出 numpy agent + 十对手花名册 h2h
+    sbatch slurm/rl_train.sh --config rl/configs/league.yaml \
+        --save rl/runs/<run>/latest.pt --resume rl/runs/<run>/latest.pt   # 课程+league，链式短作业
 
 组件对应：`tensor_env/trl_policy.py` 的 ActorNet/CriticNet 与 `policy_t.py`
 同名同序（checkpoint 键 `model` + `hidden`，`export_agent.py`、weights.npz
@@ -30,7 +32,54 @@ CPU 线与 GPU 线的二元性由 TorchRL 消掉：`EpisodeT` 本就是设备无
 `docs/RUNS.md`）：同预算 44.2M 步双臂均至对 starter win 1.000，TorchRL 臂
 终段 money 更高（24,966 vs 14,859）、吞吐仅 -5.6%。按 §11 惯例代码保留：
 `train_t.py` 继续作 A/B 对照臂（`slurm/rl_ab.sh`），`train_ppo.py` 及其
-采集栈（`episode_pool.py`/`vec_env.py`）是第一代的记录。
+采集栈是第一代的记录（现居 `legacy/`）。
+
+### 目录结构（2026-08-19 整理）
+
+对齐 TorchRL 生态的通行形态——官方 sota-implementations 的「训练脚本 +
+yaml 配置」、BenchMARL 的 environments/models/conf 分包、ACEGEN 的
+package + 每算法 scripts/ 加 yaml——按我们的资产落成：
+
+    rl/
+      train.py             统一训练入口（--config yaml；--algo 换 loss）
+      export_agent.py      checkpoint → 纯 numpy 提交 agent
+      eval_summary.py      花名册计分卡
+      obs.py actions.py    观测/动作语义（导出契约：保持单文件可拷贝）
+      policy.py kg_env.py scripted.py league.py
+                           kaggle-env 世界的公共件（export 验证、BC 采集、
+                           天梯 league 仍在其上）
+      configs/             yaml 预设（ab.yaml / league.yaml）。优先级：
+                           内置默认 < --config < 命令行
+      tensor_env/          批量引擎 + 逐字节验证链 + TorchRL 层（见其
+                           README；验证链的文件关系是身份，不拆）
+      bc/                  行为克隆管线（collect_bc / collect_bc_barn /
+                           train_bc）→ 产物经 --init-from 进入统一训练器
+      legacy/              第一代 CPU 栈（train_ppo / episode_pool /
+                           vec_env / rollout / diag_policy / test_pool），
+                           按 ROADMAP §11 惯例保留，不在任何管线上
+      runs/ out/           训练产物 / 导出 agent（gitignore）
+
+没抄的东西也是决定：**不引 hydra**（wheelhouse 有，但 argparse + 单层
+yaml 已够，slurm 脚本靠 `"$@"` 透传）；**不按算法开目录**（loss 可换让
+一个 train.py 顶掉 sota-implementations 的一整排目录）。
+
+### 旧线资产的勾接状态
+
+| 旧线组件 | 状态 | 现在的入口 |
+|---|---|---|
+| BC 初始化（bc_init.pt） | ✅ 已勾接 | `--init-from`（`slurm/rl_bc.sh` 产出） |
+| 价值热身冻结 | ✅ 已勾接 | `--freeze-policy-until N`（门 (v)：冻结期 actor 逐位不动） |
+| 课程（0.85 晋级、50/50 混合） | ✅ 已勾接 | `--opponents a,b,c --advance-at`（`tensor_env/trl_pool.py`） |
+| league 自博弈（mirror/history/anchor = .25/.25/.50） | ✅ 简化移植 | `--league --snapshot-every`；快照=定期+封顶，非门控晋级+指纹去重 |
+| best.pt 峰值棘轮 | ✅ 已勾接 | `--save` 时自动写同目录 `best.pt` |
+| 断点续训（链式短作业） | ✅ 已勾接 | `--resume`（model+optim+种子流+池状态）；`slurm/rl_train.sh` |
+| 脚本对手当**训练**对手（barnyard/ghost/spar） | ❌ 已知边界 | 未张量化，只在 kaggle-env 评估世界；`TODO.md` #1 |
+| kaggle-env league（PFSP、指纹去重、晋级门） | 保留参考 | `league.py`——trl_pool 是它的设备端简化移植 |
+| 评估花名册 / 计分卡 | ✅ 原样服务 | `slurm/rl_eval.sh` + `eval_summary.py` |
+
+（「终局判词」以下是第一代的原始记录，保留当时的根目录路径；换算：
+train_ppo/episode_pool/vec_env/rollout/diag_policy → `legacy/`，
+collect_bc*/train_bc → `bc/`。）
 
 > ## 终局判词（2026-08-15，给后来者——先读这个）
 >
@@ -87,7 +136,7 @@ rl/rollout.py    M0 冒烟测试：随机合法策略跑完整局
 
 ```bash
 source setup_env.sh
-python rl/rollout.py --episodes 1 --opponent starter --seed 1000
+python rl/legacy/rollout.py --episodes 1 --opponent starter --seed 1000
 ```
 
 速度账：`KG_FAST_ENV` 打开后单局 ~2.6 s，即单核 ~275 步/s。框架开销

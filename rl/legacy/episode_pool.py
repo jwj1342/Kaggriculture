@@ -45,7 +45,7 @@ _CTX = mp.get_context("spawn")
 
 import numpy as np
 
-_RL = os.path.dirname(os.path.abspath(__file__))
+_RL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _RL not in sys.path:
     sys.path.insert(0, _RL)
 
