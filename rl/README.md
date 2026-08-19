@@ -81,6 +81,21 @@ yaml 已够，slurm 脚本靠 `"$@"` 透传）；**不按算法开目录**（los
 | kaggle-env league（PFSP、指纹去重、晋级门） | 保留参考 | `league.py`——trl_pool 是它的设备端简化移植 |
 | 评估花名册 / 计分卡 | ✅ 原样服务 | `slurm/rl_eval.sh` + `eval_summary.py` |
 
+### 平滑对抗梯度与残差策略（2026-08-19）
+
+0%/100% 胜率前沿上二元胜负信号梯度为零（复盘 §13④ 的"前沿处真信号为
+零"）。四个新旋钮，全部有 `test_trl.py` 门 (vi) 覆盖：
+
+| 旋钮 | 语义 | 备注 |
+|---|---|---|
+| `--margin-bonus w`（配 `--margin-scale`） | 终局 `r += w·tanh(资产差/scale)`——先学会"少输" | 刻意做成**终局有界**：逐步全零和（λ=1.0）是已归档负结果 |
+| `--handicap N` | 学习席开局多 N 金钱；配 `--opponents` 时每过胜率门减半、归零才晋级，新阶段重新带满 | 只作用于训练引擎；eval 永远跑参考引擎 |
+| `--opp-noise p` | 每 lane 以 p 概率把对手动作换成随机**合法**动作 | 削统治力不换对手身份 |
+| `--residual-base <npz/ckpt>` | 冻结先验 + 可训修正量（logit 相加），起点≈先验 | 导出模板/league 快照/CLI 都懂双网格式（快照若只带先验会静默错，已堵死并有门） |
+
+组合预设：`rl/configs/foothold.yaml`（residual over pitchfork + 课程
+starter→pitchfork + 让步阶梯 + league + margin + 噪声）。
+
 （「终局判词」以下是第一代的原始记录，保留当时的根目录路径；换算：
 train_ppo/episode_pool/vec_env/rollout/diag_policy → `legacy/`，
 collect_bc*/train_bc → `bc/`。）

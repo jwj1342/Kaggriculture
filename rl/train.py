@@ -103,6 +103,24 @@ def build_parser():
                     help="mix self-snapshots into the opponent pool (0.25 mass)")
     ap.add_argument("--snapshot-every", type=int, default=5,
                     help="league: snapshot the actor every N iterations")
+    # -- adversarial-gradient smoothing (docs: rl/README.md, RUNS 2026-08-19) --
+    ap.add_argument("--margin-bonus", type=float, default=0.0,
+                    help="terminal reward += w * tanh(money margin / scale): "
+                         "grades losses so a 0%%-win frontier still carries "
+                         "gradient (bounded on purpose -- per-step full "
+                         "zero-sum was a documented negative result)")
+    ap.add_argument("--margin-scale", type=float, default=30000.0)
+    ap.add_argument("--opp-noise", type=float, default=0.0,
+                    help="per lane, replace the opponent's action with a "
+                         "random legal one at this rate (dominance smoothing)")
+    ap.add_argument("--handicap", type=int, default=0,
+                    help="extra starting money for the learner seat; with "
+                         "--opponents the pool halves it at each win gate "
+                         "and only advances the stage at zero")
+    ap.add_argument("--residual-base", default="",
+                    help="frozen prior (npz / checkpoint): the actor learns "
+                         "logit corrections over it instead of a policy "
+                         "from scratch")
     ap.add_argument("--steps", type=int, default=720, help="episode length")
     ap.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = leave)")
     ap.add_argument("--max-minutes", type=float, default=0.0,
@@ -173,11 +191,14 @@ def train(args, log_fn=None):
         seat=0 if args.seat == "alt" else int(args.seat),
         alternate_seat=args.seat == "alt",
         episode_steps=args.steps, base_seed=args.seed,
-        opponent=args.opponent, win_bonus=args.win_bonus)
+        opponent=args.opponent, win_bonus=args.win_bonus,
+        margin_bonus=args.margin_bonus, margin_scale=args.margin_scale,
+        opp_noise=args.opp_noise, handicap=args.handicap)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
-        v_hidden=args.v_hidden, device=dev)
+        v_hidden=args.v_hidden, device=dev,
+        residual_base=args.residual_base)
     if args.init_from:
         ck = torch.load(args.init_from, map_location="cpu", weights_only=False)
         load_merged_state_dict(actor_net, critic_net,
@@ -192,7 +213,7 @@ def train(args, log_fn=None):
         pool = OpponentPool(
             [s.strip() for s in args.opponents.split(",") if s.strip()],
             dev, advance_at=args.advance_at, league=args.league,
-            snapshot_dir=snap_dir, seed=args.seed)
+            snapshot_dir=snap_dir, seed=args.seed, handicap=args.handicap)
         env.opponent_sampler = pool.sample
     # shifted=True: value of obs and next-obs in ONE forward over T+1 steps
     # instead of torch.stack-ing two full copies of the batch (a 26.7 GiB
@@ -316,8 +337,10 @@ def train(args, log_fn=None):
                f"pg {stats['pg']:+.4f}  vf {stats['vf']:.4f}  ent {stats['ent']:.3f}  "
                f"{sec:5.1f}s (collect {t_col:4.1f}s)")
         if pool is not None:
-            if pool.record(win) == "advanced":
-                log_fn(f"      curriculum advanced: {pool.describe()}")
+            ev = pool.record(win)
+            env.handicap = pool.handicap  # ladder takes effect at next reset
+            if ev:
+                log_fn(f"      curriculum {ev}: {pool.describe()}")
             elif it % 10 == 0:
                 log_fn(f"      pool: {pool.describe()}")
             if (args.league and args.snapshot_every > 0

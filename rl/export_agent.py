@@ -47,7 +47,13 @@ _W = dict(np.load(os.path.join(
 def _forward(x):
     h = np.maximum(0.0, _W["l1w"] @ x + _W["l1b"])
     h = np.maximum(0.0, _W["l2w"] @ h + _W["l2b"])
-    return _W["fw"] @ h + _W["fb"], _W["mw"] @ h + _W["mb"]
+    f, m = _W["fw"] @ h + _W["fb"], _W["mw"] @ h + _W["mb"]
+    if "d_l1w" in _W:  # residual export: frozen prior + learned correction
+        h = np.maximum(0.0, _W["d_l1w"] @ x + _W["d_l1b"])
+        h = np.maximum(0.0, _W["d_l2w"] @ h + _W["d_l2b"])
+        f = f + _W["d_fw"] @ h + _W["d_fb"]
+        m = m + _W["d_mw"] @ h + _W["d_mb"]
+    return f, m
 
 
 def _act(obs_dict):
@@ -121,11 +127,30 @@ def main():
     out_dir = os.path.join(args.out, args.name)
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    hidden = ck.get("hidden", [512, 256])
-    policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET, *hidden)
-    # strict=False: pre-value-net checkpoints lack v1/v2 keys, and the value
-    # net never ships anyway -- only the policy side is exported.
-    policy.load_state_dict(ck["model"], strict=False)
+    sd = ck["model"]
+    if any(k.startswith("base.") for k in sd):
+        # residual checkpoint (trl_policy.ResidualActor): ship both halves;
+        # the main.py template sums their logits at inference
+        import types
+        import numpy as np
+
+        def _half(p):
+            m = {"l1w": f"{p}l1.weight", "l1b": f"{p}l1.bias",
+                 "l2w": f"{p}l2.weight", "l2b": f"{p}l2.bias",
+                 "fw": f"{p}farmer.weight", "fb": f"{p}farmer.bias",
+                 "mw": f"{p}market.weight", "mb": f"{p}market.bias"}
+            return {k: sd[v].detach().cpu().float().numpy() for k, v in m.items()}
+
+        arrays = _half("base.")
+        arrays.update({f"d_{k}": v for k, v in _half("delta.").items()})
+        policy = types.SimpleNamespace(
+            export_npz=lambda path: np.savez(path, **arrays))
+    else:
+        hidden = ck.get("hidden", [512, 256])
+        policy = Policy(O.OBS_DIM, A.N_FARMER, A.N_MARKET, *hidden)
+        # strict=False: pre-value-net checkpoints lack v1/v2 keys, and the
+        # value net never ships anyway -- only the policy side is exported.
+        policy.load_state_dict(sd, strict=False)
     main_path = write_agent_dir(policy, out_dir)
     fn = get_last_callable(main_path)
     from kg_env import KGEnv

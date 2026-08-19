@@ -41,11 +41,17 @@ def _spec_name(spec):
 
 class OpponentPool:
     def __init__(self, specs, device, advance_at=0.85, ema=0.2, min_records=3,
-                 league=False, max_snapshots=8, snapshot_dir="", seed=0):
+                 league=False, max_snapshots=8, snapshot_dir="", seed=0,
+                 handicap=0):
         from trl_env import _make_opponent
         self.device = device
         self.anchors = [(_spec_name(s), _make_opponent(s, device)) for s in specs]
         self.stage = 0
+        # handicap ladder: each stage opens with `handicap` extra starting
+        # money for the learner; the win gate first steps the handicap down
+        # (halving, zero below 200) and only advances the stage at zero --
+        # "learn to beat the enemy while advantaged, then remove the crutch"
+        self.handicap0 = self.handicap = int(handicap)
         self.advance_at = float(advance_at)
         self.ema = float(ema)
         self.min_records = int(min_records)
@@ -100,11 +106,16 @@ class OpponentPool:
         self.wins[name] = win if prev is None else (1 - self.ema) * prev + self.ema * win
         self.counts[name] += 1
         cur_name = self.anchors[self.stage][0]
-        if (name == cur_name and self.stage + 1 < len(self.anchors)
-                and self.counts[name] >= self.min_records
+        if (name == cur_name and self.counts[name] >= self.min_records
                 and self.wins[name] >= self.advance_at):
-            self.stage += 1
-            return "advanced"
+            if self.handicap > 0:
+                self.handicap = self.handicap // 2 if self.handicap >= 400 else 0
+                self.counts[name] = 0  # re-earn the gate at the new handicap
+                return "handicap"
+            if self.stage + 1 < len(self.anchors):
+                self.stage += 1
+                self.handicap = self.handicap0
+                return "advanced"
         return None
 
     # -- self-play snapshots ---------------------------------------------------
@@ -125,12 +136,13 @@ class OpponentPool:
 
     def state(self):
         return {"stage": self.stage, "wins": dict(self.wins),
-                "counts": dict(self.counts),
+                "counts": dict(self.counts), "handicap": self.handicap,
                 "snapshots": [t for t, _ in self.snapshots]}
 
     def load_state(self, st):
         from trl_env import FrozenPolicyOpponent
         self.stage = min(int(st.get("stage", 0)), len(self.anchors) - 1)
+        self.handicap = int(st.get("handicap", self.handicap))
         self.wins = dict(st.get("wins", {}))
         self.counts = collections.Counter(st.get("counts", {}))
         self.snapshots = []
@@ -145,5 +157,6 @@ class OpponentPool:
     def describe(self):
         cur = self.anchors[self.stage][0]
         ws = " ".join(f"{n}:{w:.2f}" for n, w in sorted(self.wins.items()))
-        return (f"stage {self.stage + 1}/{len(self.anchors)} ({cur})  "
+        hc = f"  handicap {self.handicap}" if self.handicap0 else ""
+        return (f"stage {self.stage + 1}/{len(self.anchors)} ({cur}){hc}  "
                 f"snaps {len(self.snapshots)}  ema[{ws}]")

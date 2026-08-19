@@ -71,6 +71,60 @@ class ActorNet(nn.Module):
         np.savez(path, **self.state_np())
 
 
+def load_actor_state(path):
+    """Actor-half state dict from an exported weights.npz or a checkpoint."""
+    import numpy as np
+    if path.endswith(".npz"):
+        w = dict(np.load(path))
+        sd = {"l1.weight": w["l1w"], "l1.bias": w["l1b"],
+              "l2.weight": w["l2w"], "l2.bias": w["l2b"],
+              "farmer.weight": w["fw"], "farmer.bias": w["fb"],
+              "market.weight": w["mw"], "market.bias": w["mb"]}
+        return {k: torch.as_tensor(v) for k, v in sd.items()}
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    full = ck.get("model") or ck.get("state_dict") or ck
+    return {k: v for k, v in full.items()
+            if k.split(".")[0] in ("l1", "l2", "farmer", "market")}
+
+
+class ResidualActor(nn.Module):
+    """logits = frozen base prior + trainable delta (residual learning).
+
+    The delta net keeps ActorNet's 1e-4 head init, so at step 0 the combined
+    policy IS the prior up to noise -- training learns per-step corrections
+    instead of a policy from scratch. state_np()/export_npz() carry BOTH
+    nets (l1w.. for the base, d_l1w.. for the delta); the export template
+    and FrozenPolicyOpponent sum the two forwards, so the deployment and
+    league-snapshot contracts both hold.
+    """
+
+    def __init__(self, base_path, obs_dim, n_farmer, n_market,
+                 hidden1=512, hidden2=256):
+        super().__init__()
+        sd = load_actor_state(base_path)
+        h1 = sd["l1.weight"].shape[0]
+        h2 = sd["l2.weight"].shape[0]
+        self.base = ActorNet(obs_dim, n_farmer, n_market, h1, h2)
+        self.base.load_state_dict(sd)
+        self.base.requires_grad_(False)
+        self.base.eval()
+        self.delta = ActorNet(obs_dim, n_farmer, n_market, hidden1, hidden2)
+
+    def forward(self, x):
+        with torch.no_grad():
+            bf, bm = self.base(x)
+        df, dm = self.delta(x)
+        return bf + df, bm + dm
+
+    def state_np(self):
+        base = self.base.state_np()
+        return {**base, **{f"d_{k}": v for k, v in self.delta.state_np().items()}}
+
+    def export_npz(self, path):
+        import numpy as np
+        np.savez(path, **self.state_np())
+
+
 class CriticNet(nn.Module):
     """PolicyT's critic half; forward returns (..., 1) values (ValueOperator
     expects a trailing singleton)."""
@@ -141,17 +195,22 @@ except ImportError:  # torchrl absent: the raw nets are still importable
 
 
 def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
-                       v_hidden=256, device="cpu"):
+                       v_hidden=256, device="cpu", residual_base=""):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
 
     Construction order (actor layers, then critic layers) matches PolicyT's
     __init__, so under the same torch seed the initial weights are the same
-    draws train_t.py would have made.
+    draws train_t.py would have made. With residual_base set, the actor is
+    a ResidualActor over those frozen weights instead.
     """
     from tensordict.nn import TensorDictModule, InteractionType
     from torchrl.modules import ProbabilisticActor, ValueOperator
 
-    actor_net = ActorNet(obs_dim, n_farmer, n_market, hidden1, hidden2).to(device)
+    if residual_base:
+        actor_net = ResidualActor(residual_base, obs_dim, n_farmer, n_market,
+                                  hidden1, hidden2).to(device)
+    else:
+        actor_net = ActorNet(obs_dim, n_farmer, n_market, hidden1, hidden2).to(device)
     critic_net = CriticNet(obs_dim, v_hidden).to(device)
 
     logits_mod = TensorDictModule(
@@ -183,7 +242,12 @@ def load_merged_state_dict(actor_net, critic_net, sd):
     if "value.weight" in sd and "vout.weight" not in sd:
         sd["vout.weight"], sd["vout.bias"] = sd.pop("value.weight"), sd.pop("value.bias")
     actor_keys = {k for k, _ in actor_net.named_parameters()}
-    actor_net.load_state_dict({k: v for k, v in sd.items() if k in actor_keys})
+    actor_sd = {k: v for k, v in sd.items() if k in actor_keys}
+    if not actor_sd:
+        raise ValueError(
+            "checkpoint shares no actor keys with this network -- plain "
+            "checkpoints do not load into a ResidualActor (or vice versa)")
+    actor_net.load_state_dict(actor_sd, strict=len(actor_sd) == len(actor_keys))
     critic_keys = {k for k, _ in critic_net.named_parameters()}
     critic_sd = {k: v for k, v in sd.items() if k in critic_keys}
     critic_net.load_state_dict(critic_sd, strict=len(critic_sd) == len(critic_keys))

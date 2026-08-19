@@ -1,0 +1,26 @@
+# The smoothed-gradient run: residual policy over the pitchfork prior,
+# curriculum starter -> pitchfork with a handicap ladder, self-play league,
+# bounded terminal margin so losses are graded, light opponent noise.
+#
+#   sbatch slurm/rl_train.sh --config rl/configs/foothold.yaml \
+#       --save rl/runs/foothold/latest.pt --resume rl/runs/foothold/latest.pt
+#
+# Rationale (docs/RUNS.md 2026-08-19): at 0%/100% win frontiers the binary
+# outcome carries no gradient; margin grades the loss, the handicap ladder
+# starts each new opponent advantaged and removes the crutch stepwise, and
+# opponent noise dents dominance without changing identity. The residual
+# actor starts AT the prior (delta heads ~0) and learns corrections.
+device: cuda
+B: 1024
+iters: 240
+algo: ppo
+seat: alt
+residual_base: rl/out/pitchfork/weights.npz
+opponents: starter,rl/out/pitchfork/weights.npz
+league: true
+snapshot_every: 5
+advance_at: 0.85
+handicap: 800
+win_bonus: 1.5
+margin_bonus: 1.5
+opp_noise: 0.05

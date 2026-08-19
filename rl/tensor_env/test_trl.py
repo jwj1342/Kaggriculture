@@ -257,6 +257,110 @@ def gate_hooks():
               "continue  PASS")
 
 
+def gate_smoothing():
+    """(vi) adversarial-gradient smoothing + residual policy contracts."""
+    import tempfile
+
+    import numpy as np
+
+    from trl_env import FrozenPolicyOpponent, KGTensorEnv
+    from trl_policy import ResidualActor
+
+    env = KGTensorEnv(2, device="cpu", episode_steps=26, handicap=500)
+    td = env.reset()
+    assert torch.all(td["money"] == 3500) and torch.all(td["opp_money"] == 3000)
+    print("gate (vi)  handicap applied at reset (learner seat only)  PASS")
+
+    def run(margin, noise=0.0, steps=50, seed=13):
+        env = KGTensorEnv(2, device="cpu", episode_steps=steps, base_seed=seed,
+                          win_bonus=0.0, margin_bonus=margin,
+                          margin_scale=1000.0, opp_noise=noise)
+        td = env.reset()
+        rews, t = [], 0
+        while True:
+            td["action"] = torch.stack(
+                [_pick_legal(td["farmer_mask"], t),
+                 _pick_legal(td["market_mask"], t)], -1)
+            td = env.step(td)
+            rews.append(td["next", "reward"].squeeze(-1).clone())
+            if bool(td["next", "done"].all()):
+                return rews, td["next", "money"].clone(), td["next", "opp_money"].clone()
+            td = td["next"].exclude("reward")
+            t += 1
+
+    r0, m0, o0 = run(0.0)
+    r1, m1, o1 = run(2.0)
+    assert torch.equal(m0, m1) and torch.equal(o0, o1)
+    for a, b in zip(r0[:-1], r1[:-1]):
+        assert torch.equal(a, b)
+    expect = r0[-1].double() + 2.0 * torch.tanh((m0 - o0) / 1000.0)
+    assert torch.allclose(r1[-1].double(), expect, atol=1e-5), \
+        (r1[-1], expect)
+    print("gate (vi)  margin bonus: episodes identical until the terminal, "
+          "exact tanh term  PASS")
+
+    _, _, on = run(0.0, noise=1.0)
+    assert not torch.equal(on, o0), "opponent noise did not perturb play"
+    print("gate (vi)  opponent noise perturbs the episode (legal moves only)  PASS")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        torch.manual_seed(9)
+        prior = ActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16)
+        prior_npz = os.path.join(tmp, "prior.npz")
+        prior.export_npz(prior_npz)
+        res = ResidualActor(prior_npz, O.OBS_DIM, A.N_FARMER, A.N_MARKET, 24, 12)
+        x = torch.randn(8, O.OBS_DIM)
+        with torch.no_grad():
+            for head in (res.delta.farmer, res.delta.market):
+                head.weight.zero_()
+                head.bias.zero_()
+            rf, rm = res(x)
+            bf, bm = prior(x)
+        assert torch.equal(rf, bf) and torch.equal(rm, bm)
+
+        torch.manual_seed(10)
+        res2 = ResidualActor(prior_npz, O.OBS_DIM, A.N_FARMER, A.N_MARKET, 24, 12)
+        with torch.no_grad():
+            res2.delta.farmer.weight.mul_(1000.0)  # make the correction visible
+            res2.delta.market.weight.mul_(1000.0)
+            tf, tm = res2(x)
+        opp = FrozenPolicyOpponent.from_state_np(res2.state_np(), "cpu")
+        with torch.no_grad():
+            ff, fm = opp._logits(x)
+        assert torch.allclose(ff, tf, atol=1e-5) and torch.allclose(fm, tm, atol=1e-5)
+        W = res2.state_np()
+        xn = x[0].numpy()  # the export template's numpy math, line for line
+        h = np.maximum(0.0, W["l1w"] @ xn + W["l1b"])
+        h = np.maximum(0.0, W["l2w"] @ h + W["l2b"])
+        f, m = W["fw"] @ h + W["fb"], W["mw"] @ h + W["mb"]
+        h = np.maximum(0.0, W["d_l1w"] @ xn + W["d_l1b"])
+        h = np.maximum(0.0, W["d_l2w"] @ h + W["d_l2b"])
+        f = f + W["d_fw"] @ h + W["d_fb"]
+        m = m + W["d_mw"] @ h + W["d_mb"]
+        assert np.allclose(f, tf[0].numpy(), atol=1e-4)
+        assert np.allclose(m, tm[0].numpy(), atol=1e-4)
+    print("gate (vi)  residual: zero-delta == prior bit-exact; snapshot and "
+          "export math honour both halves  PASS")
+
+    from trl_pool import OpponentPool
+    with tempfile.TemporaryDirectory() as tmp:
+        torch.manual_seed(11)
+        opp_net = ActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16)
+        npz = os.path.join(tmp, "s2.npz")
+        opp_net.export_npz(npz)
+        pool = OpponentPool(["starter", npz], "cpu", advance_at=0.85,
+                            min_records=1, handicap=800, seed=1)
+        events = []
+        while "advanced" not in events:
+            pool.sample()
+            events.append(pool.record(0.95))
+            assert len(events) < 10, events
+        assert events == ["handicap"] * 3 + ["advanced"], events
+        assert pool.stage == 1 and pool.handicap == 800  # refilled per stage
+    print("gate (vi)  handicap ladder: 800 -> 400 -> 200 -> 0 then advance, "
+          "refill on the new stage  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -264,4 +368,5 @@ if __name__ == "__main__":
     gate_env_parity()
     gate_train_smoke()
     gate_hooks()
+    gate_smoothing()
     print("test_trl: all gates PASS")

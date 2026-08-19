@@ -54,46 +54,76 @@ class FrozenPolicyOpponent:
     """A past checkpoint / exported weights.npz / in-memory snapshot played
     greedily (argmax over masked logits) -- the behaviour of an exported
     numpy agent, so league members and submissions are represented
-    faithfully on device."""
+    faithfully on device. Residual exports (d_* arrays / base.+delta. keys)
+    are summed exactly like the export template does -- a snapshot of a
+    ResidualActor must play the combined policy, never just the prior."""
 
     def __init__(self, path, device="cpu"):
         if path.endswith(".npz"):
-            sd = self._npz_to_sd(dict(np.load(path)))
+            arrays = dict(np.load(path))
         else:
             ck = torch.load(path, map_location="cpu", weights_only=False)
             full = ck.get("model") or ck.get("state_dict")
-            sd = {k: v for k, v in full.items()
-                  if k.split(".")[0] in ("l1", "l2", "farmer", "market")}
-        self._build(sd, device)
+            arrays = self._sd_to_arrays(full)
+        self._build(arrays, device)
 
     @staticmethod
-    def _npz_to_sd(w):
-        sd = {"l1.weight": w["l1w"], "l1.bias": w["l1b"],
-              "l2.weight": w["l2w"], "l2.bias": w["l2b"],
-              "farmer.weight": w["fw"], "farmer.bias": w["fb"],
-              "market.weight": w["mw"], "market.bias": w["mb"]}
+    def _sd_to_arrays(full):
+        def half(p):
+            return {"l1w": full[f"{p}l1.weight"], "l1b": full[f"{p}l1.bias"],
+                    "l2w": full[f"{p}l2.weight"], "l2b": full[f"{p}l2.bias"],
+                    "fw": full[f"{p}farmer.weight"], "fb": full[f"{p}farmer.bias"],
+                    "mw": full[f"{p}market.weight"], "mb": full[f"{p}market.bias"]}
+        if any(k.startswith("base.") for k in full):
+            arrays = half("base.")
+            arrays.update({f"d_{k}": v for k, v in half("delta.").items()})
+            return arrays
+        return half("")
+
+    @staticmethod
+    def _arrays_to_sd(arrays, prefix=""):
+        sd = {"l1.weight": arrays[f"{prefix}l1w"], "l1.bias": arrays[f"{prefix}l1b"],
+              "l2.weight": arrays[f"{prefix}l2w"], "l2.bias": arrays[f"{prefix}l2b"],
+              "farmer.weight": arrays[f"{prefix}fw"], "farmer.bias": arrays[f"{prefix}fb"],
+              "market.weight": arrays[f"{prefix}mw"], "market.bias": arrays[f"{prefix}mb"]}
         return {k: torch.as_tensor(v) for k, v in sd.items()}
 
     @classmethod
     def from_state_np(cls, arrays, device="cpu"):
-        """Build from ActorNet.state_np() arrays (league self-snapshots)."""
+        """Build from state_np() arrays (league self-snapshots); residual
+        actors hand over base + d_* and both halves are honoured."""
         self = cls.__new__(cls)
-        self._build(cls._npz_to_sd(arrays), device)
+        self._build(arrays, device)
         return self
 
-    def _build(self, sd, device):
+    @staticmethod
+    def _net_from_sd(sd, device):
         h1, obs_dim = sd["l1.weight"].shape
         h2 = sd["l2.weight"].shape[0]
         net = ActorNet(obs_dim, sd["farmer.weight"].shape[0],
                        sd["market.weight"].shape[0], h1, h2)
         net.load_state_dict(sd)
-        self.net = net.to(device).eval()
+        return net.to(device).eval()
+
+    def _build(self, arrays, device):
+        self.net = self._net_from_sd(self._arrays_to_sd(arrays), device)
+        self.delta = None
+        if any(str(k).startswith("d_") for k in arrays):
+            self.delta = self._net_from_sd(
+                self._arrays_to_sd(arrays, "d_"), device)
+
+    def _logits(self, x):
+        fl, ml = self.net(x)
+        if self.delta is not None:
+            dfl, dml = self.delta(x)
+            fl, ml = fl + dfl, ml + dml
+        return fl, ml
 
     @torch.no_grad()
     def __call__(self, ep, player):
         x = features_t.encode_t(ep, player)
         fm, mm = features_t.masks_t(ep, player)
-        fl, ml = self.net(x)
+        fl, ml = self._logits(x)
         fa = fl.masked_fill(~fm, NEG).argmax(-1)
         ma = ml.masked_fill(~mm, NEG).argmax(-1)
         return fa, ma
@@ -110,7 +140,8 @@ class KGTensorEnv(EnvBase):
 
     def __init__(self, B, device="cpu", seat=0, alternate_seat=False,
                  episode_steps=720, base_seed=0, opponent="starter",
-                 win_bonus=3.0):
+                 win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
+                 opp_noise=0.0, handicap=0):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -119,6 +150,22 @@ class KGTensorEnv(EnvBase):
         self.episode_steps = int(episode_steps)
         self.base_seed = int(base_seed)
         self.win_bonus = float(win_bonus)
+        # terminal margin reward: w * tanh((money_me - money_opp) / scale).
+        # Bounded on purpose -- the per-step FULL zero-sum shaping was a
+        # documented negative result (lambda=1.0 learnt mutual destruction);
+        # a bounded terminal margin grades losses ("lose less") without
+        # rewarding hurting the opponent at every step.
+        self.margin_bonus = float(margin_bonus)
+        self.margin_scale = float(margin_scale)
+        # opponent smoothing: per lane, with prob opp_noise replace the
+        # opponent's action with a uniformly random LEGAL one (handicap
+        # curriculum's companion -- it dents an opponent's dominance
+        # without touching its identity)
+        self.opp_noise = float(opp_noise)
+        # handicap curriculum: extra starting money for the learner seat,
+        # applied at reset on the TRAINING engine only (eval always runs the
+        # reference engine); trl_pool steps it down as the win gate passes
+        self.handicap = int(handicap)
         self.opp_fn = _make_opponent(opponent, self.device)
         # when set (e.g. trl_pool.OpponentPool.sample), called at every reset
         # to pick the next episode batch's opponent
@@ -176,6 +223,8 @@ class KGTensorEnv(EnvBase):
         self._episode_index += 1
         self._ep = engine_t.EpisodeT(seeds, episode_steps=self.episode_steps,
                                      device=self.device)
+        if self.handicap:
+            self._ep.money[:, self.seat] += float(self.handicap)
         self._prev_w = potential_t.net_worth_t(self._ep, self.seat)
         return self._obs_td()
 
@@ -185,6 +234,13 @@ class KGTensorEnv(EnvBase):
         action = tensordict["action"]
         fa, ma = action[..., 0], action[..., 1]
         ofa, oma = self.opp_fn(ep, opp)
+        if self.opp_noise > 0.0:
+            ofm, omm = features_t.masks_t(ep, opp)
+            noisy = torch.rand(ofa.shape, device=self.device) < self.opp_noise
+            rfa = torch.multinomial(ofm.double(), 1).squeeze(-1)
+            rma = torch.multinomial(omm.double(), 1).squeeze(-1)
+            ofa = torch.where(noisy, rfa, ofa)
+            oma = torch.where(noisy, rma, oma)
         if seat == 0:
             f_idx = torch.stack([fa, ofa], 1)
             m_idx = torch.stack([ma, oma], 1)
@@ -197,9 +253,13 @@ class KGTensorEnv(EnvBase):
         self._prev_w = w
         if ep.done:
             mine, theirs = ep.money[:, seat], ep.money[:, opp]
-            win = ((mine > theirs).to(torch.float64)
-                   - (mine < theirs).to(torch.float64))
-            r = r + self.win_bonus * win
+            if self.win_bonus:
+                win = ((mine > theirs).to(torch.float64)
+                       - (mine < theirs).to(torch.float64))
+                r = r + self.win_bonus * win
+            if self.margin_bonus:
+                r = r + self.margin_bonus * torch.tanh(
+                    (mine - theirs) / self.margin_scale)
         out = self._obs_td()
         done = torch.full((*self.batch_size, 1), ep.done, dtype=torch.bool,
                           device=self.device)
