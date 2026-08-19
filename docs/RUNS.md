@@ -1129,3 +1129,37 @@ The binding constraint is now unambiguous and it is not the optimizer:
 it is training-opponent strength. TODO #1 (tensorise barnyard/ghost) and
 TODO #0 (per-unit action heads, Kilo's structural idea) are the two levers;
 the margin/handicap machinery is built and gated, waiting for exactly them.
+
+## siege: a real wall as a training opponent -- the gradient arrives, the action space cannot spend it (2026-08-19)
+
+First run with tensorised barnyard as a curriculum stage (`rl/configs/siege.yaml`:
+starter -> pitchfork -> barnyard, handicap ladder, margin tanh at scale 50k,
+league, residual over pitchfork). Jobs 20083634/20083635, eval 20083636.
+240 iterations, 176.7M lane-steps; barnyard batches run at ~21-23k sps
+(the serial task-assignment loop costs ~2x vs starter batches), mean 34k.
+
+The curriculum climbed both early stages inside link 1 (starter, then the
+full pitchfork handicap ladder 800->0) and spent ~110 iterations on barnyard
+at handicap 800 without ever passing a gate: batch win 0.000 throughout,
+learner money on barnyard batches 10.3k -> 11.6k (it ~105) -> back to
+~9-10.5k, against barnyard's steady ~55k. The margin signal was present and
+graded every one of those episodes; the policy could not convert it.
+
+```
+opponent            siege             foothold          pitchfork (prior)
+barnyard margin     -48,444           -48,013           -49,006     unchanged
+ghost-89825016-0    43.8% [34.3,53.7] 42.7%             44.8%       level
+ghost-89830307-0    50.0% [40.2,59.8] 38.5%             40.6%       drifted up, CIs overlap
+beaten              2/10              2/10              2/10
+```
+
+Reading: this is the cleanest evidence yet for the post-mortem's exit-② claim.
+foothold showed self-play lacks the signal; siege supplied the signal --
+a full-strength barnyard, margin-graded, 50% of batches for ~45M steps --
+and the macro action space still could not shorten the loss by a dollar.
+To out-earn barnyard you need its labour engine (a dozen hands cycling
+harvest/feed/care at scale), and the macro space's hands run a fixed
+priority cascade the policy cannot steer. The per-unit multi-head action
+space (rl/TODO.md #0) is now the live hypothesis, with this run as its
+baseline: the A/B question is precisely "does -48k move when the policy
+can allocate labour".
