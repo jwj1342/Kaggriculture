@@ -901,12 +901,22 @@ def _idx_market(self, m_op, m_item, m_rem, t):
 # step_idx
 # ---------------------------------------------------------------------------
 
-def step_idx(self, f_idx, m_idx):
+def step_idx(self, f_idx, m_idx, override=None):
     """Advance every lane one turn from action-head indices.
 
     f_idx, m_idx: (B, 2) integer tensors / array-likes -- per lane, per
     player, indices into actions.FARMER_ACTIONS / actions.MARKET_ACTIONS.
     Byte-equivalent to step_raw fed with actions.decode(...) per lane.
+
+    override: optional (seat, ops) -- replace ONE seat's decoded actions
+    with raw internal encodings before the apply phase (tensor opponents
+    whose behaviour the macro space cannot express, e.g. barnyard_t):
+        ops["f_op"/"f_arg"/"f_qty"]: (B,) unit codes for the farmer slot
+        ops["h_op"/"h_arg"/"h_qty"]: lists of (B,) per hand slot
+        ops["m_op"/"m_item"/"m_rem"]: (B, S) market order slots
+    The overridden seat's f_idx/m_idx are decoded and discarded; the apply
+    phase and everything after it are untouched, so override=None is
+    bit-for-bit the old path (gate: test_barn.py G0).
     """
     if self.done:
         return
@@ -967,15 +977,48 @@ def step_idx(self, f_idx, m_idx):
         [harv_f, unwat_f, uncared_f, fready_f, weed_f], t)
     m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t)
 
+    zero = torch.zeros((B, P), dtype=i64, device=dev)
+    hand_args = [zero] * len(hand_ops)
+    hand_qtys = [zero] * len(hand_ops)
+    if override is not None:
+        # graft one seat's raw internal encodings over the macro decode;
+        # scripted hands never carry arg/qty, so those grow per-slot tensors
+        # only here
+        seat, ops = override
+        f_op[:, seat] = ops["f_op"]
+        f_arg[:, seat] = ops["f_arg"]
+        f_qty[:, seat] = ops["f_qty"]
+        h_op, h_arg, h_qty = ops["h_op"], ops["h_arg"], ops["h_qty"]
+        while len(hand_ops) < len(h_op):
+            hand_ops.append(zero.clone())
+            hand_args.append(zero)
+            hand_qtys.append(zero)
+        for u in range(len(hand_ops)):
+            if u < len(h_op):
+                hand_ops[u] = hand_ops[u].clone()
+                hand_ops[u][:, seat] = h_op[u]
+                if bool((h_arg[u] != 0).any()):
+                    hand_args[u] = zero.clone()
+                    hand_args[u][:, seat] = h_arg[u]
+                if bool((h_qty[u] != 0).any()):
+                    hand_qtys[u] = zero.clone()
+                    hand_qtys[u][:, seat] = h_qty[u]
+            else:
+                hand_ops[u] = hand_ops[u].clone()
+                hand_ops[u][:, seat] = U_PASS
+        m_op[:, seat] = ops["m_op"]
+        m_item[:, seat] = ops["m_item"]
+        m_rem[:, seat] = ops["m_rem"]
+
     # ---- apply: unit phase (slot-serial, batch-parallel), then market ----
     # op presence per slot: one (S, 18) host read for the whole step.
     all_ops = torch.stack([f_op] + hand_ops, 0).view(-1, B * P)   # (S, B*P)
     pres = torch.zeros((all_ops.shape[0], 18), dtype=torch.bool,
                        device=dev).scatter_(1, all_ops, True).tolist()
-    zero = torch.zeros((B, P), dtype=i64, device=dev)
     self._idx_apply_slot(0, f_op, f_arg, f_qty, day, t, pres[0])
     for u, op_u in enumerate(hand_ops):
-        self._idx_apply_slot(u + 1, op_u, zero, zero, day, t, pres[u + 1])
+        self._idx_apply_slot(u + 1, op_u, hand_args[u], hand_qtys[u], day, t,
+                             pres[u + 1])
     self._idx_market(m_op, m_item, m_rem, t)
 
     self._town_consume(step)

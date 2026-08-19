@@ -461,6 +461,24 @@ def gate_potential():
     print("gate (vii) env wiring: --potential future + --opp-lambda smoke  PASS")
 
 
+def gate_barnyard_env():
+    """(viii) the raw-ops opponent path end to end (byte-exactness of the
+    opponent itself is test_barn.py's full-episode job)."""
+    from trl_env import KGTensorEnv
+    torch.manual_seed(6)
+    env = KGTensorEnv(2, device="cpu", episode_steps=26, opponent="barnyard")
+    td = env.reset()
+    for t in range(10):
+        td["action"] = torch.stack([_pick_legal(td["farmer_mask"], t),
+                                    _pick_legal(td["market_mask"], t)], -1)
+        td = env.step(td)
+        assert bool(torch.isfinite(td["next", "reward"]).all())
+        td = td["next"].exclude("reward")
+    assert bool((td["opp_money"] != 3000).any()), \
+        "barnyard did nothing in 10 turns -- override path broken?"
+    print("gate (viii) barnyard raw-ops opponent drives the env  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -470,4 +488,5 @@ if __name__ == "__main__":
     gate_hooks()
     gate_smoothing()
     gate_potential()
+    gate_barnyard_env()
     print("test_trl: all gates PASS")

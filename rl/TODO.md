@@ -19,15 +19,18 @@ Kilo 在 `new-branch b53739f` 上给出了可部署的多头 agent（farmer 头 
   的 N 头分布（TwoHeadMasked 推广，联合 logp = 各头之和）→ 导出模板多头
   版。引擎级手术，独立分支做。
 
-## 1. 张量化脚本对手（统一层的已知边界）
+## 1. 张量化脚本对手（barnyard ✅ 2026-08-19；ghosts/spar 未动）
 
-设备端课程/league（`tensor_env/trl_pool.py`）只能吃张量可表示的对手：
-starter 与任何导出权重（npz/checkpoint）。**barnyard、ghosts、spar 这些
-脚本对手还不能当训练对手**——它们只活在 kaggle-env 评估世界
-（`slurm/rl_eval.sh`、`rl/league.py`）。要把课程推到 ghost/barnyard 档，
-要么按 `opponents_t.py` 的样板逐个张量化（starter 用了 ~150 行 + 逐动作
-一致门 `test_b4a.py`），要么先把它们 BC 成权重再当冻结对手（有保真度损耗，
-barnyard 神谕克隆两轮均部署即塌的教训在 README §11）。
+**barnyard 已张量化**：`tensor_env/barnyard_t.py`（决策直接产出引擎内部
+编码，经 `step_idx(..., override=)` 接缝上席位——它的全单位统一调度超出
+宏动作空间，所以走原始动作级而非宏投影）。门 `test_barn.py`：对真
+`agents/barnyard.py` **逐动作 + 逐步全状态**双重判等，5 lanes × 719 步
+全绿，终局金钱 63–85k（强度无损）。训练对手写法：`--opponents ...,barnyard`。
+
+剩余：**ghosts/spar**（录音重放型）。两条路：录音的原始动作 → 内部编码的
+离线转换（一次性预计算 (T, ops) 表，override 逐步喂——比 barnyard 简单
+得多，但录音不还手、可被退化利用）；或维持它们只做评估对手。`enhanced`
+（另一个手写强 agent）如需张量化，走 barnyard_t 同样的样板。
 
 ## 2. 推理期市场精确优化器（讨论于 2026-08-14，ghost 里程碑后）
 

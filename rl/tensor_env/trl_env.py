@@ -132,6 +132,9 @@ class FrozenPolicyOpponent:
 def _make_opponent(spec, device):
     if spec == "starter" or spec is None:
         return opponents_t.starter_indices
+    if spec == "barnyard":
+        import barnyard_t
+        return barnyard_t.BarnyardOpponent()
     return FrozenPolicyOpponent(spec, device)
 
 
@@ -251,6 +254,17 @@ class KGTensorEnv(EnvBase):
         opp = 1 - seat
         action = tensordict["action"]
         fa, ma = action[..., 0], action[..., 1]
+        if getattr(self.opp_fn, "provides_ops", False):
+            # raw-encoding opponent (barnyard_t): its seat bypasses the macro
+            # decode via the step_idx override; --opp-noise does not apply
+            ops = self.opp_fn(ep, opp)
+            f_idx = torch.zeros((self.B, 2), dtype=torch.int64,
+                                device=self.device)
+            m_idx = torch.zeros_like(f_idx)
+            f_idx[:, seat] = fa
+            m_idx[:, seat] = ma
+            ep.step_idx(f_idx, m_idx, override=(opp, ops))
+            return self._finish_step(ep, seat, opp)
         ofa, oma = self.opp_fn(ep, opp)
         if self.opp_noise > 0.0:
             ofm, omm = features_t.masks_t(ep, opp)
@@ -266,6 +280,9 @@ class KGTensorEnv(EnvBase):
             f_idx = torch.stack([ofa, fa], 1)
             m_idx = torch.stack([oma, ma], 1)
         ep.step_idx(f_idx, m_idx)
+        return self._finish_step(ep, seat, opp)
+
+    def _finish_step(self, ep, seat, opp):
         w = self._pot(ep, seat)
         r = (w - self._prev_w) * (1.0 / self.shape_scale)
         self._prev_w = w

@@ -40,6 +40,10 @@ engine_t.py      批量张量引擎 EpisodeT (B 局 lockstep, CPU/CUDA 同一代
    │      ⇑ test_b4c.py (i)：与 CPU 参照 obs.net_worth 逐位相等
    ├─ opponents_t.py    张量态 starter 对手（(B,) gather 直取决策）
    │      ⇑ test_b4a.py：与参考 starter 逐动作一致
+   ├─ barnyard_t.py     张量态 barnyard（原始动作级：决策产出引擎内部编码，
+   │                    经 step_idx(..., override=) 上席位；调参常数 import
+   │                    真 agents/barnyard.py 为单一来源）
+   │      ⇑ test_barn.py：对真 barnyard 逐动作 + 逐步全状态双重判等
    ├─ policy_t.py + train_t.py   同驻 GPU 的手写 PPO 闭环（A/B 对照臂）
    │      ⇑ test_b4c.py (iii)：学习曲线门
    └─ trl_env.py + trl_policy.py   TorchRL 统一层：EnvBase 批量环境 + 双头掩码分布
@@ -64,6 +68,8 @@ engine_t.py      批量张量引擎 EpisodeT (B 局 lockstep, CPU/CUDA 同一代
 | `features_t.py` | `encode_t(ep,p)→(B,4867)f32`、`masks_t(ep,p)→((B,23),(B,22))bool` | 分数通道 float64 后降 f32（CUDA f32 除法差 1 ulp 的教训）；唯一宿主计算 = money 的 log1p 两槽（libm 不可跨设备复现） |
 | `potential_t.py` | `net_worth_t(ep,p)→(B,)f64` | 与 `rl/obs.py::net_worth` 同语义：基准价、土地记账、终局衰减、流动性溢价 |
 | `opponents_t.py` | `starter_actions` / `starter_indices` | 训练路径用索引形式；文档化的近似：market 头单选（参考 starter 偶发同回合买+卖） |
+| `barnyard_t.py` | **张量态 barnyard**：`compute(ep, p)` → step_idx override 编码（单位 op/arg/qty + 市场 order 三元组） | 全单位贪心调度逐序转写（任务构造序、稳定排序、最近单位平局、金钱 f64 表达式序、引擎价格表）；指派循环批内串行 + 全忙提前退出 |
+| `test_barn.py` | barnyard 门 | G1 决策 vs 真 barnyard 逐动作；G2 override 路径 vs step_raw 逐步全状态 diff；720 步零容忍 |
 | `policy_t.py` | `PolicyT`：actor 4867→512→256→双头（掩码 −1e9），critic 独立 4867→256→256→1 | 与 rl-baseline `policy.py` 同构，可 `--hidden` |
 | `train_t.py` | 同驻设备的采集 + 手写 PPO（GAE γ=0.999 λ=0.95、clip 0.2、独立 critic、熵 0.003） | 被 `rl/train.py`（TorchRL）取代，保留作 A/B 对照臂（`slurm/rl_ab.sh`） |
 | `trl_env.py` | **TorchRL 统一层**：`KGTensorEnv(EnvBase)`，batch_size=[B] 的批量环境（VMAS/Brax 模式），对手内置（starter / 冻结权重 argmax） | 语义 = `train_t.collect` 逐位复刻；完整局 = `episode_steps - 1` 步、lockstep 终局、全局 reset；`money`/`opp_money` 随观测携带 |
