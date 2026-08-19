@@ -44,6 +44,9 @@ package + 每算法 scripts/ 加 yaml——按我们的资产落成：
       train.py             统一训练入口（--config yaml；--algo 换 loss）
       export_agent.py      checkpoint → 纯 numpy 提交 agent
       eval_summary.py      花名册计分卡
+      plot_run.py          每 run 图表 → runs/<run>/plots/（训练摘要六板 +
+                           花名册条形图；train.py/rl_eval.sh 自动调用，
+                           `--run <name>` 可随时重渲）
       obs.py actions.py    观测/动作语义（导出契约：保持单文件可拷贝）
       policy.py kg_env.py scripted.py league.py
                            kaggle-env 世界的公共件（export 验证、BC 采集、
@@ -57,7 +60,8 @@ package + 每算法 scripts/ 加 yaml——按我们的资产落成：
       legacy/              第一代 CPU 栈（train_ppo / episode_pool /
                            vec_env / rollout / diag_policy / test_pool），
                            按 ROADMAP §11 惯例保留，不在任何管线上
-      runs/ out/           训练产物 / 导出 agent（gitignore）
+      runs/ out/           训练产物（含每 run 的 plots/）/ 导出 agent
+                           （gitignore）
 
 没抄的东西也是决定：**不引 hydra**（wheelhouse 有，但 argparse + 单层
 yaml 已够，slurm 脚本靠 `"$@"` 透传）；**不按算法开目录**（loss 可换让

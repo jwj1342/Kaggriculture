@@ -204,6 +204,8 @@ def train(args, log_fn=None):
     loss_mod = make_loss(args.algo, actor, critic, args).to(dev)
     optim = torch.optim.Adam(loss_mod.parameters(), lr=args.lr, eps=1e-5)
 
+    if args.save:
+        os.makedirs(os.path.dirname(os.path.abspath(args.save)), exist_ok=True)
     start_it, total_steps, best_win = 0, 0, -1.0
     prev_records = []
     if args.resume and os.path.exists(args.resume):
@@ -306,6 +308,7 @@ def train(args, log_fn=None):
         rec = {"iter": it, "steps": total_steps, "n_steps": n_steps,
                "sps": n_steps / sec, "win": win,
                "money": money.mean().item(), "opp_money": omoney.mean().item(),
+               "stage": (pool.stage if pool is not None else None),
                "sec": sec, "t_collect": t_col, "_t_end": t_end, **stats}
         records.append(rec)
         log_fn(f"it {it:3d}  steps {total_steps:>9,}  sps {rec['sps']:>8,.0f}  "
@@ -349,6 +352,20 @@ def train(args, log_fn=None):
     collector.shutdown()
     if fh:
         fh.close()
+    if args.save and records:
+        try:  # charts must never fail a training run
+            import plot_run
+            run_dir = os.path.dirname(os.path.abspath(args.save))
+            stem = os.path.splitext(os.path.basename(args.save))[0]
+            name = "summary.png" if stem == "latest" else f"{stem}-summary.png"
+            out = plot_run.plot_summary(
+                [{k: v for k, v in r.items() if k != "_t_end"} for r in records],
+                os.path.join(run_dir, "plots", name),
+                title=f"{os.path.basename(run_dir)} / {stem}")
+            if out:
+                log_fn(f"plots: {out}")
+        except Exception as e:
+            log_fn(f"plots skipped: {type(e).__name__}: {e}")
     return (actor_net, critic_net), records
 
 

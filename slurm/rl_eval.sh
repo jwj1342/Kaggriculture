@@ -58,4 +58,5 @@ for opp in "${ROSTER[@]}"; do
     python tools/eval.py h2h "$AGENT" "$opp" --seeds "$SEEDS" -j "${SLURM_CPUS_PER_TASK}" \
         -o "rl/runs/${RUN}/eval/${base}.json"
 done
+python rl/plot_run.py --run "${RUN}" || echo "plots skipped"
 echo "EVAL-DONE"

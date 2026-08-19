@@ -16,3 +16,4 @@
 torch~=2.10.0
 torchrl==0.11.*
 tensordict==0.11.*
+matplotlib                # rl/plot_run.py -- per-run training charts
