@@ -431,7 +431,13 @@ def train(args, log_fn=None):
             best_path = os.path.join(
                 os.path.dirname(os.path.abspath(args.save)), "best.pt")
             if stopper is not None:
-                if rec.get("probe_win") is not None:
+                # ratchet only on FINAL-stage probes: scores from different
+                # frontiers are not comparable (a 0.97-win probe vs stage 2
+                # outranks every 0-win probe vs the last-stage wall and
+                # freezes best.pt in the past -- observed on breach)
+                final_stage = (pool is None
+                               or pool.stage == len(pool.anchors) - 1)
+                if rec.get("probe_win") is not None and final_stage:
                     pscore = rec["probe_win"] * 1e9 + rec["probe_margin"]
                     if pscore > best_probe:
                         best_probe = pscore

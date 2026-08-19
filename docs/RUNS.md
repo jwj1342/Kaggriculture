@@ -1163,3 +1163,41 @@ priority cascade the policy cannot steer. The per-unit multi-head action
 space (rl/TODO.md #0) is now the live hypothesis, with this run as its
 baseline: the A/B question is precisely "does -48k move when the policy
 can allocate labour".
+
+## breach: labour control does not breach the wall either -- and the probes watched it drift (2026-08-19)
+
+siege + --multi-head (`rl/configs/breach.yaml`): per-hand task heads,
+AUTO-biased so iteration 0 plays exactly siege's scheduler. Jobs
+20086618/20086619, evals 20086620 (best.pt) and 20093298 (latest.pt).
+The early stopper ended the run at iteration 160 of 240 -- six stage-3
+probes without improvement -- its first production firing, ~35 GPU-minutes
+saved, chain and eval unharmed.
+
+The deterministic probes tell the whole story vs barnyard (fixed seeds,
+argmax, no handicap): -34,640 on arriving at stage 3, then -47.5k, -45.9k,
+-46.5k, -48.5k, -42.3k, -67.9k -> stop. While the policy crushed the rest
+of the pool (batch win ~1.0, money 20-23k vs snapshots/pitchfork), its
+barnyard margin DRIFTED AWAY. The reference-engine eval agrees with the
+last probe almost exactly (-67,270 vs -67,915 -- the probe machinery is
+well calibrated): ghosts 39.6%/36.5%, still 2/10.
+
+```
+barnyard margin   pitchfork era  foothold  siege    breach(latest)
+                  -49,006        -48,013   -48,444  -67,270
+```
+
+Two mechanism findings along the way: best.pt's probe ratchet compared
+scores across frontiers (a 0.97-win stage-2 probe outranks every 0-win
+stage-3 probe; best.pt froze at ~iter 80) -- fixed to final-stage probes
+only; and probe-vs-eval agreement validates fixed-field probes as a cheap
+stand-in for reference-engine evals during training.
+
+Reading: exit ② alone is not the key. The gradient reaches the policy
+(siege), the policy can allocate labour (breach), and it still walks
+downhill toward the pool mix instead of the wall. The two live hypotheses:
+(a) objective -- nothing prices the ANIMAL ENGINE that makes barnyard's
+55k; Kilo's future-credit potential (--potential future, already ported
+and gated) does exactly that, one flag away from an A/B; (b) pool
+dynamics -- the beatable half of the pool owns the reward hill; a
+barnyard-weighted or barnyard-only phase would isolate it. Both are
+single-variable follow-ups on breach's config.
