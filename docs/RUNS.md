@@ -1094,3 +1094,38 @@ through export -> roster -> scorecard (`rl/eval_summary.py --run trl-ab`).
 The closed line needed BC + curriculum + league to reach its 4/10; those are
 the hooks to wire into `rl/train.py` next (the league's opponents are already
 representable on-device via `trl_env.FrozenPolicyOpponent`).
+
+## foothold: the smoothing stack works; self-play still cannot leave its own basin (2026-08-19)
+
+First combined run of the smoothed-gradient machinery (`rl/configs/foothold.yaml`):
+residual policy over the pitchfork prior, curriculum starter -> pitchfork with
+a handicap ladder (800 -> 400 -> 200 -> 0), league self-play snapshots, bounded
+terminal margin 1.5 + win bonus 1.5, 5% opponent noise. Jobs 20078618/20078619
+(chained via --resume), eval 20078620. 240 iterations, 176.7M lane-steps,
+mean 35.5k sps (frozen-net opponents cost ~25% vs starter-only).
+
+Mechanically, everything did its job: the curriculum climbed the entire ladder
+inside the first 23 minutes, the resume chain restored pool state across jobs,
+and by the end the policy beats its own prior 96% of the time at zero handicap
+(money 26k vs 0.2k in those batches). Against its own league, this agent is a
+monster.
+
+The roster says none of it transferred:
+
+```
+opponent            foothold          pitchfork (prior)
+ghost-89825016-0    42.7% [33.3,52.7]  44.8% [35.2,54.7]   level
+ghost-89830307-0    38.5% [29.4,48.5]  40.6% [31.3,50.6]   level
+barnyard margin     -48,013            -49,006             unchanged
+w49 margin          -136,709           -136,480            unchanged
+beaten              2/10               2/10
+```
+
+Reading: post-mortem §13-vi reproduced at higher fidelity. Crushing your prior
+and your snapshots deepens the basin; it does not leave it. The smoothing
+tools (margin, handicap) ran correctly but had nothing strong to grade
+against -- the strongest tensor-representable training opponent IS the prior.
+The binding constraint is now unambiguous and it is not the optimizer:
+it is training-opponent strength. TODO #1 (tensorise barnyard/ghost) and
+TODO #0 (per-unit action heads, Kilo's structural idea) are the two levers;
+the margin/handicap machinery is built and gated, waiting for exactly them.
