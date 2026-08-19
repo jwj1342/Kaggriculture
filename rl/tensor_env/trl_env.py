@@ -50,6 +50,41 @@ import potential_t
 from trl_policy import ActorNet, NEG
 
 
+def hand_task_mask_t(ep, player, n_hands=None):
+    """(B, MAX_HANDS, N_HAND_TASK) bool -- the device twin of
+    actions.hand_task_mask: AUTO/IDLE legal for live hand slots, a chore
+    family legal while it has a target (step_idx's family definitions,
+    which are actions.analyze's), dead slots IDLE-only. Gate: test_multi M4.
+    """
+    import engine_t_idx as X
+    B, dev = ep.B, ep.device
+    NN = ep.N * ep.N
+    if n_hands is None:
+        n_hands = A.MAX_HANDS
+    day = ep._step // ep.turns_per_day
+    kind = ep.kind[:, player].reshape(B, NN)
+    anim = ep.animal[:, player].reshape(B, NN) >= 0
+    plant = kind == engine_t.K_PLANT
+    yu = ep.yield_units[:, player].reshape(B, NN) > 0
+    age8 = (day - ep.planted_day[:, player].reshape(B, NN)).to(torch.int8)
+    cf8 = X._tabs(dev).crop_first_i8[ep.crop[:, player].reshape(B, NN).int()]
+    fams = torch.stack([
+        ((plant & yu & (age8 >= cf8)) | (anim & yu)).any(-1),   # HARVEST
+        (plant & ~ep.watered[:, player].reshape(B, NN)).any(-1),  # WATER
+        (anim & ~ep.cared[:, player].reshape(B, NN)).any(-1),     # CARE
+        (anim & ep.fert_avail[:, player].reshape(B, NN)).any(-1),  # COLLECT
+        (kind == engine_t.K_WEED).any(-1),                         # DIG
+    ], 1)                                                          # (B, 5)
+    alive = (torch.arange(n_hands, device=dev).view(1, -1)
+             < ep.hands_n[:, player].view(B, 1))                   # (B, H)
+    mask = torch.zeros((B, n_hands, A.N_HAND_TASK), dtype=torch.bool,
+                       device=dev)
+    mask[:, :, 0] = alive                                          # AUTO
+    mask[:, :, 1] = True                                           # IDLE
+    mask[:, :, 2:] = alive.unsqueeze(-1) & fams.unsqueeze(1)
+    return mask
+
+
 class FrozenPolicyOpponent:
     """A past checkpoint / exported weights.npz / in-memory snapshot played
     greedily (argmax over masked logits) -- the behaviour of an exported
@@ -70,10 +105,14 @@ class FrozenPolicyOpponent:
     @staticmethod
     def _sd_to_arrays(full):
         def half(p):
-            return {"l1w": full[f"{p}l1.weight"], "l1b": full[f"{p}l1.bias"],
-                    "l2w": full[f"{p}l2.weight"], "l2b": full[f"{p}l2.bias"],
-                    "fw": full[f"{p}farmer.weight"], "fb": full[f"{p}farmer.bias"],
-                    "mw": full[f"{p}market.weight"], "mb": full[f"{p}market.bias"]}
+            out = {"l1w": full[f"{p}l1.weight"], "l1b": full[f"{p}l1.bias"],
+                   "l2w": full[f"{p}l2.weight"], "l2b": full[f"{p}l2.bias"],
+                   "fw": full[f"{p}farmer.weight"], "fb": full[f"{p}farmer.bias"],
+                   "mw": full[f"{p}market.weight"], "mb": full[f"{p}market.bias"]}
+            if f"{p}hands.weight" in full:
+                out["hw"] = full[f"{p}hands.weight"]
+                out["hb"] = full[f"{p}hands.bias"]
+            return out
         if any(k.startswith("base.") for k in full):
             arrays = half("base.")
             arrays.update({f"d_{k}": v for k, v in half("delta.").items()})
@@ -111,6 +150,18 @@ class FrozenPolicyOpponent:
         if any(str(k).startswith("d_") for k in arrays):
             self.delta = self._net_from_sd(
                 self._arrays_to_sd(arrays, "d_"), device)
+        # multi-head exports carry a hands head on exactly one trunk; the
+        # snapshot must play it, never silently fall back to AUTO
+        self._hands = None
+        for pfx, owner in (("", "net"), ("d_", "delta")):
+            if f"{pfx}hw" in arrays:
+                self._hands = (owner,
+                               torch.as_tensor(arrays[f"{pfx}hw"]).to(device),
+                               torch.as_tensor(arrays[f"{pfx}hb"]).to(device))
+
+    @property
+    def provides_hands(self):
+        return self._hands is not None
 
     def _logits(self, x):
         fl, ml = self.net(x)
@@ -119,6 +170,14 @@ class FrozenPolicyOpponent:
             fl, ml = fl + dfl, ml + dml
         return fl, ml
 
+    def _hand_logits(self, x):
+        owner, hw, hb = self._hands
+        trunk = self.net if owner == "net" else self.delta
+        h = torch.relu(trunk.l1(x))
+        h = torch.relu(trunk.l2(h))
+        hl = h @ hw.t() + hb
+        return hl.view(*x.shape[:-1], -1, A.N_HAND_TASK)
+
     @torch.no_grad()
     def __call__(self, ep, player):
         x = features_t.encode_t(ep, player)
@@ -126,7 +185,12 @@ class FrozenPolicyOpponent:
         fl, ml = self._logits(x)
         fa = fl.masked_fill(~fm, NEG).argmax(-1)
         ma = ml.masked_fill(~mm, NEG).argmax(-1)
-        return fa, ma
+        if self._hands is None:
+            return fa, ma
+        hl = self._hand_logits(x)
+        hm = hand_task_mask_t(ep, player, hl.shape[-2])
+        ha = hl.masked_fill(~hm, NEG).argmax(-1)
+        return fa, ma, ha
 
 
 def _make_opponent(spec, device):
@@ -145,7 +209,7 @@ class KGTensorEnv(EnvBase):
                  episode_steps=720, base_seed=0, opponent="starter",
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
-                 shape_scale=3000.0, opp_lambda=0.0):
+                 shape_scale=3000.0, opp_lambda=0.0, multi_head=False):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -193,8 +257,10 @@ class KGTensorEnv(EnvBase):
         self._episode_index = 0
         self._prev_w = None
 
+        # multi-head action space (rl/TODO.md #0): [farmer, market, hand x12]
+        self.multi_head = bool(multi_head)
         bs, dev = self.batch_size, self.device
-        self.observation_spec = Composite(
+        obs_entries = dict(
             observation=Unbounded(shape=(*bs, O.OBS_DIM),
                                   dtype=torch.float32, device=dev),
             farmer_mask=Binary(n=A.N_FARMER, shape=(*bs, A.N_FARMER),
@@ -202,11 +268,16 @@ class KGTensorEnv(EnvBase):
             market_mask=Binary(n=A.N_MARKET, shape=(*bs, A.N_MARKET),
                                dtype=torch.bool, device=dev),
             money=Unbounded(shape=(*bs,), dtype=torch.float64, device=dev),
-            opp_money=Unbounded(shape=(*bs,), dtype=torch.float64, device=dev),
-            shape=bs, device=dev)
+            opp_money=Unbounded(shape=(*bs,), dtype=torch.float64, device=dev))
+        nvec = [A.N_FARMER, A.N_MARKET]
+        if self.multi_head:
+            obs_entries["hand_mask"] = Binary(
+                n=A.N_HAND_TASK, shape=(*bs, A.MAX_HANDS, A.N_HAND_TASK),
+                dtype=torch.bool, device=dev)
+            nvec = nvec + [A.N_HAND_TASK] * A.MAX_HANDS
+        self.observation_spec = Composite(obs_entries, shape=bs, device=dev)
         self.action_spec = MultiCategorical(
-            nvec=[A.N_FARMER, A.N_MARKET], shape=(*bs, 2),
-            dtype=torch.int64, device=dev)
+            nvec=nvec, shape=(*bs, len(nvec)), dtype=torch.int64, device=dev)
         self.reward_spec = Unbounded(shape=(*bs, 1), dtype=torch.float32,
                                      device=dev)
         self.full_done_spec = Composite(
@@ -221,11 +292,12 @@ class KGTensorEnv(EnvBase):
         ep, seat = self._ep, self.seat
         x = features_t.encode_t(ep, seat)
         fm, mm = features_t.masks_t(ep, seat)
-        return TensorDict(
-            {"observation": x, "farmer_mask": fm, "market_mask": mm,
-             "money": ep.money[:, seat].clone(),
-             "opp_money": ep.money[:, 1 - seat].clone()},
-            batch_size=self.batch_size, device=self.device)
+        out = {"observation": x, "farmer_mask": fm, "market_mask": mm,
+               "money": ep.money[:, seat].clone(),
+               "opp_money": ep.money[:, 1 - seat].clone()}
+        if self.multi_head:
+            out["hand_mask"] = hand_task_mask_t(ep, seat, A.MAX_HANDS)
+        return TensorDict(out, batch_size=self.batch_size, device=self.device)
 
     # -- EnvBase hooks -------------------------------------------------------
 
@@ -254,6 +326,11 @@ class KGTensorEnv(EnvBase):
         opp = 1 - seat
         action = tensordict["action"]
         fa, ma = action[..., 0], action[..., 1]
+        h_idx = None
+        if self.multi_head:
+            h_idx = torch.zeros((self.B, 2, A.MAX_HANDS), dtype=torch.int64,
+                                device=self.device)
+            h_idx[:, seat] = action[..., 2:]
         if getattr(self.opp_fn, "provides_ops", False):
             # raw-encoding opponent (barnyard_t): its seat bypasses the macro
             # decode via the step_idx override; --opp-noise does not apply
@@ -263,9 +340,19 @@ class KGTensorEnv(EnvBase):
             m_idx = torch.zeros_like(f_idx)
             f_idx[:, seat] = fa
             m_idx[:, seat] = ma
-            ep.step_idx(f_idx, m_idx, override=(opp, ops))
+            ep.step_idx(f_idx, m_idx, override=(opp, ops), h_idx=h_idx)
             return self._finish_step(ep, seat, opp)
-        ofa, oma = self.opp_fn(ep, opp)
+        res = self.opp_fn(ep, opp)
+        if len(res) == 3:
+            # a multi-head snapshot/export plays its hand heads too -- an
+            # AUTO fallback here would silently be a different policy
+            ofa, oma, oha = res
+            if h_idx is None:
+                h_idx = torch.zeros((self.B, 2, A.MAX_HANDS),
+                                    dtype=torch.int64, device=self.device)
+            h_idx[:, opp, :oha.shape[-1]] = oha
+        else:
+            ofa, oma = res
         if self.opp_noise > 0.0:
             ofm, omm = features_t.masks_t(ep, opp)
             noisy = torch.rand(ofa.shape, device=self.device) < self.opp_noise
@@ -279,7 +366,7 @@ class KGTensorEnv(EnvBase):
         else:
             f_idx = torch.stack([ofa, fa], 1)
             m_idx = torch.stack([oma, ma], 1)
-        ep.step_idx(f_idx, m_idx)
+        ep.step_idx(f_idx, m_idx, h_idx=h_idx)
         return self._finish_step(ep, seat, opp)
 
     def _finish_step(self, ep, seat, opp):

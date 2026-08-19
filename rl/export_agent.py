@@ -48,20 +48,30 @@ def _forward(x):
     h = np.maximum(0.0, _W["l1w"] @ x + _W["l1b"])
     h = np.maximum(0.0, _W["l2w"] @ h + _W["l2b"])
     f, m = _W["fw"] @ h + _W["fb"], _W["mw"] @ h + _W["mb"]
+    hl = _W["hw"] @ h + _W["hb"] if "hw" in _W else None
     if "d_l1w" in _W:  # residual export: frozen prior + learned correction
         h = np.maximum(0.0, _W["d_l1w"] @ x + _W["d_l1b"])
         h = np.maximum(0.0, _W["d_l2w"] @ h + _W["d_l2b"])
         f = f + _W["d_fw"] @ h + _W["d_fb"]
         m = m + _W["d_mw"] @ h + _W["d_mb"]
-    return f, m
+        if "d_hw" in _W:  # multi-head hands live on the delta trunk
+            hl = _W["d_hw"] @ h + _W["d_hb"]
+    return f, m, hl
 
 
 def _act(obs_dict):
     x = _O.encode(obs_dict)
-    flog, mlog = _forward(x)
+    flog, mlog, hlog = _forward(x)
     flog[~_A.farmer_mask(obs_dict)] = -1e9
     mlog[~_A.market_mask(obs_dict)] = -1e9
-    return _A.decode(obs_dict, int(flog.argmax()), int(mlog.argmax()))
+    if hlog is None:
+        return _A.decode(obs_dict, int(flog.argmax()), int(mlog.argmax()))
+    hm = np.array(_A.hand_task_mask(obs_dict), dtype=bool)
+    hlog = hlog.reshape(hm.shape)
+    hlog[~hm] = -1e9
+    tasks = [int(t) for t in hlog.argmax(1)]
+    return _A.decode_multi(obs_dict, int(flog.argmax()), tasks,
+                           int(mlog.argmax()))
 
 
 def agent(obs, config=None):
@@ -128,9 +138,10 @@ def main():
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     sd = ck["model"]
-    if any(k.startswith("base.") for k in sd):
-        # residual checkpoint (trl_policy.ResidualActor): ship both halves;
-        # the main.py template sums their logits at inference
+    if any(k.startswith(("base.", "hands.")) for k in sd):
+        # residual and/or multi-head checkpoints: ship raw arrays; the
+        # main.py template understands every combination (a plain-Policy
+        # load here would silently drop the hand heads -- a different agent)
         import types
         import numpy as np
 
@@ -139,10 +150,16 @@ def main():
                  "l2w": f"{p}l2.weight", "l2b": f"{p}l2.bias",
                  "fw": f"{p}farmer.weight", "fb": f"{p}farmer.bias",
                  "mw": f"{p}market.weight", "mb": f"{p}market.bias"}
+            if f"{p}hands.weight" in sd:
+                m["hw"] = f"{p}hands.weight"
+                m["hb"] = f"{p}hands.bias"
             return {k: sd[v].detach().cpu().float().numpy() for k, v in m.items()}
 
-        arrays = _half("base.")
-        arrays.update({f"d_{k}": v for k, v in _half("delta.").items()})
+        if any(k.startswith("base.") for k in sd):
+            arrays = _half("base.")
+            arrays.update({f"d_{k}": v for k, v in _half("delta.").items()})
+        else:
+            arrays = _half("")
         policy = types.SimpleNamespace(
             export_npz=lambda path: np.savez(path, **arrays))
     else:

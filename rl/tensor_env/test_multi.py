@@ -151,6 +151,123 @@ def gate_m2(args):
     return True
 
 
+def gate_m3m4(args):
+    """M3: multi-head policy math, the AUTO-biased start, snapshot/export
+    parity. M4: env specs, device hand mask == CPU mask, train smoke."""
+    import tempfile
+
+    import numpy as np
+    from torchrl.envs.utils import check_env_specs
+
+    import obs as O
+    from trl_env import FrozenPolicyOpponent, KGTensorEnv, hand_task_mask_t
+    from trl_policy import (ActorNet, MultiActorNet, MultiHeadMasked,
+                            MultiResidualActor)
+
+    torch.manual_seed(4)
+    B = 6
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16,
+                        A.MAX_HANDS, A.N_HAND_TASK)
+    x = torch.randn(B, O.OBS_DIM)
+    fl, ml, hl = net(x)
+    fm = torch.rand(B, A.N_FARMER) < 0.5
+    fm[:, 0] = True
+    mm = torch.rand(B, A.N_MARKET) < 0.5
+    mm[:, 0] = True
+    hm = torch.rand(B, A.MAX_HANDS, A.N_HAND_TASK) < 0.5
+    hm[..., 1] = True
+    dist = MultiHeadMasked(fl, ml, hl, fm, mm, hm)
+    a = dist.sample()
+    assert a.shape == (B, 2 + A.MAX_HANDS)
+    flp = torch.log_softmax(fl.masked_fill(~fm, -1e9), -1)
+    mlp = torch.log_softmax(ml.masked_fill(~mm, -1e9), -1)
+    hlp = torch.log_softmax(hl.masked_fill(~hm, -1e9), -1)
+    want = (flp.gather(-1, a[:, :1]).squeeze(-1)
+            + mlp.gather(-1, a[:, 1:2]).squeeze(-1)
+            + hlp.gather(-1, a[:, 2:].unsqueeze(-1)).squeeze(-1).sum(-1))
+    assert torch.equal(dist.log_prob(a), want)
+    ent = (-(flp.exp() * flp).sum(-1) - (mlp.exp() * mlp).sum(-1)
+           - (hlp.exp() * hlp).sum((-1, -2)))
+    assert torch.equal(dist.entropy(), ent)
+    hm_all = torch.ones(B, A.MAX_HANDS, A.N_HAND_TASK, dtype=torch.bool)
+    assert bool((MultiHeadMasked(fl, ml, hl, fm, mm, hm_all)
+                 .mode[:, 2:] == 0).all()), "fresh hand heads must argmax AUTO"
+    print("M3: MultiHeadMasked math exact; fresh hand heads argmax to AUTO")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        torch.manual_seed(5)
+        prior = ActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16)
+        prior_npz = os.path.join(tmp, "prior.npz")
+        prior.export_npz(prior_npz)
+        res = MultiResidualActor(prior_npz, O.OBS_DIM, A.N_FARMER, A.N_MARKET,
+                                 24, 12, A.MAX_HANDS, A.N_HAND_TASK)
+        with torch.no_grad():
+            res.delta.hands.weight.mul_(1000.0)
+            tf, tm, th = res(x)
+        opp = FrozenPolicyOpponent.from_state_np(res.state_np(), "cpu")
+        assert opp.provides_hands
+        with torch.no_grad():
+            ff, fmm = opp._logits(x)
+            fh = opp._hand_logits(x)
+        assert torch.allclose(ff, tf, atol=1e-5)
+        assert torch.allclose(fmm, tm, atol=1e-5)
+        assert torch.allclose(fh, th, atol=1e-5)
+        W = res.state_np()
+        xn = x[0].numpy()  # the export template's numpy math, line for line
+        h = np.maximum(0.0, W["l1w"] @ xn + W["l1b"])
+        h = np.maximum(0.0, W["l2w"] @ h + W["l2b"])
+        f, m = W["fw"] @ h + W["fb"], W["mw"] @ h + W["mb"]
+        h = np.maximum(0.0, W["d_l1w"] @ xn + W["d_l1b"])
+        h = np.maximum(0.0, W["d_l2w"] @ h + W["d_l2b"])
+        f = f + W["d_fw"] @ h + W["d_fb"]
+        m = m + W["d_mw"] @ h + W["d_mb"]
+        hh = W["d_hw"] @ h + W["d_hb"]
+        assert np.allclose(f, tf[0].numpy(), atol=1e-4)
+        assert np.allclose(m, tm[0].numpy(), atol=1e-4)
+        assert np.allclose(hh.reshape(A.MAX_HANDS, A.N_HAND_TASK),
+                           th[0].numpy(), atol=1e-4)
+    print("M3: snapshot & export math honour the hand heads (residual-multi)")
+
+    check_env_specs(KGTensorEnv(2, device="cpu", episode_steps=26,
+                                multi_head=True))
+    ep = engine_t.EpisodeT([71_311, 71_344], episode_steps=720, device="cpu")
+    gen = torch.Generator(device="cpu").manual_seed(55)
+    for _ in range(180):
+        fi = torch.randint(0, A.N_FARMER, (2, 2), generator=gen)
+        mi = torch.randint(0, A.N_MARKET, (2, 2), generator=gen)
+        ep.step_idx(fi, mi)
+    for player in range(2):
+        dev_mask = hand_task_mask_t(ep, player, A.MAX_HANDS)
+        for lane in range(2):
+            cpu_mask = A.hand_task_mask(_np_obs(_SnapObs(ep, lane), player))
+            assert dev_mask[lane].tolist() == cpu_mask, (lane, player)
+    print("M4: check_env_specs + device hand mask == CPU hand_task_mask")
+
+    sys.path.insert(0, _RL)
+    import train as trl_train
+    with tempfile.TemporaryDirectory() as tmp:
+        torch.manual_seed(6)
+        prior = ActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16)
+        prior_npz = os.path.join(tmp, "prior.npz")
+        prior.export_npz(prior_npz)
+        an = None
+        for tag, extra in (("plain", []),
+                           ("residual", ["--residual-base", prior_npz])):
+            save = os.path.join(tmp, tag, "latest.pt")
+            argv = ["--device", "cpu", "--B", "4", "--iters", "2",
+                    "--steps", "96", "--seed", "5", "--threads", "2",
+                    "--quiet", "--multi-head", "--opponents", "starter",
+                    "--league", "--snapshot-every", "1", "--save", save]
+            (an, _cn), recs = trl_train.train(
+                trl_train.parse_args(argv + extra), log_fn=lambda s: None)
+            assert len(recs) == 2, (tag, len(recs))
+        opp2 = FrozenPolicyOpponent.from_state_np(an.state_np(), "cpu")
+        assert opp2.provides_hands, "a multi snapshot must play its hands"
+    print("M4: --multi-head train smoke (plain + residual), snapshots carry "
+          "the hand heads")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=480)
@@ -159,6 +276,9 @@ def main():
     args = ap.parse_args()
 
     if not gate_m2(args):
+        print("MULTI-FAIL")
+        return 1
+    if not gate_m3m4(args):
         print("MULTI-FAIL")
         return 1
 

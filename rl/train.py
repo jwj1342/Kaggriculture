@@ -121,6 +121,11 @@ def build_parser():
                     help="frozen prior (npz / checkpoint): the actor learns "
                          "logit corrections over it instead of a policy "
                          "from scratch")
+    ap.add_argument("--multi-head", action="store_true",
+                    help="per-hand task heads (rl/TODO.md #0): action = "
+                         "[farmer, market, hand x12]; hand heads start "
+                         "AUTO-biased, so iteration 0 plays the classic "
+                         "scheduler and learns deviations")
     ap.add_argument("--potential", choices=("networth", "future"),
                     default="networth",
                     help='shaping potential: "networth" (holdings at base '
@@ -217,12 +222,12 @@ def train(args, log_fn=None):
         margin_bonus=args.margin_bonus, margin_scale=args.margin_scale,
         opp_noise=args.opp_noise, handicap=args.handicap,
         potential=args.potential, shape_scale=args.shape_scale,
-        opp_lambda=args.opp_lambda)
+        opp_lambda=args.opp_lambda, multi_head=args.multi_head)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
         v_hidden=args.v_hidden, device=dev,
-        residual_base=args.residual_base)
+        residual_base=args.residual_base, multi=args.multi_head)
     if args.init_from:
         ck = torch.load(args.init_from, map_location="cpu", weights_only=False)
         load_merged_state_dict(actor_net, critic_net,
@@ -327,9 +332,11 @@ def train(args, log_fn=None):
 
         # only what the loss reads: dropping next.observation / logits halves
         # the replay copy (at B=1024 the full batch is ~29 GB of float32 obs)
-        flat = td.reshape(-1).select(
-            "observation", "farmer_mask", "market_mask", "action",
-            "sample_log_prob", "advantage", "value_target")
+        keep = ["observation", "farmer_mask", "market_mask", "action",
+                "sample_log_prob", "advantage", "value_target"]
+        if args.multi_head:
+            keep.append("hand_mask")  # the loss rebuilds the distribution
+        flat = td.reshape(-1).select(*keep)
         stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0}
         n_mb = 0
         for _ in range(args.epochs):

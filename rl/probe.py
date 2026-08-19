@@ -42,21 +42,29 @@ def run_probe(actor_net, pool, args, device):
     """
     from trl_env import KGTensorEnv
 
+    multi = bool(getattr(args, "multi_head", False))
     env = KGTensorEnv(
         args.probe_lanes, device=device, seat=0,
         episode_steps=args.steps, base_seed=args.seed + 991,
         opponent="starter", win_bonus=0.0,
-        potential=args.potential, shape_scale=args.shape_scale)
+        potential=args.potential, shape_scale=args.shape_scale,
+        multi_head=multi)
     if pool is not None:
         env.opp_fn = pool.anchors[pool.stage][1]
     td = env.reset()
     with torch.no_grad():
         while True:
             x = td["observation"]
-            fl, ml = actor_net(x)
+            outs = actor_net(x)
+            fl, ml = outs[0], outs[1]
             fa = fl.masked_fill(~td["farmer_mask"], -1e9).argmax(-1)
             ma = ml.masked_fill(~td["market_mask"], -1e9).argmax(-1)
-            td["action"] = torch.stack([fa, ma], -1)
+            if multi:
+                ha = outs[2].masked_fill(~td["hand_mask"], -1e9).argmax(-1)
+                td["action"] = torch.cat(
+                    [fa.unsqueeze(-1), ma.unsqueeze(-1), ha], -1)
+            else:
+                td["action"] = torch.stack([fa, ma], -1)
             td = env.step(td)
             if bool(td["next", "done"].all()):
                 break
