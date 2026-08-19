@@ -495,6 +495,97 @@ def decode(obs, f_idx, m_idx):
 
 
 # --------------------------------------------------------------------------
+# per-unit hand tasks (rl/TODO.md #0): the policy steers each hand
+# --------------------------------------------------------------------------
+
+# AUTO is the classic cascade above -- an all-AUTO policy is byte-identical
+# to decode() (the gate is rl/tensor_env/test_multi.py). A named task locks
+# that hand to ONE chore family this turn; IDLE passes. Claims ('taken') are
+# shared across all hands in hand order, exactly as in the cascade.
+HAND_TASKS = ["AUTO", "IDLE", "HARVEST", "WATER", "CARE",
+              "COLLECT_FERTILIZER", "DIG"]
+N_HAND_TASK = len(HAND_TASKS)
+_TASK_IDX = {n: i for i, n in enumerate(HAND_TASKS)}
+
+
+def _hands_actions_multi(obs, s, tasks):
+    """Per-hand chores under per-hand task choices.
+
+    tasks: sequence of HAND_TASKS indices; entries beyond the live hand
+    count are ignored, missing entries default to AUTO. The >=8-carry DROP
+    leg applies to every non-IDLE task (as it does today); a task whose
+    family has no target left PASSes.
+    """
+    farm, priv, _inv, _pos = _me(obs)
+    hands = farm.get("hands", [])
+    if not hands:
+        return []
+    pool = ([("HARVEST", t) for t in s["harvest"]]
+            + [("WATER", t) for t in s["unwatered"]]
+            + [("CARE", t) for t in s["uncared"]]
+            + [("COLLECT_FERTILIZER", t) for t in s["fert_ready"]]
+            + [("DIG", t) for t in s["weeds"]])
+    taken = set()
+    acts = []
+    invs = priv["inventories"]
+    for i, hpos in enumerate(hands):
+        task = HAND_TASKS[tasks[i]] if i < len(tasks) else "AUTO"
+        if task == "IDLE":
+            acts.append(["PASS"])
+            continue
+        hx, hy = hpos[0], hpos[1]
+        hinv = invs[i + 1] if i + 1 < len(invs) else {}
+        if sum(hinv.values()) >= 8:
+            acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
+            continue
+        best, bestd = None, 10 ** 9
+        for j, (_op, t) in enumerate(pool):
+            if j in taken:
+                continue
+            if task != "AUTO" and _op != task:
+                continue
+            d = abs(hx - t[0]) + abs(hy - t[1])
+            if d < bestd:
+                best, bestd = j, d
+        if best is None:
+            acts.append(["PASS"])
+            continue
+        taken.add(best)
+        op, t = pool[best]
+        if (hx, hy) == t:
+            acts.append([op])
+        else:
+            acts.append([_step_toward(hx, hy, t[0], t[1]) or "PASS"])
+    return acts
+
+
+def decode_multi(obs, f_idx, hand_idxs, m_idx):
+    """(farmer, per-hand tasks, market) -> raw kaggle action dict."""
+    s = _scan(obs)
+    farmer = _farmer_action(obs, FARMER_ACTIONS[f_idx], s) or ["PASS"]
+    return {"farmer": farmer,
+            "hands": _hands_actions_multi(obs, s, hand_idxs),
+            "market": _market_action(obs, MARKET_ACTIONS[m_idx])}
+
+
+def hand_task_mask(obs):
+    """(MAX_HANDS, N_HAND_TASK) bool: AUTO/IDLE always legal for live hands;
+    a chore family is legal while it has at least one target; slots beyond
+    the live hand count are IDLE-only (zero entropy, zero gradient)."""
+    farm, _priv, _inv, _pos = _me(obs)
+    n_hands = len(farm.get("hands", []))
+    s = _scan(obs)
+    fam_has = {"HARVEST": bool(s["harvest"]), "WATER": bool(s["unwatered"]),
+               "CARE": bool(s["uncared"]),
+               "COLLECT_FERTILIZER": bool(s["fert_ready"]),
+               "DIG": bool(s["weeds"])}
+    row = [True, True] + [fam_has[n] for n in HAND_TASKS[2:]]
+    idle_only = [False, True] + [False] * (N_HAND_TASK - 2)
+    return [list(row) if i < n_hands else list(idle_only)
+            for i in range(MAX_HANDS)]
+
+
+# --------------------------------------------------------------------------
 # legality masks
 # --------------------------------------------------------------------------
 

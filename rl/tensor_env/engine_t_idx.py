@@ -415,11 +415,20 @@ def _idx_decode_farmer(self, f_idx, fam, t):
     return f_op, f_arg, f_qty
 
 
-def _idx_decode_hands(self, pool_masks, t):
+def _idx_decode_hands(self, pool_masks, t, h_tasks=None):
     """actions._hands_actions: per hand, greedy nearest untaken chore with
     strict-< first-pool-index tie-break == min (dist, family, y, x); the
     >=8-carry DROP leg. Serial over hand slots (the reference is), batch
     tensor ops within each.
+
+    h_tasks (B, P, >=max_h) int64 or None: per-hand task indices into
+    actions.HAND_TASKS (0 AUTO, 1 IDLE, 2.. one chore family). AUTO slots
+    keep the classic cascade (the mfk minimum over available families);
+    a task slot's per-tile key component becomes "family f if its bit is
+    still set at that tile, else BIG" -- same claims, same op LUT, so the
+    exclusion semantics against AUTO hands are shared, exactly as in
+    actions._hands_actions_multi. IDLE wins over the DROP leg (the CPU
+    reference checks IDLE before the carry test). None == all-AUTO.
 
     Distance is family-independent, so the untaken pool collapses to a
     per-tile "best remaining family" map mf (9 = none): min over
@@ -457,13 +466,30 @@ def _idx_decode_hands(self, pool_masks, t):
     act = hn > t.u_arange[:max_h]
     loaded = act & (self._idx_carry[:, :, 1:max_h + 1] >= 8)
     seek = act & ~loaded
+    idle = None
+    if h_tasks is not None:
+        ht = h_tasks[:, :, :max_h]
+        idle = ht == 1
+        is_auto = (ht == 0).unsqueeze(-1)                    # (B, P, U, 1)
+        fam_t = (ht - 2).clamp(min=0)                        # 0..4 on task slots
+        shift_t = (4 - fam_t).to(i8)
+        pk3 = packed[:BP * NN].view(B, P, NN)                # live view: claims show
+        seek = seek & ~idle
     drop_op = t.shed_dir.index_select(0, hpos.view(-1)).view(B, P, max_h)
     bp100 = self._idx_ar_bp * NN                             # (B*P,)
     dummy = torch.full((BP,), BP * NN, dtype=i64, device=dev)
     ops = []
     for u in range(max_h):
         hp = hpos[:, :, u].reshape(-1)                       # (B*P,)
-        torch.add(t.key1024_lut.index_select(0, hp).view(B, P, NN), mfk,
+        if h_tasks is None:
+            eff = mfk
+        else:
+            avail = ((pk3 >> shift_t[:, :, u].unsqueeze(-1)) & 1) != 0
+            famk = torch.where(
+                avail, (fam_t[:, :, u] * 100).unsqueeze(-1).to(i32),
+                torch.full_like(mfk, BIG))
+            eff = torch.where(is_auto[:, :, u], mfk, famk)
+        torch.add(t.key1024_lut.index_select(0, hp).view(B, P, NN), eff,
                   out=keybuf)
         kmin = keybuf.amin(-1).view(-1)
         has = seek[:, :, u].reshape(-1) & (kmin < BIG)
@@ -477,6 +503,8 @@ def _idx_decode_hands(self, pool_masks, t):
         # op: pool op on the tile / step toward it; loaded -> DROP leg
         op_u = torch.where(has, t.hand_op_lut[hp * 1024 + sel_], t.c_pass)
         op_u = torch.where(loaded[:, :, u].reshape(-1), drop_op[:, :, u].reshape(-1), op_u)
+        if idle is not None:  # IDLE beats the DROP leg (reference order)
+            op_u = torch.where(idle[:, :, u].reshape(-1), t.c_pass, op_u)
         ops.append(op_u.view(B, P))
     return ops
 
@@ -901,7 +929,7 @@ def _idx_market(self, m_op, m_item, m_rem, t):
 # step_idx
 # ---------------------------------------------------------------------------
 
-def step_idx(self, f_idx, m_idx, override=None):
+def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
     """Advance every lane one turn from action-head indices.
 
     f_idx, m_idx: (B, 2) integer tensors / array-likes -- per lane, per
@@ -917,6 +945,11 @@ def step_idx(self, f_idx, m_idx, override=None):
     The overridden seat's f_idx/m_idx are decoded and discarded; the apply
     phase and everything after it are untouched, so override=None is
     bit-for-bit the old path (gate: test_barn.py G0).
+
+    h_idx (B, P, >=1) or None: per-hand task indices (actions.HAND_TASKS)
+    for the multi-head action space; None keeps the classic scripted
+    cascade. Gate: test_multi.py M2 (byte-equal to step_raw fed
+    actions.decode_multi, and all-AUTO == the h_idx=None path).
     """
     if self.done:
         return
@@ -972,9 +1005,16 @@ def step_idx(self, f_idx, m_idx, override=None):
     herd = anim_f.view(torch.int8).sum(-1, dtype=torch.int32).to(i64)  # BUY_WHEAT scale
 
     # ---- decode everything from the pre-step state ----
+    h_tasks = None
+    if h_idx is not None:
+        h_tasks = torch.as_tensor(h_idx, dtype=i64, device=dev)
+        h_tasks = h_tasks.reshape(B, P, -1)
+        pad = int(self.hands_n.max()) - h_tasks.shape[-1]
+        if pad > 0:  # short task vectors default to AUTO, like the reference
+            h_tasks = torch.nn.functional.pad(h_tasks, (0, pad))
     f_op, f_arg, f_qty = self._idx_decode_farmer(f_idx, fam, t)
     hand_ops = self._idx_decode_hands(
-        [harv_f, unwat_f, uncared_f, fready_f, weed_f], t)
+        [harv_f, unwat_f, uncared_f, fready_f, weed_f], t, h_tasks)
     m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t)
 
     zero = torch.zeros((B, P), dtype=i64, device=dev)
