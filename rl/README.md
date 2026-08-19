@@ -93,6 +93,7 @@ yaml 已够，slurm 脚本靠 `"$@"` 透传）；**不按算法开目录**（los
 | `--opp-noise p` | 每 lane 以 p 概率把对手动作换成随机**合法**动作 | 削统治力不换对手身份 |
 | `--residual-base <npz/ckpt>` | 冻结先验 + 可训修正量（logit 相加），起点≈先验 | 导出模板/league 快照/CLI 都懂双网格式（快照若只带先验会静默错，已堵死并有门） |
 | `--potential future`（配 `--shape-scale`、`--opp-lambda`） | 前瞻记账势函数：种植即按预期剩余收获入账（种 melon 当场 +$750 势能）、动物计未来产出事件、未喂/未照料计逃跑风险、杂草计机会成本 | 移植自协作者 **Kilo**（new-branch `b53739f`），门 (vii) 对其字典公式逐 lane 判等；`--opp-lambda` 相对势默认 0（λ=1.0 逐步零和是归档负结果，只供 A/B） |
+| `--probe-every N`（配 `--stop-patience`、`--stop-delta-*`） | **定点评估 + early stop**：每 N 迭代用固定种子 + argmax 对当前阶段 anchor 打一批（确定性配对测量，`rl/probe.py`）；probe 结果驱动 best.pt 棘轮与三触发器（课程完成 / 双指标停滞 / 前沿换挡重置） | 批次 win 率随对手池震荡，不能做平台检测——probe 才是验证曲线；**win 0% 时 margin 收缩算进步，不停**；停止写入 checkpoint `stopped` 标记，链上后续节看到即干净退出（门 (ix)） |
 
 组合预设：`rl/configs/foothold.yaml`（residual over pitchfork + 课程
 starter→pitchfork + 让步阶梯 + league + margin + 噪声）。

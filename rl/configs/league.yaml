@@ -17,3 +17,5 @@ opponents: starter
 league: true
 snapshot_every: 5
 advance_at: 0.85
+probe_every: 10
+stop_patience: 6

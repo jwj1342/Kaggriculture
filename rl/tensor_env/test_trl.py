@@ -479,6 +479,69 @@ def gate_barnyard_env():
     print("gate (viii) barnyard raw-ops opponent drives the env  PASS")
 
 
+def gate_early_stop():
+    """(ix) EarlyStopper semantics + probe/stop/resume end to end."""
+    import tempfile
+
+    sys.path.insert(0, _RL)
+    from probe import EarlyStopper
+
+    es = EarlyStopper(n_stages=3, advance_at=0.85, patience=2,
+                      delta_win=0.01, delta_margin=500.0)
+    assert es.update(0, 800, 0.0, -40000) is None      # new frontier
+    assert es.update(0, 800, 0.0, -38000) is None      # margin improves
+    assert es.update(0, 800, 0.0, -37000) is None      # ... keeps improving
+    assert es.update(0, 800, 0.0, -37100) is None      # flat 1
+    assert es.update(0, 800, 0.0, -37200) == "stagnated"
+    es2 = EarlyStopper(3, 0.85, patience=2)
+    assert es2.update(1, 400, 0.2, 0) is None
+    assert es2.update(1, 400, 0.2, 100) is None        # flat 1
+    assert es2.update(1, 200, 0.2, 100) is None        # handicap step resets
+    assert es2.update(1, 200, 0.2, 100) is None        # flat 1
+    assert es2.update(1, 200, 0.2, 100) == "stagnated"
+    assert es2.update(2, 0, 0.9, 5000) == "curriculum-complete"
+    st = es2.state()
+    es3 = EarlyStopper(3, 0.85, patience=2)
+    es3.load_state(st)
+    assert es3.state() == st
+    print("gate (ix)  early stopper: margin-only progress counts, frontier "
+          "resets, curriculum-complete  PASS")
+
+    import train as trl_train
+    with tempfile.TemporaryDirectory() as tmp:
+        # stagnation path: advance-at 1.01 keeps curriculum-complete out of
+        # reach (at 96-step episodes a do-nothing learner "beats" starter,
+        # which is still 20 seed-dollars under water -- a real finding)
+        save = os.path.join(tmp, "latest.pt")
+        argv = ["--device", "cpu", "--B", "4", "--iters", "8", "--steps", "96",
+                "--seed", "5", "--threads", "2", "--quiet",
+                "--opponents", "starter", "--advance-at", "1.01",
+                "--probe-every", "1", "--probe-lanes", "4",
+                "--stop-patience", "2",
+                "--stop-delta-win", "10", "--stop-delta-margin", "1e18",
+                "--save", save]
+        _, recs = trl_train.train(trl_train.parse_args(argv),
+                                  log_fn=lambda s: None)
+        assert len(recs) == 3, len(recs)   # probe1 baseline, flat, flat->stop
+        ck = torch.load(save, map_location="cpu", weights_only=False)
+        assert ck["stopped"] == "stagnated"
+        assert recs[-1]["probe_win"] is not None
+        _, recs2 = trl_train.train(
+            trl_train.parse_args(argv + ["--resume", save]),
+            log_fn=lambda s: None)
+        assert len(recs2) == 3, "a stopped run must not resume training"
+
+        # curriculum-complete path: an always-satisfied gate stops probe 1
+        save2 = os.path.join(tmp, "latest2.pt")
+        argv2 = [a if a != save else save2 for a in argv]
+        argv2[argv2.index("--advance-at") + 1] = "0.0"
+        _, recs3 = trl_train.train(trl_train.parse_args(argv2),
+                                   log_fn=lambda s: None)
+        ck2 = torch.load(save2, map_location="cpu", weights_only=False)
+        assert len(recs3) == 1 and ck2["stopped"] == "curriculum-complete"
+    print("gate (ix)  probe + both stop paths + chain-safe resume  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -489,4 +552,5 @@ if __name__ == "__main__":
     gate_smoothing()
     gate_potential()
     gate_barnyard_env()
+    gate_early_stop()
     print("test_trl: all gates PASS")

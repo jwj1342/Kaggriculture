@@ -93,6 +93,14 @@ def plot_summary(records, out_png, title=""):
     ax.axhline(0.5, color=BASELINE, linewidth=0.8, linestyle=(0, (4, 3)))
     _stage_marks(ax, records)
     _endlabel(ax, it[-1], win[-1], f"{win[-1]:.2f}")
+    probes = [(r["iter"], r["probe_win"]) for r in records
+              if r.get("probe_win") is not None]
+    if probes:
+        ax.plot([q[0] for q in probes], [q[1] for q in probes], color=S2,
+                linewidth=0, marker="o", markersize=3.5,
+                label="probe (argmax, fixed field)")
+        ax.legend(frameon=False, fontsize=8, labelcolor=INK2,
+                  loc="center right")
 
     ax = axes[0][1]
     _style(ax, "final money per episode batch")

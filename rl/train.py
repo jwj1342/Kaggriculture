@@ -132,6 +132,17 @@ def build_parser():
                     help="subtract lambda * opponent potential delta "
                          "(relative shaping; 1.0 is the archived "
                          "mutual-destruction result -- A/B graded values)")
+    # -- deterministic probes + early stop (rl/probe.py) ---------------------
+    ap.add_argument("--probe-every", type=int, default=0,
+                    help="every N iterations, play a fixed seed set with the "
+                         "argmax policy vs the current stage anchor (0 = off); "
+                         "feeds the early stopper and the best.pt ratchet")
+    ap.add_argument("--probe-lanes", type=int, default=128)
+    ap.add_argument("--stop-patience", type=int, default=6,
+                    help="stop after this many consecutive probes improving "
+                         "neither win nor margin at an unchanged frontier")
+    ap.add_argument("--stop-delta-win", type=float, default=0.01)
+    ap.add_argument("--stop-delta-margin", type=float, default=500.0)
     ap.add_argument("--steps", type=int, default=720, help="episode length")
     ap.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = leave)")
     ap.add_argument("--max-minutes", type=float, default=0.0,
@@ -240,10 +251,23 @@ def train(args, log_fn=None):
 
     if args.save:
         os.makedirs(os.path.dirname(os.path.abspath(args.save)), exist_ok=True)
+    stopper = None
+    if args.probe_every > 0:
+        from probe import EarlyStopper
+        stopper = EarlyStopper(
+            len(pool.anchors) if pool is not None else 1, args.advance_at,
+            patience=args.stop_patience, delta_win=args.stop_delta_win,
+            delta_margin=args.stop_delta_margin)
+
     start_it, total_steps, best_win = 0, 0, -1.0
+    best_probe = -float("inf")
     prev_records = []
     if args.resume and os.path.exists(args.resume):
         ck = torch.load(args.resume, map_location=dev, weights_only=False)
+        if ck.get("stopped"):
+            log_fn(f"run already stopped ({ck['stopped']}) -- "
+                   "nothing to resume; exiting cleanly")
+            return (actor_net, critic_net), list(ck.get("records", []))
         load_merged_state_dict(actor_net, critic_net, ck["model"])
         if ck.get("optim"):
             optim.load_state_dict(ck["optim"])
@@ -253,6 +277,9 @@ def train(args, log_fn=None):
         best_win = float(ck.get("best_win", -1.0))
         if pool is not None and ck.get("pool"):
             pool.load_state(ck["pool"])
+        if stopper is not None and ck.get("stopper"):
+            stopper.load_state(ck["stopper"])
+        best_probe = float(ck.get("best_probe", best_probe))
         prev_records = list(ck.get("records", []))
         log_fn(f"resumed {args.resume}: iter {start_it}, "
                f"episode_index {env._episode_index}"
@@ -359,6 +386,18 @@ def train(args, log_fn=None):
             if (args.league and args.snapshot_every > 0
                     and it % args.snapshot_every == 0):
                 pool.add_snapshot(actor_net, f"snap-{it:04d}")
+
+        stop_reason = None
+        if stopper is not None and (it + 1) % args.probe_every == 0:
+            from probe import run_probe
+            pw, pm = run_probe(actor_net, pool, args, dev)
+            stage = pool.stage if pool is not None else 0
+            hc = pool.handicap if pool is not None else int(env.handicap)
+            rec["probe_win"], rec["probe_margin"] = pw, pm
+            stop_reason = stopper.update(stage, hc, pw, pm)
+            log_fn(f"      probe: win {pw:.3f}  margin {pm:+,.0f}  "
+                   f"vs stage {stage + 1} @handicap {hc}"
+                   + (f"  -> STOP ({stop_reason})" if stop_reason else ""))
         if writer:
             writer.writerow([it, total_steps, round(rec["sps"]), round(win, 4),
                              round(rec["money"]), round(rec["opp_money"]),
@@ -372,17 +411,32 @@ def train(args, log_fn=None):
                     "algo": args.algo, "args": vars(args), "iter": it,
                     "episode_index": env._episode_index,
                     "total_steps": total_steps, "best_win": best_win,
+                    "best_probe": best_probe, "stopped": stop_reason,
+                    "stopper": stopper.state() if stopper is not None else None,
                     "pool": pool.state() if pool is not None else None,
                     "records": [{k: v for k, v in r.items() if k != "_t_end"}
                                 for r in records]}
             torch.save(ckpt, args.save)
             # peak ratchet (the old line's best.pt): a policy can regress
-            # after its peak; the best checkpoint is what eval/export wants
-            if win > best_win:
+            # after its peak; the best checkpoint is what eval/export wants.
+            # With probes on, the ratchet reads the deterministic fixed-field
+            # probe instead of the noisy, opponent-mix-dependent batch win.
+            best_path = os.path.join(
+                os.path.dirname(os.path.abspath(args.save)), "best.pt")
+            if stopper is not None:
+                if rec.get("probe_win") is not None:
+                    pscore = rec["probe_win"] * 1e9 + rec["probe_margin"]
+                    if pscore > best_probe:
+                        best_probe = pscore
+                        ckpt["best_probe"] = best_probe
+                        torch.save(ckpt, best_path)
+            elif win > best_win:
                 best_win = win
                 ckpt["best_win"] = best_win
-                torch.save(ckpt, os.path.join(
-                    os.path.dirname(os.path.abspath(args.save)), "best.pt"))
+                torch.save(ckpt, best_path)
+        if stop_reason:
+            log_fn(f"early stop: {stop_reason} (iter {it})")
+            break
         if args.max_minutes > 0 and (t_end - t_start) / 60.0 >= args.max_minutes:
             break
     collector.shutdown()

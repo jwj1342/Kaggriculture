@@ -25,3 +25,6 @@ win_bonus: 1.5
 margin_bonus: 1.5
 margin_scale: 50000
 opp_noise: 0.0
+# deterministic fixed-field probes drive best.pt and the early stopper
+probe_every: 10
+stop_patience: 6
