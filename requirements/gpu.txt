@@ -1,0 +1,9 @@
+# Optional: GPU-batched training environment (rl.gpu).
+# Not used by Kaggle submissions or the CPU PPO loop.
+#
+#     pip install -r requirements/gpu.txt
+#
+# Default PyPI torch is often CPU-only. For NVIDIA GPUs:
+#     pip install torch --index-url https://download.pytorch.org/whl/cu128
+#
+torch>=2.1

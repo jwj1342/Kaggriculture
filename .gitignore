@@ -44,6 +44,12 @@ logs/
 
 *.pyc
 __pycache__/
+
+# RL checkpoints and datasets stay local (source is in rl/*.py).
+rl/ckpt*/
+rl/*.npz
+test.npz
+test_*.npz
 agents/hybrid/
 agents/lines/
 agents/term/
