@@ -71,16 +71,53 @@ class ActorNet(nn.Module):
         np.savez(path, **self.state_np())
 
 
+# The actor-half array contract (weights.npz <-> state dict). Every reader
+# and writer of exported weights goes through these two helpers -- the
+# export template, the CLI, frozen opponents and residual priors all speak
+# the same eight mandatory arrays plus the optional hand head.
+ACTOR_ARRAYS = {"l1w": "l1.weight", "l1b": "l1.bias",
+                "l2w": "l2.weight", "l2b": "l2.bias",
+                "fw": "farmer.weight", "fb": "farmer.bias",
+                "mw": "market.weight", "mb": "market.bias"}
+HANDS_ARRAYS = {"hw": "hands.weight", "hb": "hands.bias"}
+
+
+def actor_arrays(sd, prefix="", numpy=False):
+    """State dict (keys under `prefix`) -> weights.npz array dict."""
+    out = {}
+    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS}.items():
+        k = prefix + pk
+        if k in sd:
+            v = sd[k]
+            if numpy and torch.is_tensor(v):
+                v = v.detach().cpu().float().numpy()
+            out[ak] = v
+        elif ak in ACTOR_ARRAYS:
+            raise KeyError(f"actor state dict is missing {k}")
+    return out
+
+
+def arrays_to_sd(arrays, prefix=""):
+    """weights.npz arrays (optionally d_-prefixed) -> actor state dict."""
+    sd = {}
+    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS}.items():
+        k = prefix + ak
+        if k in arrays:
+            sd[pk] = torch.as_tensor(arrays[k])
+        elif ak in ACTOR_ARRAYS:
+            raise KeyError(f"weights arrays are missing {k}")
+    return sd
+
+
 def load_actor_state(path):
-    """Actor-half state dict from an exported weights.npz or a checkpoint."""
+    """Two-head actor state dict from an exported weights.npz or a
+    checkpoint (residual priors are two-head; hand heads are ignored)."""
     import numpy as np
     if path.endswith(".npz"):
-        w = dict(np.load(path))
-        sd = {"l1.weight": w["l1w"], "l1.bias": w["l1b"],
-              "l2.weight": w["l2w"], "l2.bias": w["l2b"],
-              "farmer.weight": w["fw"], "farmer.bias": w["fb"],
-              "market.weight": w["mw"], "market.bias": w["mb"]}
-        return {k: torch.as_tensor(v) for k, v in sd.items()}
+        sd = arrays_to_sd(dict(np.load(path)))
+        sd.pop("hands.weight", None)
+        sd.pop("hands.bias", None)
+        return sd
     ck = torch.load(path, map_location="cpu", weights_only=False)
     full = ck.get("model") or ck.get("state_dict") or ck
     return {k: v for k, v in full.items()

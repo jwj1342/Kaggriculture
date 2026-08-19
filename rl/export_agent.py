@@ -144,22 +144,15 @@ def main():
         # load here would silently drop the hand heads -- a different agent)
         import types
         import numpy as np
-
-        def _half(p):
-            m = {"l1w": f"{p}l1.weight", "l1b": f"{p}l1.bias",
-                 "l2w": f"{p}l2.weight", "l2b": f"{p}l2.bias",
-                 "fw": f"{p}farmer.weight", "fb": f"{p}farmer.bias",
-                 "mw": f"{p}market.weight", "mb": f"{p}market.bias"}
-            if f"{p}hands.weight" in sd:
-                m["hw"] = f"{p}hands.weight"
-                m["hb"] = f"{p}hands.bias"
-            return {k: sd[v].detach().cpu().float().numpy() for k, v in m.items()}
+        sys.path.insert(0, os.path.join(_RL, "tensor_env"))
+        from trl_policy import actor_arrays
 
         if any(k.startswith("base.") for k in sd):
-            arrays = _half("base.")
-            arrays.update({f"d_{k}": v for k, v in _half("delta.").items()})
+            arrays = actor_arrays(sd, "base.", numpy=True)
+            arrays.update({f"d_{k}": v for k, v in
+                           actor_arrays(sd, "delta.", numpy=True).items()})
         else:
-            arrays = _half("")
+            arrays = actor_arrays(sd, numpy=True)
         policy = types.SimpleNamespace(
             export_npz=lambda path: np.savez(path, **arrays))
     else:

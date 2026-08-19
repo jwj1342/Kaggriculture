@@ -30,16 +30,8 @@ import torch
 import actions as A
 import engine_t
 import engine_t_idx  # noqa: F401
-from verify_t import _np_obs
+from verify_t import lane_obs
 
-
-class _SnapObs:
-    def __init__(self, ep, lane):
-        self.ep, self.lane = ep, lane
-        self._step = ep._step
-
-    def snapshot(self):
-        return self.ep.snapshot(self.lane)
 
 
 _MOVES = {"NORTH", "SOUTH", "EAST", "WEST"}
@@ -98,7 +90,7 @@ def gate_m2(args):
         for lane in range(args.lanes):
             fi_p, mi_p, h_p, d_p = [], [], [], []
             for player in range(2):
-                obs = _np_obs(_SnapObs(ep_m, lane), player)
+                obs = lane_obs(ep_m, lane, player)
                 fm, mm = A.farmer_mask(obs), A.market_mask(obs)
                 fi = int(torch.multinomial(torch.tensor(fm, dtype=torch.float),
                                            1, generator=gen))
@@ -239,7 +231,7 @@ def gate_m3m4(args):
     for player in range(2):
         dev_mask = hand_task_mask_t(ep, player, A.MAX_HANDS)
         for lane in range(2):
-            cpu_mask = A.hand_task_mask(_np_obs(_SnapObs(ep, lane), player))
+            cpu_mask = A.hand_task_mask(lane_obs(ep, lane, player))
             assert dev_mask[lane].tolist() == cpu_mask, (lane, player)
     print("M4: check_env_specs + device hand mask == CPU hand_task_mask")
 
@@ -292,7 +284,7 @@ def main():
         fi_l, mi_l = [], []
         for lane in range(args.lanes):
             for player in range(2):
-                obs = _np_obs(_SnapObs(ep, lane), player)
+                obs = lane_obs(ep, lane, player)
                 s = A._scan(obs)
                 auto = A._hands_actions_multi(
                     obs, s, [0] * len(obs["farms"][player].get("hands", [])))
@@ -309,7 +301,7 @@ def main():
                     return 1
                 hands_seen += len(classic)
                 mixed_checked += _check_mixed(obs, s, rng)
-            obs0 = _np_obs(_SnapObs(ep, lane), 0)
+            obs0 = lane_obs(ep, lane, 0)
             fm, mm = A.farmer_mask(obs0), A.market_mask(obs0)
             fi_l.append([int(torch.multinomial(torch.tensor(fm, dtype=torch.float),
                                                1, generator=gen)),

@@ -53,6 +53,23 @@ def _np_obs(ep, player):
             "town": snap["town"], "private": snap["private"][player]}
 
 
+class SnapView:
+    """Duck-types _np_obs onto one EpisodeT lane -- the shared bridge every
+    opponent/action gate uses to feed reference agents real obs dicts."""
+
+    def __init__(self, ep, lane):
+        self.ep, self.lane = ep, lane
+        self._step = ep._step
+
+    def snapshot(self):
+        return self.ep.snapshot(self.lane)
+
+
+def lane_obs(ep, lane, player):
+    """Official-format obs dict for one EpisodeT lane and seat."""
+    return _np_obs(SnapView(ep, lane), player)
+
+
 def _random_legal_stream(seed, steps, rng):
     """Play engine_np with random-legal actions for both players; return the
     recorded action stream and the snapshot trace (oracle)."""

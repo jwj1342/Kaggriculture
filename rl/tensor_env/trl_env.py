@@ -104,28 +104,13 @@ class FrozenPolicyOpponent:
 
     @staticmethod
     def _sd_to_arrays(full):
-        def half(p):
-            out = {"l1w": full[f"{p}l1.weight"], "l1b": full[f"{p}l1.bias"],
-                   "l2w": full[f"{p}l2.weight"], "l2b": full[f"{p}l2.bias"],
-                   "fw": full[f"{p}farmer.weight"], "fb": full[f"{p}farmer.bias"],
-                   "mw": full[f"{p}market.weight"], "mb": full[f"{p}market.bias"]}
-            if f"{p}hands.weight" in full:
-                out["hw"] = full[f"{p}hands.weight"]
-                out["hb"] = full[f"{p}hands.bias"]
-            return out
+        from trl_policy import actor_arrays
         if any(k.startswith("base.") for k in full):
-            arrays = half("base.")
-            arrays.update({f"d_{k}": v for k, v in half("delta.").items()})
+            arrays = actor_arrays(full, "base.")
+            arrays.update({f"d_{k}": v
+                           for k, v in actor_arrays(full, "delta.").items()})
             return arrays
-        return half("")
-
-    @staticmethod
-    def _arrays_to_sd(arrays, prefix=""):
-        sd = {"l1.weight": arrays[f"{prefix}l1w"], "l1.bias": arrays[f"{prefix}l1b"],
-              "l2.weight": arrays[f"{prefix}l2w"], "l2.bias": arrays[f"{prefix}l2b"],
-              "farmer.weight": arrays[f"{prefix}fw"], "farmer.bias": arrays[f"{prefix}fb"],
-              "market.weight": arrays[f"{prefix}mw"], "market.bias": arrays[f"{prefix}mb"]}
-        return {k: torch.as_tensor(v) for k, v in sd.items()}
+        return actor_arrays(full)
 
     @classmethod
     def from_state_np(cls, arrays, device="cpu"):
@@ -145,11 +130,18 @@ class FrozenPolicyOpponent:
         return net.to(device).eval()
 
     def _build(self, arrays, device):
-        self.net = self._net_from_sd(self._arrays_to_sd(arrays), device)
+        from trl_policy import arrays_to_sd
+
+        def net_sd(prefix=""):
+            sd = arrays_to_sd(arrays, prefix)
+            sd.pop("hands.weight", None)   # the hand head is applied
+            sd.pop("hands.bias", None)     # separately (see _hands below)
+            return sd
+
+        self.net = self._net_from_sd(net_sd(), device)
         self.delta = None
         if any(str(k).startswith("d_") for k in arrays):
-            self.delta = self._net_from_sd(
-                self._arrays_to_sd(arrays, "d_"), device)
+            self.delta = self._net_from_sd(net_sd("d_"), device)
         # multi-head exports carry a hands head on exactly one trunk; the
         # snapshot must play it, never silently fall back to AUTO
         self._hands = None

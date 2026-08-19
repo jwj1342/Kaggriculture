@@ -32,20 +32,10 @@ import barnyard_t
 import engine_t
 import engine_t_idx  # noqa: F401
 import verify
-from verify_t import _np_obs
+from verify_t import lane_obs
 
 import barnyard as BY  # barnyard_t put agents/ on sys.path
 
-
-class _SnapObs:
-    """Duck-type verify_t._np_obs onto EpisodeT lanes (test_b4a pattern)."""
-
-    def __init__(self, ep, lane):
-        self.ep, self.lane = ep, lane
-        self._step = ep._step
-
-    def snapshot(self):
-        return self.ep.snapshot(self.lane)
 
 
 def main():
@@ -67,7 +57,7 @@ def main():
         ops, dicts = barnyard_t.compute(ep, 1, want_dicts=True)
         refs = []
         for lane in range(args.lanes):
-            obs1 = _np_obs(_SnapObs(ep, lane), 1)
+            obs1 = lane_obs(ep, lane, 1)
             ref = BY.agent(obs1)
             if ref != dicts[lane]:
                 print(f"G1 mismatch lane {lane} step {n}:")
@@ -82,7 +72,7 @@ def main():
         p0 = []
         fi_l, mi_l = [], []
         for lane in range(args.lanes):
-            obs0 = _np_obs(_SnapObs(ep, lane), 0)
+            obs0 = lane_obs(ep, lane, 0)
             fm, mm = A.farmer_mask(obs0), A.market_mask(obs0)
             fi = int(torch.multinomial(torch.tensor(fm, dtype=torch.float), 1,
                                        generator=gen))

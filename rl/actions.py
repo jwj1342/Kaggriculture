@@ -398,41 +398,8 @@ def _farmer_action(obs, name, s):
 # --------------------------------------------------------------------------
 
 def _hands_actions(obs, s):
-    farm, priv, _inv, _pos = _me(obs)
-    hands = farm.get("hands", [])
-    if not hands:
-        return []
-    pool = ([("HARVEST", t) for t in s["harvest"]]
-            + [("WATER", t) for t in s["unwatered"]]
-            + [("CARE", t) for t in s["uncared"]]
-            + [("COLLECT_FERTILIZER", t) for t in s["fert_ready"]]
-            + [("DIG", t) for t in s["weeds"]])
-    taken = set()
-    acts = []
-    invs = priv["inventories"]
-    for i, hpos in enumerate(hands):
-        hx, hy = hpos[0], hpos[1]
-        hinv = invs[i + 1] if i + 1 < len(invs) else {}
-        if sum(hinv.values()) >= 8:
-            acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
-            continue
-        best, bestd = None, 10 ** 9
-        for j, (_op, t) in enumerate(pool):
-            if j in taken:
-                continue
-            d = abs(hx - t[0]) + abs(hy - t[1])  # _dist, inlined: hands x pool is the hot product
-            if d < bestd:
-                best, bestd = j, d
-        if best is None:
-            acts.append(["PASS"])
-            continue
-        taken.add(best)
-        op, t = pool[best]
-        if (hx, hy) == t:
-            acts.append([op])
-        else:
-            acts.append([_step_toward(hx, hy, t[0], t[1]) or "PASS"])
-    return acts
+    """The classic scheduler == every hand on AUTO (gate: test_multi M1)."""
+    return _hands_actions_multi(obs, s, ())
 
 
 def _market_action(obs, name):

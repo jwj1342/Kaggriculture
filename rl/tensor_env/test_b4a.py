@@ -32,7 +32,7 @@ import engine_t
 import engine_t_idx  # noqa: F401
 import features_t
 import opponents_t
-from verify_t import _np_obs
+from verify_t import lane_obs
 
 
 def _load_reference_starter():
@@ -42,16 +42,6 @@ def _load_reference_starter():
     spec.loader.exec_module(mod)
     return mod.agents["starter"]
 
-
-class _SnapObs:
-    """Duck-type verify_t._np_obs onto EpisodeT lanes."""
-
-    def __init__(self, ep, lane):
-        self.ep, self.lane = ep, lane
-        self._step = ep._step
-
-    def snapshot(self):
-        return self.ep.snapshot(self.lane)
 
 
 def main():
@@ -71,7 +61,7 @@ def main():
         # tensor starter vs reference starter, every lane
         tens = opponents_t.starter_actions(ep, 1)
         for lane in range(args.lanes):
-            obs1 = _np_obs(_SnapObs(ep, lane), 1)
+            obs1 = lane_obs(ep, lane, 1)
             ref = starter_ref(obs1)
             if ref != tens[lane]:
                 print(f"B4A mismatch lane {lane} step {n}:\n  ref  {ref}\n  tens {tens[lane]}")
@@ -80,7 +70,7 @@ def main():
         # p0: random-legal macro actions decoded per lane
         p0 = []
         for lane in range(args.lanes):
-            obs0 = _np_obs(_SnapObs(ep, lane), 0)
+            obs0 = lane_obs(ep, lane, 0)
             fm, mm = A.farmer_mask(obs0), A.market_mask(obs0)
             fi = int(torch.multinomial(torch.tensor(fm, dtype=torch.float), 1, generator=gen))
             mi = int(torch.multinomial(torch.tensor(mm, dtype=torch.float), 1, generator=gen))
