@@ -121,6 +121,17 @@ def build_parser():
                     help="frozen prior (npz / checkpoint): the actor learns "
                          "logit corrections over it instead of a policy "
                          "from scratch")
+    ap.add_argument("--potential", choices=("networth", "future"),
+                    default="networth",
+                    help='shaping potential: "networth" (holdings at base '
+                         'price) or "future" (Kilo\'s future-credit formula: '
+                         "planting credits expected harvest immediately)")
+    ap.add_argument("--shape-scale", type=float, default=3000.0,
+                    help="divisor of the per-step potential delta")
+    ap.add_argument("--opp-lambda", type=float, default=0.0,
+                    help="subtract lambda * opponent potential delta "
+                         "(relative shaping; 1.0 is the archived "
+                         "mutual-destruction result -- A/B graded values)")
     ap.add_argument("--steps", type=int, default=720, help="episode length")
     ap.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = leave)")
     ap.add_argument("--max-minutes", type=float, default=0.0,
@@ -193,7 +204,9 @@ def train(args, log_fn=None):
         episode_steps=args.steps, base_seed=args.seed,
         opponent=args.opponent, win_bonus=args.win_bonus,
         margin_bonus=args.margin_bonus, margin_scale=args.margin_scale,
-        opp_noise=args.opp_noise, handicap=args.handicap)
+        opp_noise=args.opp_noise, handicap=args.handicap,
+        potential=args.potential, shape_scale=args.shape_scale,
+        opp_lambda=args.opp_lambda)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],

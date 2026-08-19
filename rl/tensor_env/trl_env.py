@@ -141,7 +141,8 @@ class KGTensorEnv(EnvBase):
     def __init__(self, B, device="cpu", seat=0, alternate_seat=False,
                  episode_steps=720, base_seed=0, opponent="starter",
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
-                 opp_noise=0.0, handicap=0):
+                 opp_noise=0.0, handicap=0, potential="networth",
+                 shape_scale=3000.0, opp_lambda=0.0):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -166,6 +167,21 @@ class KGTensorEnv(EnvBase):
         # applied at reset on the TRAINING engine only (eval always runs the
         # reference engine); trl_pool steps it down as the win gate passes
         self.handicap = int(handicap)
+        # shaping potential: net_worth_t values what you hold; future_worth_t
+        # (Kilo's future-credit formula) values what the state will deliver.
+        # opp_lambda subtracts the opponent's potential delta -- the relative
+        # form; lambda=1.0 per-step zero-sum is the archived negative result,
+        # so it ships OFF and graded values are for A/Bs.
+        if potential == "networth":
+            self._pot = potential_t.net_worth_t
+        elif potential == "future":
+            import potential_future
+            self._pot = potential_future.future_worth_t
+        else:
+            raise ValueError(f"unknown potential {potential!r}")
+        self.shape_scale = float(shape_scale)
+        self.opp_lambda = float(opp_lambda)
+        self._prev_wo = None
         self.opp_fn = _make_opponent(opponent, self.device)
         # when set (e.g. trl_pool.OpponentPool.sample), called at every reset
         # to pick the next episode batch's opponent
@@ -225,7 +241,9 @@ class KGTensorEnv(EnvBase):
                                      device=self.device)
         if self.handicap:
             self._ep.money[:, self.seat] += float(self.handicap)
-        self._prev_w = potential_t.net_worth_t(self._ep, self.seat)
+        self._prev_w = self._pot(self._ep, self.seat)
+        if self.opp_lambda:
+            self._prev_wo = self._pot(self._ep, 1 - self.seat)
         return self._obs_td()
 
     def _step(self, tensordict):
@@ -248,9 +266,13 @@ class KGTensorEnv(EnvBase):
             f_idx = torch.stack([ofa, fa], 1)
             m_idx = torch.stack([oma, ma], 1)
         ep.step_idx(f_idx, m_idx)
-        w = potential_t.net_worth_t(ep, seat)
-        r = (w - self._prev_w) * (1.0 / 3000.0)
+        w = self._pot(ep, seat)
+        r = (w - self._prev_w) * (1.0 / self.shape_scale)
         self._prev_w = w
+        if self.opp_lambda:
+            wo = self._pot(ep, opp)
+            r = r - self.opp_lambda * (wo - self._prev_wo) * (1.0 / self.shape_scale)
+            self._prev_wo = wo
         if ep.done:
             mine, theirs = ep.money[:, seat], ep.money[:, opp]
             if self.win_bonus:

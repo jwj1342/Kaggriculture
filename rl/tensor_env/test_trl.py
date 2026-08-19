@@ -361,6 +361,106 @@ def gate_smoothing():
           "refill on the new stage  PASS")
 
 
+def gate_potential():
+    """(vii) future-credit potential == Kilo's dict formula, lane by lane."""
+    import engine_t
+    import engine_t_idx  # noqa: F401
+    import features_t
+    import opponents_t
+    import potential_future as PF
+    import kg_rules as R
+
+    seeds = [101 + i for i in range(4)]
+    ep = engine_t.EpisodeT(seeds, episode_steps=720, device="cpu")
+    for t in range(180):  # 7.5 game days of varied legal play
+        fm, mm = features_t.masks_t(ep, 0)
+        fa, ma = _pick_legal(fm, t), _pick_legal(mm, t)
+        ofa, oma = opponents_t.starter_indices(ep, 1)
+        ep.step_idx(torch.stack([fa, ofa], 1), torch.stack([ma, oma], 1))
+    # guarantee animal-term coverage (all fed/cared/held combinations)
+    ep.animal[0, 0, 7, 2] = 0
+    ep.placed_day[0, 0, 7, 2] = 3
+    ep.yield_units[0, 0, 7, 2] = 2
+    ep.fed[0, 0, 7, 2] = True
+    ep.animal[1, 0, 8, 1] = 2
+    ep.placed_day[1, 0, 8, 1] = 6
+    ep.animal[1, 1, 2, 2] = 1
+    ep.placed_day[1, 1, 2, 2] = 1
+    ep.cared[1, 1, 2, 2] = True
+
+    day = ep._step // ep.turns_per_day
+
+    def oracle(lane, p):
+        phi = float(ep.money[lane, p])
+        for i, prod in enumerate(engine_t.PRODUCTS):
+            phi += float(ep.shed[lane, p, i]) * R.MARKET_PARAMS[prod]["base"] * 0.9
+        for c, cname in enumerate(engine_t.CROP_NAMES):
+            phi += float(ep.seeds_t[lane, p, c]) * R.CROPS[cname]["seed"] * 0.5
+        for y in range(10):
+            for x in range(10):
+                kind = int(ep.kind[lane, p, y, x])
+                if kind == engine_t.K_PLANT:
+                    cname = engine_t.CROP_NAMES[int(ep.crop[lane, p, y, x])]
+                    d = R.CROPS[cname]
+                    stress = 0.15 if (not bool(ep.watered[lane, p, y, x]) and
+                                      int(ep.consec_unwatered[lane, p, y, x]) >= 1) else 0.0
+                    if d.get("ongoing"):
+                        sitting = float(ep.yield_units[lane, p, y, x])
+                        interval = max(1, int(d.get("interval") or 1))
+                        pl = int(ep.planted_day[lane, p, y, x])
+                        start = max(day, pl + int(d["first_yield_day"]))
+                        if start > 30:
+                            expected = sitting
+                        else:
+                            rem_ev = 1.0 + (30 - start) / float(interval)
+                            dsf = day - pl - int(d["first_yield_day"])
+                            produced = (float(min(d["max_yield"], dsf // interval + 1))
+                                        if dsf >= 0 else 0.0)
+                            expected = sitting + min(
+                                max(0.0, d["max_yield"] - produced), rem_ev)
+                    else:
+                        expected = float(d["max_yield"])
+                    phi += expected * R.MARKET_PARAMS[cname]["base"] * 0.5 * (1 - stress)
+                elif kind == engine_t.K_WEED:
+                    phi -= 25.0
+                a = int(ep.animal[lane, p, y, x])
+                if a >= 0:
+                    aname = engine_t.ANIMAL_NAMES[a]
+                    ad = R.ANIMALS[aname]
+                    held = float(ep.yield_units[lane, p, y, x])
+                    interval = max(1, int(ad.get("interval") or 1))
+                    start = max(day, int(ep.placed_day[lane, p, y, x])
+                                + int(ad["first_yield_day"]))
+                    rem = held if start > 30 else held + 1.0 + (30 - start) / float(interval)
+                    phi += rem * R.MARKET_PARAMS[ad["product"]]["base"] * 0.4
+                    if not bool(ep.fed[lane, p, y, x]):
+                        phi -= ad["cost"] * 0.8
+                    if not bool(ep.cared[lane, p, y, x]):
+                        phi -= ad["cost"] * 0.3
+        phi += float(ep.hands_n[lane, p]) * 40.0
+        phi += float(ep.quad_unlocked[lane, p].sum()) * 300.0
+        return phi
+
+    assert bool((ep.kind == engine_t.K_PLANT).any()), "no plants -- widen the walk"
+    for p in (0, 1):
+        got = PF.future_worth_t(ep, p)
+        for lane in range(ep.B):
+            want = oracle(lane, p)
+            assert abs(float(got[lane]) - want) <= 1e-6 * max(1.0, abs(want)), \
+                (lane, p, float(got[lane]), want)
+    print("gate (vii) future-credit potential == Kilo's dict formula per lane  PASS")
+
+    from trl_env import KGTensorEnv
+    env = KGTensorEnv(2, device="cpu", episode_steps=26, potential="future",
+                      shape_scale=1000.0, opp_lambda=0.5, win_bonus=15.0)
+    td = env.reset()
+    td["action"] = torch.stack([_pick_legal(td["farmer_mask"], 0),
+                                _pick_legal(td["market_mask"], 0)], -1)
+    td = env.step(td)
+    assert bool(torch.isfinite(td["next", "reward"]).all())
+    print("gate (vii) env wiring: --potential future + --opp-lambda smoke  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -369,4 +469,5 @@ if __name__ == "__main__":
     gate_train_smoke()
     gate_hooks()
     gate_smoothing()
+    gate_potential()
     print("test_trl: all gates PASS")

@@ -92,6 +92,7 @@ yaml 已够，slurm 脚本靠 `"$@"` 透传）；**不按算法开目录**（los
 | `--handicap N` | 学习席开局多 N 金钱；配 `--opponents` 时每过胜率门减半、归零才晋级，新阶段重新带满 | 只作用于训练引擎；eval 永远跑参考引擎 |
 | `--opp-noise p` | 每 lane 以 p 概率把对手动作换成随机**合法**动作 | 削统治力不换对手身份 |
 | `--residual-base <npz/ckpt>` | 冻结先验 + 可训修正量（logit 相加），起点≈先验 | 导出模板/league 快照/CLI 都懂双网格式（快照若只带先验会静默错，已堵死并有门） |
+| `--potential future`（配 `--shape-scale`、`--opp-lambda`） | 前瞻记账势函数：种植即按预期剩余收获入账（种 melon 当场 +$750 势能）、动物计未来产出事件、未喂/未照料计逃跑风险、杂草计机会成本 | 移植自协作者 **Kilo**（new-branch `b53739f`），门 (vii) 对其字典公式逐 lane 判等；`--opp-lambda` 相对势默认 0（λ=1.0 逐步零和是归档负结果，只供 A/B） |
 
 组合预设：`rl/configs/foothold.yaml`（residual over pitchfork + 课程
 starter→pitchfork + 让步阶梯 + league + margin + 噪声）。

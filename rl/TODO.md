@@ -3,6 +3,22 @@
 规则：这里的每一项都**不许**打断或修改当前正在跑的训练管线。动工时新开目录，
 旧管线保持原样直到新东西通过验证。
 
+## 0. 逐单位多头动作空间（复盘 §13 出路②；Kilo 的参考实现已证明可部署）
+
+Kilo 在 `new-branch b53739f` 上给出了可部署的多头 agent（farmer 头 +
+12 个 hand 各自独立的 13 任务头 + market 4 模式头，IDLE 偏置 +2.5 让未
+训练策略先不乱动）。**想法采纳，机械用我们已验证的**，移植方案：
+
+- 词表映射：hand 任务 ∈ {AUTO, IDLE, HARVEST, WATER, CARE, COLLECT_FERT,
+  DIG}——AUTO = 现有优先级级联，**全 AUTO 时逐位等价于当前宏动作**（残差
+  式起点，天然可写等价门）；market 头保留我们的 22 动作（Kilo 的 4 模式
+  内嵌 barnyard 经济表，是更重的脚手架，不采）。
+- 落地面（每层过门再进下一层）：actions.py 的 per-hand decode（复用
+  `_hands_actions` 的逐 hand 目标机械）→ `engine_t_idx` 张量原生版 +
+  `step_idx` 签名扩展 → 逐字节等价门（`test_b3b` 模式）→ `trl_policy`
+  的 N 头分布（TwoHeadMasked 推广，联合 logp = 各头之和）→ 导出模板多头
+  版。引擎级手术，独立分支做。
+
 ## 1. 张量化脚本对手（统一层的已知边界）
 
 设备端课程/league（`tensor_env/trl_pool.py`）只能吃张量可表示的对手：
