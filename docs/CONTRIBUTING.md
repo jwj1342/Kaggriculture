@@ -7,10 +7,10 @@ the environment yet.
 
 ## Naming
 
-**A strategy's name is its definition.** Six atoms, fixed order, hyphen-joined:
+**A strategy's name is its definition.** Seven atoms, fixed order, hyphen-joined:
 
 ```
-land-labour-produce-market-intel-muck
+land-labour-produce-market-intel-muck-adapt
 ```
 
 There are **no version numbers anywhere in this repo**. `v1`, `v2`, `final2` and
@@ -23,7 +23,7 @@ Other naming rules in force:
 
 | Thing | Convention | Example |
 |---|---|---|
-| Generated strategy | atom composition | `estate-crew-mixedfarm-metered-blind-muck` |
+| Generated strategy | atom composition | `estate-crew-mixedfarm-metered-blind-muck-shopwise` |
 | Hand-written agent | what it does | `agents/barnyard.py` |
 | Submission snapshot | date + agent | `submissions/2026-08-07-barnyard/` |
 | Tournament run | purpose + scale | `library-screen-594`, `confirm-38-representative` |
@@ -48,7 +48,7 @@ which is a more interesting change than a new file. See below.
 ## Adding an atom option
 
 1. Add the option to the relevant table in `tools/registry.py` (`LAND`, `LABOUR`,
-   `PRODUCE`, `MARKET`, `INTEL`, `MUCK`). The value is a dict of `CONFIG` keys.
+   `PRODUCE`, `MARKET`, `INTEL`, `MUCK`, `ADAPT`). The value is a dict of `CONFIG` keys.
 2. Teach `agents/_engine.py` to read any new `CONFIG` key it introduces.
 3. Regenerate: `python tools/registry.py gen --plan all --out agents/lib`
 4. Validate every file still loads and exposes `agent` last:
@@ -89,7 +89,7 @@ that is fine, `episodes` rows are immutable history.
 Never on the login node.
 
 ```bash
-# screen the whole library -- O(n), the only affordable shape at 594 strategies
+# screen the whole library -- O(n), the only affordable shape at 1,728 strategies
 sbatch slurm/tournament.sh panel --lib agents/lib --seeds 8 --label "screen-<what>"
 
 # confirm the survivors -- O(n^2), exact
@@ -255,7 +255,7 @@ instead.
 `data/arena.sqlite` holds every episode ever run: result, status, shop draw,
 final prices, and a ~1.6 KB **digest** per player.
 
-It does **not** hold full replays — those are ~27 MB each and 85,000 of them is
+It does **not** hold full replays — those are ~27 MB each and 3.4 million of them is
 not a thing. If you need something that is not in the digest, extend `_digest()`
 in `tools/tournament.py` and note that older rows will not have the new field.
 The digest already carries final composition, per-product buy/sell totals, hire
@@ -280,7 +280,8 @@ tournament.py                     tools/publish.sh --push       tools/d1.py quer
 data/arena.sqlite  ──────────────▶  D1 'kaggriculture'  ───────▶  a collaborator
   source of truth                    published mirror              needs no cluster
                                                                    account and no
-                                     113 MB, 5 tables              downloaded file
+                                     5 tables (size as of the       downloaded file
+                                     last publish; `d1.py check`)
 ```
 
 **Why the split is not negotiable.** Compute nodes have no outbound internet —
@@ -299,12 +300,16 @@ into a file, but that file is for querying, not for merging upward.
 |---|---|---|---|
 | `agents`, `runs` | ~600 | query API, `INSERT OR REPLACE` | seconds |
 | `ratings` | ~600 | same | seconds |
-| `matchups` | 4,252 | same | ~2 min |
-| `episodes` | 85,064 | **bulk import** (SQL → R2 → ingest) | 4 s ingest, upload dominates |
+| `matchups` | thousands | same | ~2 min |
+| `episodes` | millions (3.4M local) | **bulk import** (SQL → R2 → ingest) | seconds of ingest, upload dominates |
+
+Row counts above are shapes, not facts — the local database is the source of
+truth (`tools/datalake.py status`), and `tools/d1.py check` reports what the
+mirror actually holds.
 
 `matchups` is the pairwise aggregate — games, wins, median money per unordered
-pair. It exists so a win matrix or a Bradley-Terry refit reads 4,252 rows instead
-of 85,064. Keep using it for anything that does not need per-episode detail.
+pair. It exists so a win matrix or a Bradley-Terry refit reads thousands of rows
+instead of millions. Keep using it for anything that does not need per-episode detail.
 
 Episodes must go through the bulk import endpoint. The same rows over the query
 API are ~14,000 requests and about 50 minutes; the import endpoint ingests them
@@ -384,7 +389,7 @@ reads as the history of what won.
 
 #### Known limitations of the sync
 
-Both are recorded rather than fixed; see `docs/CONTRIBUTING.md（工具参考）` for the full list.
+Both are recorded rather than fixed; see the 《工具参考》 section of this file for the full list.
 
 **Recomputed ratings for an existing run do not push.** The increment is decided
 by whether D1 already holds a `run_id`. Recompute a run's ratings locally and the
@@ -428,7 +433,12 @@ tree".
 |---|---|---|
 | `base.txt` | `pip install -r requirements/base.txt` | it installs normally from PyPI |
 | `nodeps.txt` | `pip install --no-deps -r requirements/nodeps.txt` | its declared dependencies are wrong, unbuildable, or enormous |
+| `rl.txt` | cluster: `sbatch slurm/rl_setup.sh` (wheelhouse `--no-index`, inside a job); laptop: `pip install -r` | it belongs to the `rl/` training stack only |
 | `lock.txt` | — generated | never edit; run `bash tools/bootstrap.sh --freeze` |
+
+The RL stack deliberately stays out of `bootstrap.sh`: `torch~=2.10.0` is
+pinned by the wheelhouse `tensordict`, weighs gigabytes, and nothing outside
+`rl/` imports it. Install it with `sbatch slurm/rl_setup.sh` when you need it.
 
 Then update `tools/bootstrap.sh` if the new package needs a platform-specific
 path, and refresh the lock. Keep the comment in the requirements file explaining
@@ -448,13 +458,16 @@ dependencies are unconstrained.
 | `docs/LEADERBOARD.md`, `site/leaderboard.html` | `data/arena.sqlite` | `python tools/leaderboard.py --run latest` |
 | `notebooks/baseline.ipynb` | an agent file | `python tools/build_notebook.py agents/<a>.py` |
 | `agents/legacy/probes/`, `agents/legacy/adv/` | legacy generators | frozen; do not regenerate |
+| `rl/runs/<run>/` (checkpoints, `plots/`), `rl/out/<name>/` | `rl/train.py`, `rl/export_agent.py`, `rl/plot_run.py` | re-run the training / export |
 
 All of these are git-ignored or explicitly marked. If you find yourself editing
 one, edit its source instead — otherwise the next regeneration silently reverts
 your change.
 
-`data/` and `.kaggle/` are git-ignored too: the database is 136 MB (copy it
-between checkouts, see ONBOARDING §1) and credentials are per-person by design.
+`data/` and `.kaggle/` are git-ignored too: the database is ~7.5 GB — do NOT
+casually copy it; share via `tools/sync.py` snapshots or query D1, and run
+`tools/datalake.py status` before trusting `data/` is complete. Credentials
+are per-person by design.
 
 ## Documentation
 
@@ -462,12 +475,11 @@ Keep results and their evidence together. When you measure something:
 
 - Numbers that inform a decision go in `docs/ROADMAP.md §11` with the sample
   size and the slice they came from.
-- **Negative results go in too.** `docs/ROADMAP.md §11` has a
-  *Measured and rejected* section and a *Measured and confirmed* one, and both
-  earn their place: seventeen changes derived correctly from the rules still
-  lost, and a rejection made against a weak field is not a fact about the game.
-  already been shown not to work. Two entries there were "obvious" improvements
-  that measured worse.
+- **Negative results go in too.** `docs/ROADMAP.md §11.2` is the A/B ledger
+  (landed and rejected both, with arm sizes): changes derived correctly from
+  the rules still lost there, and a rejection made against a weak field is not
+  a fact about the game. Check it before re-proposing an "obvious" improvement
+  — several entries were exactly that, and measured worse.
 - If a published claim turns out wrong, correct the document rather than adding
   a new one. There is one entry in `ROADMAP.md` §11 (`frontrun`) that exists
   purely to retract an earlier confounded result.
@@ -516,7 +528,7 @@ orthogonal axes; the name is the definition.
 
 ```bash
 python tools/registry.py list                            # the whole space
-python tools/registry.py gen --plan all --out agents/lib  # 594 strategies
+python tools/registry.py gen --plan all --out agents/lib  # 1,728 strategies
 python tools/registry.py gen --plan main                  # 26, one axis varied
 ```
 
@@ -524,26 +536,30 @@ python tools/registry.py gen --plan main                  # 26, one axis varied
 |---|---|
 | `agents/_engine.py` (template with a `CONFIG` marker block) | `agents/lib/*.py`, `agents/lib/manifest.json` |
 
-Plans: `main` (26), `edge` (8 corners), `produce` (72), `muck` (30),
-`grid` (512), `all` (594, deduplicated union). Full cross product is 9,216.
+Plans: `main`, `edge`, `produce`, `muck`, `grid`, `ladder`, `all` (1,728,
+deduplicated union). The full seven-axis cross product is 241,920; counts
+move with the option tables, so recheck with `registry.py list`.
 
 ### `agents/_engine.py`
 Not an agent — the single execution path every generated strategy shares. Its
-`CONFIG` block is replaced by the generator. Editing it changes all 594
-strategies, so regenerate afterwards.
+`CONFIG` block is replaced by the generator. Editing it changes every
+generated strategy, so regenerate afterwards.
 
 ### `agents/barnyard.py`
-The hand-written original, and the agent currently on the ladder (submission
-`55332339`). Kept because it is the only strategy not expressible as an atom
-composition, and because the ladder entry must stay traceable.
+The hand-written original (its 2026-08-07 ladder entry was `55332339`; the
+ladder has long since moved on — see `docs/LADDER_STATE.md`). It now leads a
+second life as the strongest tensor-native RL *training opponent*
+(`rl/tensor_env/barnyard_t.py`, byte-exact against this file). Kept because it
+is the only strategy not expressible as an atom composition, and because both
+of those roles must stay traceable to this source.
 
 ---
 
 ## Running episodes
 
 ### `tools/tournament.py`
-The main harness. Two shapes, because a full round robin over 594 strategies
-would be 176,121 pairings.
+The main harness. Two shapes, because a full round robin over 1,728 strategies
+would be ~1.5 million pairings.
 
 ```bash
 # O(n): every strategy against a fixed six-anchor panel
@@ -679,7 +695,7 @@ Deleted 2026-08-12. All three were superseded by `tournament.py` (panel and
 round robin, persisted to SQLite) and `eval.py` (A/B with an interval), and they
 were the main source of duplication in the repo -- five different `_play`
 implementations lived across them. Their results predate `data/arena.sqlite` and
-are transcribed into `docs/VALIDATING.md` §7, which is where published numbers
+are transcribed into `docs/RUNS.md`, which is where published numbers
 citing them should point. `slurm/league.sh` and `slurm/sweep.sh` went with them.
 
 ### `tools/db.py`
@@ -886,7 +902,9 @@ bash tools/package.sh agents/enhanced enhanced         # a directory
 Given a single generated strategy it stages the pair (`main.py` + `kg_rules.py`)
 itself, so submitting one is one command and nobody has to remember that the
 rules travel with the policy. Everything ends up at the archive root -- Kaggle unpacks into `/kaggle_simulations/agent/`, so a
-nested directory breaks the imports. Verifies by unpacking, checking
+nested directory breaks the imports. It ships `*.py` **and `*.npz`** — an RL
+export is `main.py + weights.npz + kg_rl_* modules` (`rl/export_agent.py`), and
+a tar without the weights would PASS every turn. Verifies by unpacking, checking
 `get_last_callable` resolves to `agent`, and running a full episode. Single-file
 agents do not need it; submit the `.py` directly.
 
@@ -1009,17 +1027,27 @@ Superseded by `registry.py`; kept because published results name them.
 
 ## Slurm wrappers
 
-Thin scripts that source the environment, set `OMP_NUM_THREADS=1`, and call the
-corresponding tool with `-j $SLURM_CPUS_PER_TASK`. All CPU-only — never request
-a GPU.
+Thin scripts that source the environment and call the corresponding tool.
+The tournament/eval path is CPU-only; the ONE exception to "never request a
+GPU" is `rl/` training — the batched tensor engine is real GPU work
+(rationale: `rl/tensor_env/DESIGN.md` §5). Evaluation always runs the CPU
+reference engine.
 
-| script | wraps | default resources |
+| script | wraps | resources |
 |---|---|---|
 | `slurm/tournament.sh` | `tools/tournament.py` | 32 cpus, 48 G, 6 h |
+| `slurm/tournament_array.sh` | sharded tournaments (JSONL out, ingest after) | array x 32 cpus, 30 min |
 | `slurm/eval.sh` | `tools/eval.py` | 32 cpus, 32 G, 2 h |
+| `slurm/rl_setup.sh` | install `requirements/rl.txt` into the venv | 4 cpus, 15 min |
+| `slurm/rl_train.sh` | `rl/train.py` -- chainable ~50-min links via `--resume` | **GPU h100:1**, 8 cpus, 55 min |
+| `slurm/rl_ab.sh` | hand-written vs TorchRL A/B arms | **GPU h100:1**, 8 cpus |
+| `slurm/rl_bc.sh` | `rl/bc/` collect + clone + sanity | 32 cpus, CPU |
+| `slurm/rl_eval.sh` | export + ten-opponent roster + plots | 32 cpus, CPU |
 
 ```bash
 sbatch slurm/tournament.sh panel --lib agents/lib --seeds 8
+sbatch slurm/rl_train.sh --config rl/configs/<preset>.yaml \
+    --save rl/runs/<run>/latest.pt --resume rl/runs/<run>/latest.pt
 ```
 
 ---
@@ -1043,6 +1071,17 @@ docs/LEADERBOARD.md   D1 'kaggriculture' dist/*.xz      ad-hoc analysis
 site/leaderboard.html (published mirror) (offline copy)
       │                     │
       └─ git                └─ collaborators query directly
+```
+
+The RL line runs beside this, meeting it at eval/packaging:
+
+```
+reference/engine --byte-exact--> rl/tensor_env/ --> rl/train.py (TorchRL)
+                                                        │
+                                              rl/runs/<run>/ (ckpt + plots/)
+                                                        │  rl/export_agent.py
+                                                        ▼
+                       tools/eval.py <-- main.py + weights.npz --> tools/package.sh
 ```
 
 ---
@@ -1079,6 +1118,21 @@ Prefer `tournament.py` for anything new.
 
 ---
 
+## 分支与协作
+
+- **main 是唯一的集成分支。** RL 线的两条实验分支（`rl-baseline`、`tensorize`）
+  已于 2026-08-18 合并进 main 并继续在 main 上演进；不要基于它们开新工作。
+- **想法要署名。** 采纳协作者的设计时，移植提交带
+  `Co-authored-by: <名字> <邮箱>`（先例：Kilo 的前瞻记账势函数与逐单位多头，
+  两者的移植提交都带署名进了 main）。
+- **长期分叉的个人分支自己负责 rebase。** `new-branch` 与 main 已大幅分叉
+  （main 上的 `rl/` 统一层覆盖了它重复实现的引擎）；往 main 送东西请以
+  main 的 `rl/` 结构为准。
+- **提交信息讲"为什么"**，度量类改动附样本量；引擎/训练语义的改动必须先过
+  对应的验收门（`rl/tensor_env/test_*.py`）再合。
+
+---
+
 # 在 Vulcan 集群上跑（可选）
 
 > 原 `docs/CONTRIBUTING.md（集群）`，2026-08-14 并入这里。**这一节只对能访问 Vulcan 的人有用；
@@ -1105,8 +1159,9 @@ Prefer `tournament.py` for anything new.
 ## 基本规则
 
 - **永远不要在登录节点跑重活。** 一局（约 2.7 秒）可以，锦标赛不行。
-- **这个负载是纯 CPU 的 —— 永远不要申请 GPU。** 它是单线程 Python，其中 42% 的时间
-  花在框架内部的 `deepcopy` 上。
+- **锦标赛/评估负载是纯 CPU 的 —— 不要为它申请 GPU**：单线程 Python，42% 的时间
+  花在框架内部的 `deepcopy` 上。**唯一的例外是 `rl/` 训练**（批量张量引擎，
+  `slurm/rl_train.sh` / `rl_ab.sh`，h100:1）；评估永远跑 CPU 参考引擎。
 - **短任务立刻开跑，长任务排队。** 同样的工作量在 `--time=03:00:00` 加每任务 64 核下
   排了 78 分钟；在 `--time=00:30:00` 加 32 核下，十六个节点上立即开始。
 - **`$SCRATCH` 不备份**，60 天不活动会被清理（年龄取 `min(atime, ctime)`）。

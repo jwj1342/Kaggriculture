@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 """Per-unit multi-head action space gates (rl/TODO.md #0), layer by layer.
 
-M1 (CPU reference): on live full episodes, _hands_actions_multi with
-    all-AUTO tasks must equal the classic _hands_actions byte for byte --
-    the macro space is the multi space's fixed point. Mixed tasks are
-    property-checked: IDLE passes, a task hand only emits its family's op
-    (or a move / the DROP leg), slots beyond the task list default to AUTO,
-    and hand_task_mask matches family presence.
+M1 (CPU reference): mixed tasks are property-checked on live episodes --
+    IDLE passes, a task hand only emits its family's op (or a move / the
+    DROP leg), slots beyond the task list default to AUTO, and
+    hand_task_mask matches family presence. (The all-AUTO == classic
+    comparison is kept as a canary, but since _hands_actions now DELEGATES
+    to the multi path it holds by construction; the load-bearing classic
+    gate is test_b3b, which proves the delegated cascade byte-exact
+    through decode + step_raw.)
 
     python rl/tensor_env/test_multi.py [--steps 480] [--lanes 2]
 

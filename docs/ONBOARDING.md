@@ -13,7 +13,10 @@ Kaggriculture 是一个 Kaggle **仿真类**比赛：你提交的是一个**程�
 所有对局做一次 Bradley-Terry 拟合。
 
 这个仓库包含一个**可组合的策略库**（七个正交原子生成的 agent）、一个已经把
-130 万局写进 SQLite 的**本地锦标赛系统**，以及由此得出的全部分析。
+**340 万局**写进 SQLite 的**本地锦标赛系统**、一条**RL 训练主线**（与竞赛引擎
+逐字节一致的批量张量引擎 + TorchRL，`rl/README.md`——2026-08-18 起的主要工作面），
+以及由此得出的全部分析。本指南先教会你锦标赛系统（所有测量的地基）；RL 线上手
+在读完本文后转 `rl/README.md`。
 
 ---
 
@@ -35,7 +38,7 @@ bash tools/bootstrap.sh             # 建立 venv/，并用一局真实对局验
 
 > 如果你**确实**有 Vulcan 集群账号，同一个脚本会自动检测并改走 `module load` 和
 > Compute Canada 的 wheelhouse，两边环境等价。集群相关的一切都收在
-> `docs/CONTRIBUTING.md（集群）` 里，其余文档都不假设你有集群。
+> `docs/CONTRIBUTING.md`《在 Vulcan 集群上跑》 里，其余文档都不假设你有集群。
 
 然后把**你自己的** Kaggle 凭据放进 `.kaggle/`：
 
@@ -63,14 +66,22 @@ python tools/registry.py gen --plan all --out agents/lib   # 生成策略库
 而不是重跑 —— 它代表几十小时的算力：
 
 ```bash
-# 有它的人导出一份快照
-python tools/sync.py export --full        # -> dist/arena-meta.sqlite.xz
+# 有它的人导出：元数据快照（runs/agents/ratings，几百 KB，进 git）
+python tools/sync.py export               # -> dist/arena-meta.sqlite.xz
 
 # 你来安装
 python tools/sync.py import dist/arena-meta.sqlite.xz
 
-# 或者只要排名，几十 KB，如果你只想读结果
-python tools/sync.py export               # -> dist/arena-meta.sqlite.xz
+# 完整库（含全部 episodes，几百 MB）走本地传输，不进 git
+python tools/sync.py export --full
+```
+
+集群上跑完任何锦标赛之后，先做数据对账再相信 `data/` 是完整的
+（分片是手工 ingest 的，忘掉它是这里的默认失败模式）：
+
+```bash
+python tools/datalake.py status        # 数据库 vs 分片 vs dist/，一屏
+python tools/datalake.py sync --prune  # 补入库，然后清分片
 ```
 
 没有它所有工具照样能用；`tools/db.py` 会建一个空库，你从零开始积累自己的跑数。
@@ -166,7 +177,7 @@ python tools/tournament.py roundrobin \
 | 对整个 `bench3` 场地筛一个 agent（约 3 千局） | 约 15 分钟 |
 | 整个策略库的全量筛选（数万局） | 几小时 |
 
-**前三行在笔记本上完全可行**，只有最后一行值得动用集群（`docs/CONTRIBUTING.md（集群）`）。
+**前三行在笔记本上完全可行**，只有最后一行值得动用集群（`docs/CONTRIBUTING.md`《在 Vulcan 集群上跑》）。
 另一个办法是直接拿别人跑好的证据：`python tools/sync.py import dist/arena-meta.sqlite.xz`。
 这份快照带 `runs` / `agents` / `ratings`（每一次实验的形状和排名，0.42 MB），**不带 episodes**
 —— 那是 3.4M 行、几个 GB，git 装不下，而且重跑就能复现。要完整的找有集群的人直接拷。
@@ -186,16 +197,16 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 如果你离开超过几天，**先读 `docs/ROADMAP.md`** —— 它就是为这种情况写的，开头就讲
 哪些结论后来被推翻了。
 
-1. `docs/ROADMAP.md` —— 这个项目走到哪、为什么，每条主张都附样本量
-2. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。两个场地对应两个水平层级，用错
-   这一轮就白跑
+1. `docs/ROADMAP.md` —— 剧本线走到哪、为什么，每条主张都附样本量（覆盖到 08-14）
+2. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。出任何数字之前读
 3. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么
-4. `docs/ROADMAP.md §11` —— 七个落地、五个被否，全都附样本量
-5. `docs/ROADMAP.md §11` —— 为什么我们自己写的场地误导了我们一周
+4. `docs/ROADMAP.md` §11 —— 停掉的路线：引擎改动的 A/B 记录（9 落地 / 7 被否）、
+   为什么我们自己写的场地误导了我们一周
+5. `rl/README.md` —— **当前主线**：张量引擎、TorchRL 训练、第一代的复盘，
+   以及 `docs/RUNS.md` 末四条判词
 6. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读
-7. `docs/VALIDATING.md` —— 上面第 2 条的完整版
 
-根目录 `README.md` 的《文档》一节按问题索引全部十份文档。
+根目录 `README.md` 的《文档》一节按问题索引全部文档（docs/ 十份 + rl/ 四份）。
 
 ## 6. 会咬你的五件事
 
@@ -221,27 +232,26 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 
 ---
 
-## 7. 目前的状况（截至 2026-08-12）
+## 7. 目前的状况
 
-- **排行榜最高分 1363.7**，来自 `closer_cleo` 加一行改动（终局控制器从最后 3 回合
-  放宽到 6 回合）。我们自己引擎的历史最好是 **857.6**。为什么会跳，见
-  `docs/ROADMAP.md` §5。
-- **我们自己的引擎赢参考场地 54–61%，而 `closer_cleo` 赢 99%。** 这不是调参能补的差距。
-- 最重要的一条事实修正：**榜首跑的不是 `agents/ref/` 里那条线** —— 156 条真实榜首
-  轨迹里只有 8 条与之重合超过 30%。它们自己聚成 25 条线，最大一条 97 份、跨 38 个队伍。
-  见 `docs/ROADMAP.md` §3 和 `tools/lines.py`。
-- **价值在外包装，不在剧本本身。** 原始轨迹换个种子就塌（最好的那簇只剩 11.8%），
-  而对四个带外包装的 agent 是 0/3072。
-- 唯一还有天花板的路线是 **C：自己搜一整季的剧本 + 市场外包装**。见 `ROADMAP.md` §7。
-- 5 次提交/天，只有最新两个活跃，**失活按时间顺序不按分数** —— 这条已经让我们
-  在一夜之间损失了 1363.7 和 1287.2。
+**这一节故意不写具体数字** —— 上一版（截至 08-12）在一周内全部过时。
+现状的单点真相只有三处，按需要查：
+
+- **天梯**：`docs/LADDER_STATE.md`（队伍分数、场上两个提交、为什么现在不提交）。
+- **主线进展**：`docs/RUNS.md` 末尾的最近几条 + `rl/TODO.md`（下一步）。
+- **两条线的分工与待办**：`docs/TODO.md` 开头。
+
+三条不随快照过时的事实：天梯顶端是「剧本 + 市场外包装」而我们的原子库是在线调度器
+（差 40 个百分点，不是调参能补的）；价值在外包装不在剧本（裸录音对带包装的 agent
+是 0/3072）；5 次提交/天、只有最新两个活跃、**失活按时间顺序不按分数**——这条
+让我们一夜损失过当时最好的两个提交。
 
 ---
 
 ## 8. 保住证据
 
-`data/arena.sqlite` 是这里唯一不可替代的文件 —— 它是 130 万局的记录，所有文档里的
-数字都追溯到它。它是 git-ignored 的（对 git 来说太大），所以**它只存在于跑过它的那台
+`data/arena.sqlite` 是这里唯一不可替代的文件 —— 它是 **340 万局**的记录（约 7.5 GB），
+所有文档里的数字都追溯到它。它是 git-ignored 的（对 git 来说太大），所以**它只存在于跑过它的那台
 机器上**。
 
 拿到它 / 分享它：
@@ -253,4 +263,4 @@ python tools/d1.py top -n 20            # 或者不下载，直接查远端镜�
 ```
 
 如果你在 Vulcan 集群上工作，还有几条集群专属的注意事项 —— 全都收在
-`docs/CONTRIBUTING.md（集群）`，其余文档都不假设你有集群。
+`docs/CONTRIBUTING.md`《在 Vulcan 集群上跑》，其余文档都不假设你有集群。

@@ -77,7 +77,7 @@ yaml 已够，slurm 脚本靠 `"$@"` 透传）；**不按算法开目录**（los
 | league 自博弈（mirror/history/anchor = .25/.25/.50） | ✅ 简化移植 | `--league --snapshot-every`；快照=定期+封顶，非门控晋级+指纹去重 |
 | best.pt 峰值棘轮 | ✅ 已勾接 | `--save` 时自动写同目录 `best.pt` |
 | 断点续训（链式短作业） | ✅ 已勾接 | `--resume`（model+optim+种子流+池状态）；`slurm/rl_train.sh` |
-| 脚本对手当**训练**对手（barnyard/ghost/spar） | ❌ 已知边界 | 未张量化，只在 kaggle-env 评估世界；`TODO.md` #1 |
+| 脚本对手当**训练**对手 | ◐ barnyard ✅（`tensor_env/barnyard_t.py`，逐动作+全状态双门）；ghosts/spar ❌ 仍只在评估世界 | `TODO.md` #1 |
 | kaggle-env league（PFSP、指纹去重、晋级门） | 保留参考 | `league.py`——trl_pool 是它的设备端简化移植 |
 | 评估花名册 / 计分卡 | ✅ 原样服务 | `slurm/rl_eval.sh` + `eval_summary.py` |
 

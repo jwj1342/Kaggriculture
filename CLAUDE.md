@@ -16,9 +16,11 @@ Vulcan; do not add cluster-only assumptions to anything outside `slurm/`.
 
 Dependencies are in `requirements/`, split by install semantics:
 `base.txt` (normal), `nodeps.txt` (`--no-deps`), `lock.txt` (generated audit
-snapshot, cluster-specific), `rl.txt` (optional, `rl/` training only —
-torch is pinned `~=2.10.0` because the wheelhouse tensordict requires it;
-install inside a job via `sbatch slurm/rl_setup.sh`). `kaggle-environments` is `--no-deps` on purpose —
+snapshot, cluster-specific), `rl.txt` (the `rl/` training stack —
+`torch~=2.10.0` pinned by the wheelhouse tensordict, `torchrl==0.11.*`,
+`tensordict==0.11.*`, `matplotlib`; install inside a job via
+`sbatch slurm/rl_setup.sh`; pyyaml is already in the venv and feeds
+`rl/train.py --config`). `kaggle-environments` is `--no-deps` on purpose —
 its 19 declared dependencies include `open_spiel`, which fails to build; only
 three are actually needed. Import errors for *other* environments (`lux_ai_s3`,
 `halite`, `open_spiel_env`) print to stderr and are expected.
@@ -99,7 +101,8 @@ Never run heavy work on the login node. One episode (~2.7 s) is fine; tournament
 go through Slurm. CPU-only — **never request a GPU**; the workload is
 single-threaded Python and 42% of it is `deepcopy` inside the framework.
 The one exception is `rl/` training: the batched tensor engine is real GPU
-work (`slurm/rl_ab.sh`; rationale in `rl/tensor_env/DESIGN.md` §5). Evaluation
+work (`slurm/rl_train.sh` for chained training links, `slurm/rl_ab.sh` for
+A/B arms; rationale in `rl/tensor_env/DESIGN.md` §5). Evaluation
 (`tools/eval.py`, `slurm/rl_eval.sh`) always runs the reference engine on CPU.
 
 Shard anything big: `sbatch --array=0-47 --cpus-per-task=32 --mem=40G
@@ -124,10 +127,13 @@ registering a manifest concurrently corrupted it (recovered in full — see
 `docs/LEADERBOARD.md` + `site/leaderboard.html`. README "How it fits together"
 has the diagram.
 
-`rl/` is the TorchRL training line (own README): byte-verified engine ports +
-`rl/train.py` (swappable losses, `--device` is the CPU/GPU switch). Its
-checkpoints flow through `rl/export_agent.py` into the same eval/submit
-pipeline as every other agent.
+`rl/` is the TorchRL training line — **the project's current mainline** (own
+README): byte-verified engine ports + `rl/train.py` (swappable losses,
+`--device` is the CPU/GPU switch, `--config` yaml presets in `rl/configs/`,
+`--multi-head` per-hand task heads, curriculum/league/handicap/margin knobs,
+deterministic probes + early stop). Every run auto-renders charts to
+`rl/runs/<run>/plots/`. Checkpoints flow through `rl/export_agent.py` into
+the same eval/submit pipeline as every other agent.
 
 `agents/spar/` is the same generator on the `ladder` plan: opponents
 reconstructed from real ladder replays. Keep it in every field — before it
@@ -167,12 +173,15 @@ the four files in it were both, until `datalake.py export` and a `git add`.
 
 `tools/package.sh <dir> <name>` builds the tar.gz, with every module at the
 **archive root** — Kaggle unpacks into `/kaggle_simulations/agent/`, so a nested
-directory breaks the imports. It verifies by unpacking, checking
-`get_last_callable` resolves to `agent`, and running a full episode.
+directory breaks the imports. It ships `*.py` and `*.npz` (an RL export is
+`main.py + weights.npz`; a tar without the weights PASSes every turn). It
+verifies by unpacking, checking `get_last_callable` resolves to `agent`, and
+running a full episode.
 
 ## Submissions
 
 5 per day, only the latest 2 active. Snapshot the exact submitted file under
 `submissions/<date>-<name>/` and log it in `docs/RUNS.md` with the local result
-that motivated it. `notebooks/baseline.ipynb` is **generated** by
+that motivated it. The RL line has never been submitted — its acceptance chain
+is `docs/VALIDATING.md`'s "怎么验收一个 RL 产物" section. `notebooks/baseline.ipynb` is **generated** by
 `tools/build_notebook.py` — edit the agent, not the notebook.
