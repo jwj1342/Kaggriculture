@@ -347,7 +347,8 @@ class KGTensorEnv(EnvBase):
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
-                 kickstart="", build_bonus=0.0, bank="", bank_frac=0.5):
+                 kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
+                 shape_gamma=0.0):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -382,8 +383,23 @@ class KGTensorEnv(EnvBase):
         elif potential == "future":
             import potential_future
             self._pot = potential_future.future_worth_t
+        elif potential == "future-mkt":
+            # future-credit with the HOARDING SUBSIDY removed: shed stock
+            # valued at min(current market price, base) x 0.9, so selling
+            # below base stops being punished at the moment of sale (the
+            # documented hack: five runs held 62-100 melons because the
+            # potential priced dead inventory at 48x its market value)
+            import potential_future
+            self._pot = lambda ep, p: potential_future.future_worth_t(
+                ep, p, shed_at_market=True)
         else:
             raise ValueError(f"unknown potential {potential!r}")
+        # Ng-correct shaping: r = gamma*phi(s') - phi(s). The plain
+        # difference leaks (1-gamma)*phi per step -- an annuity for
+        # HOLDING high-phi assets that summed to more than the win bonus
+        # over a season (~4.8 units at phi~20k). 0 keeps the legacy
+        # difference; set it to the training gamma to close the leak.
+        self.shape_gamma = float(shape_gamma)
         self.shape_scale = float(shape_scale)
         self.opp_lambda = float(opp_lambda)
         # build-curve credit folded into the potential: rides the same
@@ -583,12 +599,13 @@ class KGTensorEnv(EnvBase):
         return self._finish_step(ep, seat, opp)
 
     def _finish_step(self, ep, seat, opp):
+        g = self.shape_gamma if self.shape_gamma > 0.0 else 1.0
         w = self._pot(ep, seat)
-        r = (w - self._prev_w) * (1.0 / self.shape_scale)
+        r = (g * w - self._prev_w) * (1.0 / self.shape_scale)
         self._prev_w = w
         if self.opp_lambda:
             wo = self._pot(ep, opp)
-            r = r - self.opp_lambda * (wo - self._prev_wo) * (1.0 / self.shape_scale)
+            r = r - self.opp_lambda * (g * wo - self._prev_wo) * (1.0 / self.shape_scale)
             self._prev_wo = wo
         if ep.done:
             mine, theirs = ep.money[:, seat], ep.money[:, opp]

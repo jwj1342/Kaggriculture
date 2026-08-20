@@ -151,11 +151,19 @@ def build_parser():
                          "[farmer, market, hand x12]; hand heads start "
                          "AUTO-biased, so iteration 0 plays the classic "
                          "scheduler and learns deviations")
-    ap.add_argument("--potential", choices=("networth", "future"),
+    ap.add_argument("--potential",
+                    choices=("networth", "future", "future-mkt"),
                     default="networth",
                     help='shaping potential: "networth" (holdings at base '
                          'price) or "future" (Kilo\'s future-credit formula: '
-                         "planting credits expected harvest immediately)")
+                         'planting credits expected harvest immediately) or '
+                         '"future-mkt" (future with shed stock at '
+                         "min(market, base) -- removes the hoarding subsidy)")
+    ap.add_argument("--shape-gamma", type=float, default=0.0,
+                    help="Ng-correct shaping: r = g*phi(s') - phi(s); the "
+                         "plain difference (0 = legacy) leaks (1-g)*phi per "
+                         "step, an annuity for holding high-phi assets. Set "
+                         "to --gamma to close the leak.")
     ap.add_argument("--shape-scale", type=float, default=3000.0,
                     help="divisor of the per-step potential delta")
     ap.add_argument("--opp-lambda", type=float, default=0.0,
@@ -284,7 +292,8 @@ def train(args, log_fn=None):
         potential=args.potential, shape_scale=args.shape_scale,
         opp_lambda=args.opp_lambda, multi_head=args.multi_head,
         kickstart=args.kickstart, build_bonus=args.build_bonus,
-        bank=args.bank, bank_frac=args.bank_frac)
+        bank=args.bank, bank_frac=args.bank_frac,
+        shape_gamma=args.shape_gamma)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],

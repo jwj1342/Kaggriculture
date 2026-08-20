@@ -91,8 +91,15 @@ def _luts(device):
     return _LUTS[key]
 
 
-def future_worth_t(ep, player):
-    """(B,) float64 future-credit potential for one seat."""
+def future_worth_t(ep, player, shed_at_market=False):
+    """(B,) float64 future-credit potential for one seat.
+
+    shed_at_market: value shed PRODUCTS at min(current market price, base)
+    instead of flat base -- removes the hoarding subsidy (selling below
+    base was a negative reward at the moment of sale, and market prices
+    sit far below base for anything the two farms actually produce at
+    volume). Kilo's original formula is shed_at_market=False; the gate
+    pins that path only."""
     L = _luts(ep.device)
     f64 = torch.float64
     day = float(ep._step // ep.turns_per_day)
@@ -138,7 +145,13 @@ def future_worth_t(ep, player):
     phi = phi - WEED_COST * (kind == ET.K_WEED).to(f64).sum((-1, -2))
     phi = phi + HAND_VALUE * ep.hands_n[:, player].to(f64)
     phi = phi + LAND_VALUE * ep.quad_unlocked[:, player].to(f64).sum(-1)
-    phi = phi + (ep.shed[:, player].to(f64) * L["base12"]).sum(-1) * SHED_DISCOUNT
+    if shed_at_market:
+        eff9 = torch.minimum(ep.mkt_price.to(f64), L["base9"])   # (B, 9)
+        shed9 = ep.shed[:, player, :len(_BASE9)].to(f64)
+        phi = phi + (shed9 * eff9).sum(-1) * SHED_DISCOUNT
+    else:
+        phi = phi + (ep.shed[:, player].to(f64)
+                     * L["base12"]).sum(-1) * SHED_DISCOUNT
     phi = phi + (ep.seeds_t[:, player].to(f64) * L["seedc"]).sum(-1) * SEED_RESIDUAL
     phi = phi + ep.money[:, player]
     return phi
