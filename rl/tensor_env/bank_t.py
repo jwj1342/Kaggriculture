@@ -36,10 +36,15 @@ _LISTS = ("seeds", "_shops_len", "_inv_ord", "_ord_ctr")
 
 def fork(ep):
     """Detached snapshot of every mutable piece of an EpisodeT."""
-    st = {"__tensors__": {}, "__scalars__": {}, "__lists__": {}}
+    st = {"__tensors__": {}, "__scalars__": {}, "__lists__": {},
+          "__B__": ep.B}
     for name, val in vars(ep).items():
         if isinstance(val, torch.Tensor):
-            st["__tensors__"][name] = val.clone()
+            # remember which tensors are lane-first so restore_lanes can
+            # remap them; constants and oddly-shaped state stay whole
+            st["__tensors__"][name] = (val.clone(),
+                                       val.dim() > 0
+                                       and val.shape[0] == ep.B)
     for name in _SCALARS:
         if hasattr(ep, name):
             st["__scalars__"][name] = getattr(ep, name)
@@ -51,7 +56,8 @@ def fork(ep):
 
 def restore(ep, st):
     """Overwrite ep with a fork()ed snapshot (batch sizes must match)."""
-    for name, val in st["__tensors__"].items():
+    for name, entry in st["__tensors__"].items():
+        val = entry[0] if isinstance(entry, tuple) else entry
         cur = getattr(ep, name, None)
         if isinstance(cur, torch.Tensor) and cur.shape == val.shape \
                 and cur.dtype == val.dtype:
@@ -62,6 +68,34 @@ def restore(ep, st):
         setattr(ep, name, val)
     for name, val in st["__lists__"].items():
         setattr(ep, name, copy.deepcopy(val))
+    return ep
+
+
+def restore_lanes(ep, st, src_idx):
+    """Restore a snapshot into ep with per-lane remapping: ep lane i gets
+    the bank's lane src_idx[i]. Lane-first tensors (flagged at fork time)
+    are gathered on dim 0; everything else restores whole. Lets a small
+    bank (e.g. 64 barnyard-vs-barnyard games) seed a big training batch."""
+    src = list(int(i) for i in src_idx)
+    assert len(src) == ep.B, (len(src), ep.B)
+    idx_t = torch.as_tensor(src, dtype=torch.int64)
+    for name, entry in st["__tensors__"].items():
+        val, lane_first = entry if isinstance(entry, tuple) else (entry, False)
+        pick = (val.index_select(0, idx_t.to(val.device))
+                if lane_first else val)
+        cur = getattr(ep, name, None)
+        if isinstance(cur, torch.Tensor) and cur.shape == pick.shape \
+                and cur.dtype == pick.dtype:
+            cur.copy_(pick)
+        else:
+            setattr(ep, name, pick.clone().to(ep.device))
+    for name, val in st["__scalars__"].items():
+        setattr(ep, name, val)
+    for name, val in st["__lists__"].items():
+        if isinstance(val, list) and len(val) == st.get("__B__", -1):
+            setattr(ep, name, copy.deepcopy([val[i] for i in src]))
+        else:
+            setattr(ep, name, copy.deepcopy(val))
     return ep
 
 

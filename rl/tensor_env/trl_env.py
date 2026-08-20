@@ -347,7 +347,7 @@ class KGTensorEnv(EnvBase):
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
-                 kickstart="", build_bonus=0.0):
+                 kickstart="", build_bonus=0.0, bank="", bank_frac=0.5):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -408,6 +408,22 @@ class KGTensorEnv(EnvBase):
         self._ep = None
         self._episode_index = 0
         self._prev_w = None
+        # backplay: comma-separated bank files (make_bank.py). A banked
+        # reset restores mid-game barnyard-vs-barnyard states into the
+        # fresh batch (random bank lanes -> env lanes), so the win signal
+        # exists long before the policy can build day 0 -> 29 itself.
+        # Bank choice and lane draw derive from (base_seed, episode_index)
+        # -- deterministic, so --resume replays the same stream.
+        self.bank_frac = float(bank_frac)
+        self._banks = []
+        if bank:
+            import bank_t
+            self._bank_mod = bank_t
+            for path in str(bank).split(","):
+                if path.strip():
+                    self._banks.append(
+                        torch.load(path.strip(), map_location=self.device,
+                                   weights_only=False))
 
         # kickstart teacher: "" (off) or "barnyard" -- every learner-seat
         # state gets barnyard's mapped decision alongside the observation
@@ -481,6 +497,16 @@ class KGTensorEnv(EnvBase):
         self._episode_index += 1
         self._ep = engine_t.EpisodeT(seeds, episode_steps=self.episode_steps,
                                      device=self.device)
+        if self._banks:
+            r = ((self._episode_index * 40503 + self.base_seed) % 997) / 997.0
+            if r < self.bank_frac:
+                g = torch.Generator().manual_seed(
+                    self.base_seed * 7919 + self._episode_index)
+                bk = self._banks[int(torch.randint(len(self._banks), (1,),
+                                                   generator=g))]
+                nb = bk["state"]["__B__"]
+                src = torch.randint(nb, (self.B,), generator=g)
+                self._bank_mod.restore_lanes(self._ep, bk["state"], src)
         if self.handicap:
             self._ep.money[:, self.seat] += float(self.handicap)
         self._prev_w = self._pot(self._ep, self.seat)
