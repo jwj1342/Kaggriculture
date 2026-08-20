@@ -117,6 +117,10 @@ def build_parser():
     ap.add_argument("--ks-anneal", type=float, default=80e6,
                     help="lane-steps over which ks-coef decays linearly "
                          "to zero (0 = constant)")
+    ap.add_argument("--build-bonus", type=float, default=0.0,
+                    help="weight of the curve-capped build credit folded "
+                         "into the potential (targets measured from the "
+                         "231k-season anatomy; 0 = off)")
     ap.add_argument("--snapshot-every", type=int, default=5,
                     help="league: snapshot the actor every N iterations")
     # -- adversarial-gradient smoothing (docs: rl/README.md, RUNS 2026-08-19) --
@@ -274,7 +278,7 @@ def train(args, log_fn=None):
         opp_noise=args.opp_noise, handicap=args.handicap,
         potential=args.potential, shape_scale=args.shape_scale,
         opp_lambda=args.opp_lambda, multi_head=args.multi_head,
-        kickstart=args.kickstart)
+        kickstart=args.kickstart, build_bonus=args.build_bonus)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],

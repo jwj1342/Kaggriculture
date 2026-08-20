@@ -298,6 +298,47 @@ def _make_opponent(spec, device):
     return FrozenPolicyOpponent(spec, device)
 
 
+# ---- build-curve potential (AlphaStar z, measured) --------------------------
+# Per-day targets from the 231k-season anatomy (docs/RUNS.md 2026-08-20,
+# 40 top-ladder seats): ~4 animals by day 2, 9 by day 8, plateau ~14;
+# land 1 -> 2 (day 7) -> 3 (day 10); ~11-12 hands from day 8. The phi term
+# is CURVE-CAPPED -- min(count, target(day)) -- so it pays for approaching
+# the top build and stops paying beyond it; being a potential, an escaped
+# animal or a fired hand takes its credit back.
+
+def _interp30(points):
+    out, (d0, v0) = [], points[0]
+    pts = list(points) + [(29, points[-1][1])]
+    j = 0
+    for d in range(30):
+        while j + 1 < len(pts) and pts[j + 1][0] <= d:
+            j += 1
+        if j + 1 < len(pts) and pts[j + 1][0] > pts[j][0]:
+            a, b = pts[j], pts[j + 1]
+            v = a[1] + (b[1] - a[1]) * (d - a[0]) / (b[0] - a[0])
+        else:
+            v = pts[j][1]
+        out.append(v)
+    return out
+
+_BUILD_ANIMALS = _interp30([(0, 0.0), (2, 4.0), (8, 9.0), (11, 13.0),
+                            (14, 14.5)])
+_BUILD_LAND = _interp30([(0, 1.0), (7, 2.0), (10, 3.0)])
+_BUILD_HANDS = _interp30([(0, 0.0), (2, 4.0), (8, 11.0), (11, 12.0)])
+
+
+def build_phi(ep, player, tabs):
+    """(B,) float64: curve-capped build credit for one seat."""
+    day = min(29, ep._step // ep.turns_per_day)
+    a = (ep.animal[:, player] >= 0).sum((-1, -2)).to(torch.float64)
+    land = ep.quad_unlocked[:, player].to(torch.float64).sum(-1)
+    hands = ep.hands_n[:, player].to(torch.float64)
+    ta, tl, th = tabs[0][day], tabs[1][day], tabs[2][day]
+    return (400.0 * torch.clamp(a, max=ta)
+            + 1000.0 * torch.clamp(land - 1.0, min=0.0, max=tl - 1.0)
+            + 100.0 * torch.clamp(hands, max=th))
+
+
 class KGTensorEnv(EnvBase):
     batch_locked = True
 
@@ -306,7 +347,7 @@ class KGTensorEnv(EnvBase):
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
-                 kickstart=""):
+                 kickstart="", build_bonus=0.0):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -345,6 +386,20 @@ class KGTensorEnv(EnvBase):
             raise ValueError(f"unknown potential {potential!r}")
         self.shape_scale = float(shape_scale)
         self.opp_lambda = float(opp_lambda)
+        # build-curve credit folded into the potential: rides the same
+        # _prev_w differencing, reset init and opp_lambda paths
+        self.build_bonus = float(build_bonus)
+        if self.build_bonus > 0.0:
+            f64 = torch.float64
+            tabs = (torch.tensor(_BUILD_ANIMALS, dtype=f64, device=device),
+                    torch.tensor(_BUILD_LAND, dtype=f64, device=device),
+                    torch.tensor(_BUILD_HANDS, dtype=f64, device=device))
+            base_pot, bb = self._pot, self.build_bonus
+
+            def _pot_build(ep, player):
+                return base_pot(ep, player) + bb * build_phi(ep, player, tabs)
+
+            self._pot = _pot_build
         self._prev_wo = None
         self.opp_fn = _make_opponent(opponent, self.device)
         # when set (e.g. trl_pool.OpponentPool.sample), called at every reset
