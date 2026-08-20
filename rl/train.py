@@ -434,8 +434,18 @@ def train(args, log_fn=None):
         if dev.type == "cuda":
             torch.cuda.synchronize()
         t_end = time.time()
-        money = td["next", "money"][:, -1]
-        omoney = td["next", "opp_money"][:, -1]
+        # terminal money via the done mask: identical to [:, -1] while a
+        # batch is whole fixed-length episodes, and still correct once
+        # bank-started (variable-length) episodes land in a batch
+        dm = td["next", "done"].reshape(td.shape)
+        if bool(dm.any()):
+            last = (dm.to(torch.int64)
+                    * torch.arange(td.shape[1], device=dm.device)).amax(1)
+        else:
+            last = torch.full((td.shape[0],), td.shape[1] - 1,
+                              dtype=torch.int64, device=td.device)
+        money = td["next", "money"].gather(1, last.unsqueeze(1)).squeeze(1)
+        omoney = td["next", "opp_money"].gather(1, last.unsqueeze(1)).squeeze(1)
         win = ((money > omoney).float().mean()
                + 0.5 * (money == omoney).float().mean()).item()
         n_steps = td.numel()
