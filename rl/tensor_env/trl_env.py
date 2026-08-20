@@ -81,8 +81,105 @@ def hand_task_mask_t(ep, player, n_hands=None):
                        device=dev)
     mask[:, :, 0] = alive                                          # AUTO
     mask[:, :, 1] = True                                           # IDLE
-    mask[:, :, 2:] = alive.unsqueeze(-1) & fams.unsqueeze(1)
+    mask[:, :, 2:2 + fams.shape[1]] = alive.unsqueeze(-1) & fams.unsqueeze(1)
+    # FEED: an unfed animal exists and wheat is reachable -- that hand's
+    # own inventory or the shed (actions.hand_task_mask's per-hand row)
+    unfed_any = (anim & ~ep.fed[:, player].reshape(B, NN)).any(-1)  # (B,)
+    shed_wheat = ep.shed[:, player, engine_t.WHEAT_I] > 0           # (B,)
+    hand_wheat = ep.unit_inv[:, player, 1:n_hands + 1,
+                             engine_t.WHEAT_I] > 0                  # (B, H)
+    mask[:, :, -1] = (alive & (shed_wheat.view(B, 1) | hand_wheat)
+                      & unfed_any.view(B, 1))
     return mask
+
+
+# ---- kickstart teacher labels (Schmitt et al. 2018 / Lux-S1 recipe) --------
+# barnyard_t's per-unit INTENTS (ops["task"/"task_arg"]) mapped into the
+# policy's head vocabulary, queried on the LEARNER's own states -- teacher
+# supervision without the distribution shift that killed the old line's BC.
+# Lossy by measurement, not accident: per-hand plant/place/build fall back
+# to AUTO (~7% of barnyard's hand work), the metered multi-order market
+# collapses to one priority-picked head index.
+
+_KS_LUTS = {}
+
+
+def _ks_luts(device):
+    import engine_t_idx as X
+    key = str(device)
+    if key not in _KS_LUTS:
+        i64 = torch.int64
+        hand = [0] * 18                     # default AUTO
+        hand[X.U_PASS] = 1                  # unassigned unit: barnyard idles it
+        hand[X.U_HARVEST] = A.HAND_TASKS.index("HARVEST")
+        hand[X.U_WATER] = A.HAND_TASKS.index("WATER")
+        hand[X.U_CARE] = A.HAND_TASKS.index("CARE")
+        hand[X.U_COLLECT] = A.HAND_TASKS.index("COLLECT_FERTILIZER")
+        hand[X.U_DIG] = A.HAND_TASKS.index("DIG")
+        hand[X.U_FEED] = A.HAND_TASKS.index("FEED")
+        farmer = [0] * 18                   # default PASS
+        for op, name in ((X.U_WATER, "WATER"), (X.U_HARVEST, "HARVEST"),
+                         (X.U_FEED, "FEED"), (X.U_CARE, "CARE"),
+                         (X.U_COLLECT, "COLLECT_FERT"),
+                         (X.U_FERTILIZE, "FERTILIZE"),
+                         (X.U_DIG, "DIG_WEED"), (X.U_BUILD_COOP, "BUILD_COOP"),
+                         (X.U_BUILD_PASTURE, "BUILD_PASTURE"),
+                         (X.U_DROP, "DROP")):
+            farmer[op] = A.FARMER_ACTIONS.index(name)
+        farmer[X.U_PLANT] = 15              # + crop arg below
+        farmer[X.U_PLACE] = 20              # + animal arg below
+        _KS_LUTS[key] = {
+            "hand": torch.tensor(hand, dtype=i64, device=device),
+            "farmer": torch.tensor(farmer, dtype=i64, device=device)}
+    return _KS_LUTS[key]
+
+
+def kickstart_labels(ep, player):
+    """(teacher_f (B,), teacher_m (B,), teacher_h (B, MAX_HANDS)) int64 --
+    barnyard's decision on `player`'s seat in head-index vocabulary.
+    Dead hand slots carry -1 (the CE loss skips them)."""
+    import barnyard_t
+    import engine_t_idx as X
+    dev, B = ep.device, ep.B
+    ops = barnyard_t.compute(ep, player)
+    task, targ = ops["task"], ops["task_arg"]                  # (B, U)
+    luts = _ks_luts(dev)
+    f = luts["farmer"][task[:, 0]]
+    f = torch.where(task[:, 0] == X.U_PLANT, 15 + targ[:, 0], f)
+    f = torch.where(task[:, 0] == X.U_PLACE, 20 + targ[:, 0], f)
+    h = luts["hand"][task[:, 1:]]                              # (B, U-1)
+    hn = ep.hands_n[:, player].to(torch.int64)
+    ar = torch.arange(h.shape[1], device=dev).view(1, -1)
+    h = torch.where(ar < hn.view(B, 1), h, torch.full_like(h, -1))
+    if h.shape[1] < A.MAX_HANDS:
+        h = torch.cat([h, torch.full((B, A.MAX_HANDS - h.shape[1]), -1,
+                                     dtype=h.dtype, device=dev)], 1)
+    else:
+        h = h[:, :A.MAX_HANDS]
+    # market: one head index from up to 10 orders; later writes win, so
+    # the priority is SELL < BUY_WHEAT/FERT < BUY_SEED < HIRE < BUY_LAND <
+    # BUY_ANIMAL (rarest and most build-critical claims the single slot)
+    m_op, m_item, m_rem = ops["m_op"], ops["m_item"], ops["m_rem"]
+
+    def first_item(cond):
+        idx = torch.argmax(cond.to(torch.int64), 1)
+        return m_item.gather(1, idx.view(B, 1)).squeeze(1), cond.any(1)
+
+    m = torch.zeros((B,), dtype=torch.int64, device=dev)       # NOOP
+    sell = m_op == engine_t.OP_SELL
+    qty = torch.where(sell, m_rem, torch.zeros_like(m_rem))
+    s_it = m_item.gather(1, torch.argmax(qty, 1).view(B, 1)).squeeze(1)
+    m = torch.where(sell.any(1), 1 + s_it, m)
+    it, any_ = first_item(m_op == engine_t.OP_BUYP)
+    m = torch.where(any_ & (it == engine_t.WHEAT_I), torch.full_like(m, 15), m)
+    m = torch.where(any_ & (it == engine_t.FERT_I), torch.full_like(m, 16), m)
+    it, any_ = first_item(m_op == engine_t.OP_SEED)
+    m = torch.where(any_, 10 + it, m)
+    m = torch.where((m_op == X.OP_HIRE).any(1), torch.full_like(m, 21), m)
+    m = torch.where((m_op == X.OP_LAND).any(1), torch.full_like(m, 20), m)
+    it, any_ = first_item(m_op == engine_t.OP_ANIMAL)
+    m = torch.where(any_, 17 + it, m)
+    return f, m, h
 
 
 class FrozenPolicyOpponent:
@@ -201,7 +298,8 @@ class KGTensorEnv(EnvBase):
                  episode_steps=720, base_seed=0, opponent="starter",
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
-                 shape_scale=3000.0, opp_lambda=0.0, multi_head=False):
+                 shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
+                 kickstart=""):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -249,6 +347,11 @@ class KGTensorEnv(EnvBase):
         self._episode_index = 0
         self._prev_w = None
 
+        # kickstart teacher: "" (off) or "barnyard" -- every learner-seat
+        # state gets barnyard's mapped decision alongside the observation
+        if kickstart not in ("", "barnyard"):
+            raise ValueError(f"unknown kickstart teacher {kickstart!r}")
+        self.kickstart = kickstart
         # multi-head action space (rl/TODO.md #0): [farmer, market, hand x12]
         self.multi_head = bool(multi_head)
         bs, dev = self.batch_size, self.device
@@ -267,6 +370,13 @@ class KGTensorEnv(EnvBase):
                 n=A.N_HAND_TASK, shape=(*bs, A.MAX_HANDS, A.N_HAND_TASK),
                 dtype=torch.bool, device=dev)
             nvec = nvec + [A.N_HAND_TASK] * A.MAX_HANDS
+        if self.kickstart:
+            obs_entries["teacher_f"] = Unbounded(
+                shape=(*bs,), dtype=torch.int64, device=dev)
+            obs_entries["teacher_m"] = Unbounded(
+                shape=(*bs,), dtype=torch.int64, device=dev)
+            obs_entries["teacher_h"] = Unbounded(
+                shape=(*bs, A.MAX_HANDS), dtype=torch.int64, device=dev)
         self.observation_spec = Composite(obs_entries, shape=bs, device=dev)
         self.action_spec = MultiCategorical(
             nvec=nvec, shape=(*bs, len(nvec)), dtype=torch.int64, device=dev)
@@ -289,6 +399,9 @@ class KGTensorEnv(EnvBase):
                "opp_money": ep.money[:, 1 - seat].clone()}
         if self.multi_head:
             out["hand_mask"] = hand_task_mask_t(ep, seat, A.MAX_HANDS)
+        if self.kickstart:
+            tf, tm, th = kickstart_labels(ep, seat)
+            out["teacher_f"], out["teacher_m"], out["teacher_h"] = tf, tm, th
         return TensorDict(out, batch_size=self.batch_size, device=self.device)
 
     # -- EnvBase hooks -------------------------------------------------------

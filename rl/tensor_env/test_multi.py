@@ -56,21 +56,37 @@ def _check_mixed(obs, s, rng):
         if task == "IDLE":
             assert act == ["PASS"], (task, act)
         elif task == "AUTO":
+            # AUTO never feeds: FEED is task-only (all-AUTO == classic)
             assert op in _MOVES | {"PASS", "DROP", "HARVEST", "WATER", "CARE",
                                    "COLLECT_FERTILIZER", "DIG"}, (task, act)
+        elif task == "FEED":
+            # the one consumable task: FEED on target, PICKUP on the wheat
+            # leg, moves between, DROP when loaded, PASS when starved
+            assert op in _MOVES | {"PASS", "DROP", "FEED", "PICKUP"}, (task, act)
+            if op == "PICKUP":
+                assert act[1] == "WHEAT" and act[2] >= 1, (task, act)
         else:
             assert op in _MOVES | {"PASS", "DROP", task}, (task, act)
             if op == "PASS":
                 # PASS is only legal when the family is empty, every target
                 # is claimed by an earlier hand, or the hand is mid-DROP-leg
                 pass
-    # mask sanity: family legality == family presence
+    # mask sanity: family legality == family presence (FEED also needs
+    # reachable wheat -- that hand's inventory or the shed)
     mask = A.hand_task_mask(obs)
+    priv = obs["private"]
+    shed_wheat = priv["shed"].get("WHEAT", 0) > 0
+    invs = priv["inventories"]
     for i in range(A.MAX_HANDS):
         assert mask[i][0] == (i < n_hands)          # AUTO for live hands
         assert mask[i][1] is True                    # IDLE always
         for k, name in enumerate(A.HAND_TASKS[2:], start=2):
-            want = (i < n_hands) and bool(fam_lists[name])
+            if name == "FEED":
+                hinv = invs[i + 1] if i + 1 < len(invs) else {}
+                want = ((i < n_hands) and bool(s["unfed"])
+                        and (shed_wheat or hinv.get("WHEAT", 0) > 0))
+            else:
+                want = (i < n_hands) and bool(fam_lists[name])
             assert mask[i][k] == want, (i, name, mask[i][k], want)
     return 1
 
@@ -262,6 +278,95 @@ def gate_m3m4(args):
     return True
 
 
+def gate_m5(args):
+    """M5 (FEED): the consumable hand task closes the loop behaviourally.
+    A scripted scenario -- hire two hands, build coops, buy + place
+    animals, stock wheat; the FARMER never feeds -- must keep the herd
+    alive on hand labour alone (the engine kills an animal at 2 unfed
+    days), with the wheat PICKUP leg firing, and the device and CPU paths
+    must agree on the full state every step."""
+    import kg_rules as R
+    import verify
+
+    animal = A.ANIMAL_LIST[0]
+    struct = R.ANIMALS[animal]["structure"]
+    f_build = A.FARMER_ACTIONS.index(f"BUILD_{struct}")
+    f_place = A.FARMER_ACTIONS.index(f"PLACE_{animal}")
+    f_pass = A.FARMER_ACTIONS.index("PASS")
+    m_noop = A.MARKET_ACTIONS.index("NOOP")
+    m_hire = A.MARKET_ACTIONS.index("HIRE")
+    m_wheat = A.MARKET_ACTIONS.index("BUY_WHEAT")
+    m_buy = A.MARKET_ACTIONS.index(f"BUY_{animal}")
+    feed_idx = A.HAND_TASKS.index("FEED")
+
+    steps = 8 * 24
+    ep_m = engine_t.EpisodeT([77_000], episode_steps=steps, device=args.device)
+    ep_r = engine_t.EpisodeT([77_000], episode_steps=steps, device=args.device)
+
+    def drive(obs):
+        farm = obs["farms"][obs["player"]]
+        priv = obs["private"]
+        fm, mm = A.farmer_mask(obs), A.market_mask(obs)
+        n_hands = len(farm.get("hands", []))
+        animals = sum(1 for row in farm["tiles"] for t in row
+                      if isinstance(t, dict) and "animal" in t)
+        structs = sum(1 for row in farm["tiles"] for t in row
+                      if isinstance(t, dict) and t.get("kind") == struct)
+        held = priv["shed"].get(animal, 0)
+        if n_hands < 2 and mm[m_hire]:
+            mi = m_hire
+        elif held == 0 and animals < 3 and mm[m_buy]:
+            mi = m_buy
+        elif priv["shed"].get("WHEAT", 0) < 4 and mm[m_wheat]:
+            mi = m_wheat
+        else:
+            mi = m_noop
+        # the farmer builds and places but NEVER feeds
+        if held > 0 and fm[f_place]:
+            fi = f_place
+        elif structs < 3 and animals >= structs and fm[f_build]:
+            fi = f_build
+        else:
+            fi = f_pass
+        return fi, mi, [feed_idx] * n_hands
+
+    feeds = pickups = n = 0
+    while not ep_m.done:
+        obs0 = lane_obs(ep_m, 0, 0)
+        obs1 = lane_obs(ep_m, 0, 1)
+        d0, d1 = drive(obs0), drive(obs1)
+        dicts = [[A.decode_multi(obs0, d0[0], d0[2], d0[1]),
+                  A.decode_multi(obs1, d1[0], d1[2], d1[1])]]
+        for d in dicts[0]:
+            for h in d["hands"]:
+                if h and h[0] == "FEED":
+                    feeds += 1
+                elif h and h[0] == "PICKUP":
+                    pickups += 1
+        h0 = d0[2] + [0] * (A.MAX_HANDS - len(d0[2]))
+        h1 = d1[2] + [0] * (A.MAX_HANDS - len(d1[2]))
+        ep_m.step_idx(torch.tensor([[d0[0], d1[0]]]),
+                      torch.tensor([[d0[1], d1[1]]]),
+                      h_idx=torch.tensor([[h0, h1]]))
+        ep_r.step_raw(dicts)
+        d = verify.first_diff(ep_m.snapshot(0), ep_r.snapshot(0))
+        if d:
+            print(f"M5 state diff after step {n}: {d}")
+            return False
+        n += 1
+    farm = lane_obs(ep_m, 0, 0)["farms"][0]
+    alive = sum(1 for row in farm["tiles"] for t in row
+                if isinstance(t, dict) and "animal" in t)
+    if not (alive >= 3 and feeds >= 10 and pickups >= 2):
+        print(f"M5 behaviour check failed: alive {alive} (want >=3), "
+              f"feeds {feeds} (want >=10), pickups {pickups} (want >=2)")
+        return False
+    print(f"M5: hands-only feeding sustains {alive} animals over {n} steps "
+          f"({feeds} hand FEEDs, {pickups} wheat PICKUPs, farmer never fed); "
+          f"device == CPU state throughout")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=480)
@@ -273,6 +378,9 @@ def main():
         print("MULTI-FAIL")
         return 1
     if not gate_m3m4(args):
+        print("MULTI-FAIL")
+        return 1
+    if not gate_m5(args):
         print("MULTI-FAIL")
         return 1
 
