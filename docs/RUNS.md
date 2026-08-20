@@ -1422,3 +1422,33 @@ engine it cannibalised (4-7 melons; capital went to pastures) -- and
 the checkpoint tree (steward/reveille/shepherd, forked from this trunk
 with the hoarding-subsidy and gamma-annuity fixes) is already searching
 the continuations.
+
+## The recordings fall: steward-sampled takes both ghosts at 84-90% (2026-08-20 night)
+
+First generation of the checkpoint tree, first verdicts. steward (the
+granger trunk + the two reward-hacking fixes; chain 20189919-21, KILLED
+EARLY at 150 iterations by the argmax-probe stopper -- this family's
+strength lives in the sampled distribution and the argmax probe is a
+lagging indicator, so the stopper and the plain roster BOTH mis-read it:
+argmax roster 1/10, loses to starter). The sampled export of the same
+checkpoint:
+
+| opponent | win | margin |
+|---|---|---|
+| ghost-89825016 | **84.4% BEATEN** | +16,336 |
+| ghost-89830307 | **89.6% BEATEN** | +18,131 |
+| barnyard | 12.5% | **-7,814** |
+| main | 0% | -23,465 |
+| lena / w49 | 0% | -107,549 / -105,642 |
+
+**4/10 beaten including both recordings** -- the acceptance line's
+recording requirement is met; one more opponent (main at -23k or
+barnyard itself at -7.8k) reaches >=5/10. This morning these ghosts
+were coin flips and the wall was -34k. Alongside: granger's plain
+ladder finished at ZERO-noise batch win 0.208 (0.010 -> 0.208 across
+L4-L5), reveille (fixes+backplay) ended its L2 at 0.320 blended, and
+the k-line stretch test measured the mountain above: k01/k06 out-earn
+our best 20:1 (herdsman's argmax earns literally $0 under their market
+pressure -- the starkest overfitting exhibit yet; drover-samp holds
+6.5k). Discipline for this family from here: dual-mode rosters always,
+stoppers off or batch-win-keyed, sampled exports as the deliverable.
