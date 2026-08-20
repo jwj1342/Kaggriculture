@@ -1406,3 +1406,19 @@ because mid-band losses sit at -4.4k median. Flipping the matchup needs
 median income ~19.4k -> ~26k -- absolute economy, the animal/fertilizer
 gap, not endgame crumbs. That is granger's lane (its noisy-wall batch
 money passed 27.4k while this was measured).
+
+## The animal engine turns over (2026-08-20, granger mid-run)
+
+Seed-1000 trace of granger's link-4 checkpoint (zero-noise batches,
+money 34.7k and climbing): wheat bought day 0, TWO COWS placed by day 5,
+hands feeding on the wheat loop, MILK accumulating (12 -> 30 by day 15),
+FERTILIZER stocking (22 units by day 28), liquidation-day sell to a
+24,280 finish. Every link of BUY -> BUILD -> PLACE -> FEED -> PRODUCE ->
+SELL is alive for the first time in this line's history -- the chain
+that 176.7M steps of pure exploration (herdsman) never assembled, put
+together by teacher labels + the measured build-curve credit + no melon
+anchor. What remains is SCALE (2 cows vs barnyard's 21) and the crop
+engine it cannibalised (4-7 melons; capital went to pastures) -- and
+the checkpoint tree (steward/reveille/shepherd, forked from this trunk
+with the hoarding-subsidy and gamma-annuity fixes) is already searching
+the continuations.
