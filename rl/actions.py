@@ -70,10 +70,15 @@ MARKET_ACTIONS = (
     + ["BUY_WHEAT", "BUY_FERT"]
     + [f"BUY_{a}" for a in ANIMAL_LIST]
     + ["BUY_LAND", "HIRE"]
+    # metered selling, appended so every earlier index is stable: sell
+    # ceil(half) of the holding. Measured on 13,183 recorded top-ladder
+    # sell orders (rl/TODO.md #8): 47% are sell-ALL, the rest small
+    # batches -- halving a few turns in a row composes any fraction.
+    + [f"SELL_HALF_{p}" for p in PRODUCT_LIST]
 )
 
 N_FARMER = len(FARMER_ACTIONS)   # 23
-N_MARKET = len(MARKET_ACTIONS)   # 22
+N_MARKET = len(MARKET_ACTIONS)   # 31
 
 _F_IDX = {name: i for i, name in enumerate(FARMER_ACTIONS)}
 _M_IDX = {name: i for i, name in enumerate(MARKET_ACTIONS)}
@@ -419,13 +424,18 @@ def _market_action(obs, name):
     if name == "NOOP":
         return []
     if name.startswith("SELL_"):
-        p = name[len("SELL_"):]
+        half = name.startswith("SELL_HALF_")
+        p = name[len("SELL_HALF_"):] if half else name[len("SELL_"):]
         if day >= R.LIQUIDATE_DAY:
+            # metering stops mattering at the buzzer: both flavours run
+            # the whole-shed compound liquidation
             first = [["SELL", p, shed[p]]] if shed.get(p, 0) > 0 else []
             rest = [["SELL", q, shed[q]] for q in PRODUCT_LIST
                     if q != p and shed.get(q, 0) > 0]
             return (first + rest)[:R.MAX_ORDERS]
         n = shed.get(p, 0)
+        if half:
+            n = (n + 1) // 2
         return [["SELL", p, n]] if n > 0 else []
     if name.startswith("BUY_SEED_"):
         return [["BUY_SEED", name[len("BUY_SEED_"):], 1]]
@@ -665,4 +675,18 @@ def market_mask(obs):
                 and money >= R.LAND_PRICES[n_extra])
     vals.append(len(farm.get("hands", [])) < MAX_HANDS   # HIRE
                 and money >= _fib(farm.get("hires_today", 0)))
+    for p in PRODUCT_LIST:                      # SELL_HALF_<p>
+        vals.append(sget(p, 0) > 0)
+    # Mechanics-dead endgame (the PLANT_DEADLINE pattern): on the
+    # liquidation day with products in the shed, everything but selling is
+    # dead -- post-deadline plants never mature, an animal placed now never
+    # yields, escapes stop mattering, and stock held to the end realises
+    # $0. SELL_<p> decodes compound into a full-shed liquidation here, so
+    # any sell choice is a liquidation. Measured: five runs in a row left
+    # 62-100 melons rotting in the shed behind a NOOP-happy argmax.
+    if day >= R.LIQUIDATE_DAY:
+        sellable = [sget(p, 0) > 0 for p in PRODUCT_LIST]
+        if any(sellable):
+            vals = ([False] + sellable
+                    + [False] * (len(vals) - 1 - len(PRODUCT_LIST)))
     return np.array(vals, dtype=bool)

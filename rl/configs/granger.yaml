@@ -1,0 +1,41 @@
+# Round 4, assembled from four verdicts and one map:
+#   - herdsman: FEED alone ratchets the wall margin (-48k era -> -36k)
+#     but exploration never strings the animal chain together
+#   - drover: teacher CE on the learner's own states moves earlier than
+#     pure RL (the drift-immune imitation; parrot's pure BC froze)
+#   - the 2x2: the pitchfork residual anchors every run to the melon
+#     monoculture -- the 231k-season anatomy says that is the top meta's
+#     SMALLEST revenue line (fertilizer 30% + wheat 21% + strawberry 17%)
+#   - the literature: a 0%-win wall needs the win rate dragged into the
+#     30-70% band; money handicap failed twice, so the ladder is OPPONENT
+#     NOISE, annealed per chain link (a CLI arg, not pool state):
+#
+#   L1: sbatch slurm/rl_train.sh --config rl/configs/granger.yaml \
+#         --opp-noise 0.40 --save rl/runs/granger/latest.pt --resume ...
+#   L2: same with --opp-noise 0.25
+#   L3: same with --opp-noise 0.10
+#   L4+: same with --opp-noise 0.0
+#
+# NO residual_base on purpose: kickstart labels + the build-curve credit
+# provide the warm direction without the melon anchor. Hand heads still
+# open AUTO-biased (the safe scheduler).
+device: cuda
+B: 1024
+iters: 240
+algo: ppo
+seat: alt
+multi_head: true
+opponents: barnyard
+league: false
+advance_at: 0.85
+handicap: 0
+win_bonus: 1.5
+margin_bonus: 1.5
+margin_scale: 50000
+potential: future
+build_bonus: 1.0
+kickstart: barnyard
+ks_coef: 0.5
+ks_anneal: 80000000
+probe_every: 10
+stop_patience: 6

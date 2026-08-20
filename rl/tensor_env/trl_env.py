@@ -168,8 +168,15 @@ def kickstart_labels(ep, player):
     m = torch.zeros((B,), dtype=torch.int64, device=dev)       # NOOP
     sell = m_op == engine_t.OP_SELL
     qty = torch.where(sell, m_rem, torch.zeros_like(m_rem))
-    s_it = m_item.gather(1, torch.argmax(qty, 1).view(B, 1)).squeeze(1)
-    m = torch.where(sell.any(1), 1 + s_it, m)
+    si = torch.argmax(qty, 1).view(B, 1)
+    s_it = m_item.gather(1, si).squeeze(1)
+    s_q = qty.gather(1, si).squeeze(1)
+    held = ep.shed[:, player].to(torch.int64).gather(
+        1, s_it.view(B, 1)).squeeze(1)
+    # a metered teacher sell (qty <= ceil(half)) maps to SELL_HALF_<p>
+    metered = s_q * 2 <= held + 1
+    m = torch.where(sell.any(1),
+                    torch.where(metered, 22 + s_it, 1 + s_it), m)
     it, any_ = first_item(m_op == engine_t.OP_BUYP)
     m = torch.where(any_ & (it == engine_t.WHEAT_I), torch.full_like(m, 15), m)
     m = torch.where(any_ & (it == engine_t.FERT_I), torch.full_like(m, 16), m)
@@ -291,6 +298,47 @@ def _make_opponent(spec, device):
     return FrozenPolicyOpponent(spec, device)
 
 
+# ---- build-curve potential (AlphaStar z, measured) --------------------------
+# Per-day targets from the 231k-season anatomy (docs/RUNS.md 2026-08-20,
+# 40 top-ladder seats): ~4 animals by day 2, 9 by day 8, plateau ~14;
+# land 1 -> 2 (day 7) -> 3 (day 10); ~11-12 hands from day 8. The phi term
+# is CURVE-CAPPED -- min(count, target(day)) -- so it pays for approaching
+# the top build and stops paying beyond it; being a potential, an escaped
+# animal or a fired hand takes its credit back.
+
+def _interp30(points):
+    out, (d0, v0) = [], points[0]
+    pts = list(points) + [(29, points[-1][1])]
+    j = 0
+    for d in range(30):
+        while j + 1 < len(pts) and pts[j + 1][0] <= d:
+            j += 1
+        if j + 1 < len(pts) and pts[j + 1][0] > pts[j][0]:
+            a, b = pts[j], pts[j + 1]
+            v = a[1] + (b[1] - a[1]) * (d - a[0]) / (b[0] - a[0])
+        else:
+            v = pts[j][1]
+        out.append(v)
+    return out
+
+_BUILD_ANIMALS = _interp30([(0, 0.0), (2, 4.0), (8, 9.0), (11, 13.0),
+                            (14, 14.5)])
+_BUILD_LAND = _interp30([(0, 1.0), (7, 2.0), (10, 3.0)])
+_BUILD_HANDS = _interp30([(0, 0.0), (2, 4.0), (8, 11.0), (11, 12.0)])
+
+
+def build_phi(ep, player, tabs):
+    """(B,) float64: curve-capped build credit for one seat."""
+    day = min(29, ep._step // ep.turns_per_day)
+    a = (ep.animal[:, player] >= 0).sum((-1, -2)).to(torch.float64)
+    land = ep.quad_unlocked[:, player].to(torch.float64).sum(-1)
+    hands = ep.hands_n[:, player].to(torch.float64)
+    ta, tl, th = tabs[0][day], tabs[1][day], tabs[2][day]
+    return (400.0 * torch.clamp(a, max=ta)
+            + 1000.0 * torch.clamp(land - 1.0, min=0.0, max=tl - 1.0)
+            + 100.0 * torch.clamp(hands, max=th))
+
+
 class KGTensorEnv(EnvBase):
     batch_locked = True
 
@@ -299,7 +347,7 @@ class KGTensorEnv(EnvBase):
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
-                 kickstart=""):
+                 kickstart="", build_bonus=0.0, bank="", bank_frac=0.5):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -338,6 +386,20 @@ class KGTensorEnv(EnvBase):
             raise ValueError(f"unknown potential {potential!r}")
         self.shape_scale = float(shape_scale)
         self.opp_lambda = float(opp_lambda)
+        # build-curve credit folded into the potential: rides the same
+        # _prev_w differencing, reset init and opp_lambda paths
+        self.build_bonus = float(build_bonus)
+        if self.build_bonus > 0.0:
+            f64 = torch.float64
+            tabs = (torch.tensor(_BUILD_ANIMALS, dtype=f64, device=device),
+                    torch.tensor(_BUILD_LAND, dtype=f64, device=device),
+                    torch.tensor(_BUILD_HANDS, dtype=f64, device=device))
+            base_pot, bb = self._pot, self.build_bonus
+
+            def _pot_build(ep, player):
+                return base_pot(ep, player) + bb * build_phi(ep, player, tabs)
+
+            self._pot = _pot_build
         self._prev_wo = None
         self.opp_fn = _make_opponent(opponent, self.device)
         # when set (e.g. trl_pool.OpponentPool.sample), called at every reset
@@ -346,6 +408,22 @@ class KGTensorEnv(EnvBase):
         self._ep = None
         self._episode_index = 0
         self._prev_w = None
+        # backplay: comma-separated bank files (make_bank.py). A banked
+        # reset restores mid-game barnyard-vs-barnyard states into the
+        # fresh batch (random bank lanes -> env lanes), so the win signal
+        # exists long before the policy can build day 0 -> 29 itself.
+        # Bank choice and lane draw derive from (base_seed, episode_index)
+        # -- deterministic, so --resume replays the same stream.
+        self.bank_frac = float(bank_frac)
+        self._banks = []
+        if bank:
+            import bank_t
+            self._bank_mod = bank_t
+            for path in str(bank).split(","):
+                if path.strip():
+                    self._banks.append(
+                        torch.load(path.strip(), map_location=self.device,
+                                   weights_only=False))
 
         # kickstart teacher: "" (off) or "barnyard" -- every learner-seat
         # state gets barnyard's mapped decision alongside the observation
@@ -419,6 +497,16 @@ class KGTensorEnv(EnvBase):
         self._episode_index += 1
         self._ep = engine_t.EpisodeT(seeds, episode_steps=self.episode_steps,
                                      device=self.device)
+        if self._banks:
+            r = ((self._episode_index * 40503 + self.base_seed) % 997) / 997.0
+            if r < self.bank_frac:
+                g = torch.Generator().manual_seed(
+                    self.base_seed * 7919 + self._episode_index)
+                bk = self._banks[int(torch.randint(len(self._banks), (1,),
+                                                   generator=g))]
+                nb = bk["state"]["__B__"]
+                src = torch.randint(nb, (self.B,), generator=g)
+                self._bank_mod.restore_lanes(self._ep, bk["state"], src)
         if self.handicap:
             self._ep.money[:, self.seat] += float(self.handicap)
         self._prev_w = self._pot(self._ep, self.seat)
@@ -437,9 +525,29 @@ class KGTensorEnv(EnvBase):
                                 device=self.device)
             h_idx[:, seat] = action[..., 2:]
         if getattr(self.opp_fn, "provides_ops", False):
-            # raw-encoding opponent (barnyard_t): its seat bypasses the macro
-            # decode via the step_idx override; --opp-noise does not apply
+            # raw-encoding opponent (barnyard_t): its seat bypasses the
+            # macro decode via the step_idx override. --opp-noise here is
+            # ACTION-DROP noise: on a noisy lane the opponent's units PASS
+            # and its market goes silent this step -- a tempo handicap
+            # that weakens the wall without touching its identity (the
+            # macro-path random-legal replacement cannot reach raw ops)
             ops = self.opp_fn(ep, opp)
+            if self.opp_noise > 0.0:
+                import engine_t_idx as X
+                assert X.U_PASS == 0 and engine_t.OP_DEAD == 0
+                noisy = (torch.rand(self.B, device=self.device)
+                         < self.opp_noise)
+                if bool(noisy.any()):
+                    nz2 = noisy.view(-1, 1)
+                    for k in ("f_op", "f_arg", "f_qty"):
+                        ops[k] = torch.where(noisy, torch.zeros_like(ops[k]),
+                                             ops[k])
+                    for k in ("h_op", "h_arg", "h_qty"):
+                        ops[k] = [torch.where(noisy, torch.zeros_like(v), v)
+                                  for v in ops[k]]
+                    for k in ("m_op", "m_item", "m_rem"):
+                        ops[k] = torch.where(nz2, torch.zeros_like(ops[k]),
+                                             ops[k])
             f_idx = torch.zeros((self.B, 2), dtype=torch.int64,
                                 device=self.device)
             m_idx = torch.zeros_like(f_idx)

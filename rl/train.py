@@ -117,6 +117,15 @@ def build_parser():
     ap.add_argument("--ks-anneal", type=float, default=80e6,
                     help="lane-steps over which ks-coef decays linearly "
                          "to zero (0 = constant)")
+    ap.add_argument("--build-bonus", type=float, default=0.0,
+                    help="weight of the curve-capped build credit folded "
+                         "into the potential (targets measured from the "
+                         "231k-season anatomy; 0 = off)")
+    ap.add_argument("--bank", default="",
+                    help="comma-separated make_bank.py files: banked resets "
+                         "start episodes from mid-game states (backplay)")
+    ap.add_argument("--bank-frac", type=float, default=0.5,
+                    help="fraction of resets that start from the bank")
     ap.add_argument("--snapshot-every", type=int, default=5,
                     help="league: snapshot the actor every N iterations")
     # -- adversarial-gradient smoothing (docs: rl/README.md, RUNS 2026-08-19) --
@@ -274,7 +283,8 @@ def train(args, log_fn=None):
         opp_noise=args.opp_noise, handicap=args.handicap,
         potential=args.potential, shape_scale=args.shape_scale,
         opp_lambda=args.opp_lambda, multi_head=args.multi_head,
-        kickstart=args.kickstart)
+        kickstart=args.kickstart, build_bonus=args.build_bonus,
+        bank=args.bank, bank_frac=args.bank_frac)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
@@ -430,8 +440,18 @@ def train(args, log_fn=None):
         if dev.type == "cuda":
             torch.cuda.synchronize()
         t_end = time.time()
-        money = td["next", "money"][:, -1]
-        omoney = td["next", "opp_money"][:, -1]
+        # terminal money via the done mask: identical to [:, -1] while a
+        # batch is whole fixed-length episodes, and still correct once
+        # bank-started (variable-length) episodes land in a batch
+        dm = td["next", "done"].reshape(td.shape)
+        if bool(dm.any()):
+            last = (dm.to(torch.int64)
+                    * torch.arange(td.shape[1], device=dm.device)).amax(1)
+        else:
+            last = torch.full((td.shape[0],), td.shape[1] - 1,
+                              dtype=torch.int64, device=td.device)
+        money = td["next", "money"].gather(1, last.unsqueeze(1)).squeeze(1)
+        omoney = td["next", "opp_money"].gather(1, last.unsqueeze(1)).squeeze(1)
         win = ((money > omoney).float().mean()
                + 0.5 * (money == omoney).float().mean()).item()
         n_steps = td.numel()
