@@ -1292,3 +1292,31 @@ teacher labels on the LEARNER's own states, which is immune to this
 exact failure by construction. mynah (BC-init + RL fine-tune) stays
 staged but unlaunched: a frozen-pasture prior is a worse basin than
 pitchfork.
+
+## The anatomy of a 231k season (2026-08-20, 40 top-ladder seats, current balance)
+
+Sell-revenue decomposition of the kept replays (price-at-sale, 20
+episodes x both seats -- everyone here is a ~3.1k player):
+
+| product | share | units |
+|---|---|---|
+| FERTILIZER | **29.7%** | 63,294 |
+| WHEAT | 21.3% | 43,922 |
+| STRAWBERRY | 16.6% | 10,815 |
+| MILK | 13.4% | 10,398 |
+| WOOL | 9.9% | 6,712 |
+| MELON | **7.0%** | 3,996 |
+| TOMATO+CARROT+EGG | 2.2% | -- |
+
+The top of the ladder's #1 income line is SELLING FERTILIZER -- the
+animal engine's real cash product, collected at herd scale -- with a
+wheat-crop cash flow second and melons a 7% afterthought. Trajectory:
+~4 animals by day 2 (animals FIRST, not after a melon harvest), 9 by
+day 8, plateau 14.6 with ~12 hands, land 1->2->3 by day ~10, ~60 crop
+tiles including ongoing strawberries. Mean sell revenue $231,656/seat.
+
+Every arm this line has trained is anchored to the melon monoculture
+the pitchfork prior discovered against the starter -- the top meta's
+smallest revenue line. This table is the target program: fertilizer
+and wheat throughput, early animals, strawberries, metered sells
+(SELL_HALF just landed for exactly this).
