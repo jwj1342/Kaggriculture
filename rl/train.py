@@ -101,6 +101,11 @@ def build_parser():
                     help="rolling-win gate to advance the curriculum stage")
     ap.add_argument("--league", action="store_true",
                     help="mix self-snapshots into the opponent pool (0.25 mass)")
+    ap.add_argument("--pfsp", type=float, default=0.0,
+                    help="within each pool category, weight opponents by "
+                         "(1 - ema_win)^pfsp with a 0.1 uniform floor "
+                         "(AlphaStar f_hard): dominated members drain out "
+                         "of the sampling mass; 0 = uniform (legacy)")
     ap.add_argument("--snapshot-every", type=int, default=5,
                     help="league: snapshot the actor every N iterations")
     # -- adversarial-gradient smoothing (docs: rl/README.md, RUNS 2026-08-19) --
@@ -242,7 +247,8 @@ def train(args, log_fn=None):
         pool = OpponentPool(
             [s.strip() for s in args.opponents.split(",") if s.strip()],
             dev, advance_at=args.advance_at, league=args.league,
-            snapshot_dir=snap_dir, seed=args.seed, handicap=args.handicap)
+            snapshot_dir=snap_dir, seed=args.seed, handicap=args.handicap,
+            pfsp=args.pfsp)
         env.opponent_sampler = pool.sample
     # shifted=True: value of obs and next-obs in ONE forward over T+1 steps
     # instead of torch.stack-ing two full copies of the batch (a 26.7 GiB

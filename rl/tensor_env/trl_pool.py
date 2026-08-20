@@ -42,11 +42,18 @@ def _spec_name(spec):
 class OpponentPool:
     def __init__(self, specs, device, advance_at=0.85, ema=0.2, min_records=3,
                  league=False, max_snapshots=8, snapshot_dir="", seed=0,
-                 handicap=0):
+                 handicap=0, pfsp=0.0):
         from trl_env import _make_opponent
         self.device = device
         self.anchors = [(_spec_name(s), _make_opponent(s, device)) for s in specs]
         self.stage = 0
+        # pfsp > 0: inside each mix category, weight entries by
+        # (1 - ema_win)^pfsp instead of uniformly (AlphaStar's f_hard) --
+        # dominated snapshots/anchors drain out of the sampling mass instead
+        # of owning the reward hill (the foothold/breach failure). A 0.1
+        # uniform floor keeps every entry occasionally visited so the EMA
+        # stays live (the 15% "forgotten players" slice, miniaturised).
+        self.pfsp = float(pfsp)
         # handicap ladder: each stage opens with `handicap` extra starting
         # money for the learner; the win gate first steps the handicap down
         # (halving, zero below 200) and only advances the stage at zero --
@@ -88,11 +95,25 @@ class OpponentPool:
         r = self._rng.random() * sum(m for _, _, m in cats)
         for _, entries, mass in cats:
             if r < mass:
-                name, fn = entries[self._rng.randrange(len(entries))]
+                name, fn = self._pick(entries)
                 break
             r -= mass
         self._pending.append(name)
         return fn
+
+    def _pick(self, entries):
+        """Uniform inside a category, or f_hard-weighted when pfsp > 0."""
+        if self.pfsp <= 0.0 or len(entries) == 1:
+            return entries[self._rng.randrange(len(entries))]
+        floor = 0.1
+        ws = [floor + (1.0 - self.wins.get(n, 0.0)) ** self.pfsp
+              for n, _ in entries]
+        r = self._rng.random() * sum(ws)
+        for (name, fn), w in zip(entries, ws):
+            if r < w:
+                return name, fn
+            r -= w
+        return entries[-1]
 
     # -- outcome accounting ----------------------------------------------------
 
