@@ -1264,3 +1264,31 @@ f_hard) and `--kickstart barnyard` (annealed teacher CE on the learner's
 own states, Schmitt et al. / the Lux-S1 recipe; gates K1-K3). Next:
 `herdsman` = vendetta + FEED, the single-variable action-space test, and
 `drover` = herdsman + kickstart on top.
+
+## parrot: pure BC of the current-balance top ladder collapses on deployment (2026-08-20)
+
+The cold-start experiment the recordings invited: 55 post-rebalance
+episodes (both seats, ~3.1k players, 100-146k games) -> 74,776
+(obs, head-label) pairs by inverse decode (state-level fidelity: farmer
+94.3%, hand work 85.1%, market 55.9% -- the metered-sell gap, TODO #8)
+-> 12 epochs of class-weighted CE on MultiActorNet (val acc 0.61 / 0.90
+/ 0.58, market argmax-NOOP held at 0.60 by the weights). Jobs 20172754
+(train, CPU) / 20172755 (roster).
+
+Roster: **1/10** -- loses even to starter (-564). The trace says why in
+one line: it builds 4-6 pastures on day 0-1 and then freezes, money
+pinned at $3,000 to day 27. Per-step accuracy is dominated by mid-game
+states; the ~110 opening sequences that decide everything drown, argmax
+locks onto the modal action, and one step off-distribution has no
+recovery -- the same compounding drift that killed the old line's
+barnyard clone at 79% per-step fidelity. Pure BC without on-policy
+correction or search stays a dead artifact at this scale, exactly as
+both the Kaggle-winners survey and our own §11 history said it would.
+
+What survives: the dataset and its fidelity ledger (the market head's
+55.9% is measured motivation for SELL_HALF), the sell-pattern
+measurements, and the contrast experiment -- drover's kickstart puts
+teacher labels on the LEARNER's own states, which is immune to this
+exact failure by construction. mynah (BC-init + RL fine-tune) stays
+staged but unlaunched: a frozen-pasture prior is a worse basin than
+pitchfork.
