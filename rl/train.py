@@ -106,6 +106,17 @@ def build_parser():
                          "(1 - ema_win)^pfsp with a 0.1 uniform floor "
                          "(AlphaStar f_hard): dominated members drain out "
                          "of the sampling mass; 0 = uniform (legacy)")
+    # -- kickstarting (Schmitt et al. 2018; the Lux-S1 winner's teacher-KL) --
+    ap.add_argument("--kickstart", default="", choices=("", "barnyard"),
+                    help="teacher whose mapped decision labels every "
+                         "learner state; adds an annealed CE pull on the "
+                         "action heads ON TOP of the RL loss (never plain "
+                         "BC -- the RL term is on from step one)")
+    ap.add_argument("--ks-coef", type=float, default=0.5,
+                    help="initial weight of the teacher CE term")
+    ap.add_argument("--ks-anneal", type=float, default=80e6,
+                    help="lane-steps over which ks-coef decays linearly "
+                         "to zero (0 = constant)")
     ap.add_argument("--snapshot-every", type=int, default=5,
                     help="league: snapshot the actor every N iterations")
     # -- adversarial-gradient smoothing (docs: rl/README.md, RUNS 2026-08-19) --
@@ -190,6 +201,41 @@ def _filtered(cls, **kw):
     return cls(**{k: v for k, v in kw.items() if k in sig})
 
 
+def _kickstart_ce(actor_net, mb, multi):
+    """Masked cross-entropy pulling the action heads toward the teacher's
+    labels on the learner's OWN states (kickstarting, never plain BC: the
+    RL loss stays on and the coefficient anneals). Entries whose label is
+    illegal under the mask are skipped -- the intent mapping is lossy by
+    design -- as are dead hand slots (label -1)."""
+    NEG = -1e9
+    outs = actor_net(mb["observation"])
+    fl, ml = outs[0], outs[1]
+    total = None
+    denom = None
+
+    def acc(loss, cnt):
+        nonlocal total, denom
+        total = loss if total is None else total + loss
+        denom = cnt if denom is None else denom + cnt
+
+    for logits, mask, lab in ((fl, mb["farmer_mask"], mb["teacher_f"]),
+                              (ml, mb["market_mask"], mb["teacher_m"])):
+        lp = torch.log_softmax(logits.masked_fill(~mask, NEG), -1)
+        legal = mask.gather(-1, lab.unsqueeze(-1)).squeeze(-1)
+        pick = lp.gather(-1, lab.unsqueeze(-1)).squeeze(-1)
+        acc(-(pick * legal.float()).sum(), legal.sum())
+    if multi:
+        hl = outs[2]                                     # (B, H, T)
+        hm, lab = mb["hand_mask"], mb["teacher_h"]       # (B, H, T), (B, H)
+        live = lab >= 0
+        lab_c = lab.clamp(min=0)
+        lp = torch.log_softmax(hl.masked_fill(~hm, NEG), -1)
+        legal = hm.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1) & live
+        pick = lp.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1)
+        acc(-(pick * legal.float()).sum(), legal.sum())
+    return total / denom.clamp(min=1)
+
+
 def make_loss(algo, actor, critic, args):
     common = dict(
         actor_network=actor, critic_network=critic,
@@ -227,7 +273,8 @@ def train(args, log_fn=None):
         margin_bonus=args.margin_bonus, margin_scale=args.margin_scale,
         opp_noise=args.opp_noise, handicap=args.handicap,
         potential=args.potential, shape_scale=args.shape_scale,
-        opp_lambda=args.opp_lambda, multi_head=args.multi_head)
+        opp_lambda=args.opp_lambda, multi_head=args.multi_head,
+        kickstart=args.kickstart)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
@@ -342,8 +389,15 @@ def train(args, log_fn=None):
                 "sample_log_prob", "advantage", "value_target"]
         if args.multi_head:
             keep.append("hand_mask")  # the loss rebuilds the distribution
+        if args.kickstart:
+            keep += ["teacher_f", "teacher_m", "teacher_h"]
         flat = td.reshape(-1).select(*keep)
-        stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0}
+        ks_coef = 0.0
+        if args.kickstart and not frozen:
+            ks_coef = args.ks_coef * (
+                max(0.0, 1.0 - total_steps / args.ks_anneal)
+                if args.ks_anneal > 0 else 1.0)
+        stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0, "ks": 0.0}
         n_mb = 0
         for _ in range(args.epochs):
             rb.empty()
@@ -356,6 +410,10 @@ def train(args, log_fn=None):
                 else:
                     loss = sum(v for k, v in loss_td.items()
                                if k.startswith("loss_"))
+                if ks_coef > 0.0:
+                    ks = _kickstart_ce(actor_net, mb, args.multi_head)
+                    loss = loss + ks_coef * ks
+                    stats["ks"] += ks.item()
                 optim.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(loss_mod.parameters(), 0.5)
@@ -385,10 +443,11 @@ def train(args, log_fn=None):
                "stage": (pool.stage if pool is not None else None),
                "sec": sec, "t_collect": t_col, "_t_end": t_end, **stats}
         records.append(rec)
+        ks_s = f"ks {stats['ks']:.3f}@{ks_coef:.2f}  " if args.kickstart else ""
         log_fn(f"it {it:3d}  steps {total_steps:>9,}  sps {rec['sps']:>8,.0f}  "
                f"win {win:5.3f}  money {rec['money']:>9,.0f}  opp {rec['opp_money']:>8,.0f}  "
                f"pg {stats['pg']:+.4f}  vf {stats['vf']:.4f}  ent {stats['ent']:.3f}  "
-               f"{sec:5.1f}s (collect {t_col:4.1f}s)")
+               f"{ks_s}{sec:5.1f}s (collect {t_col:4.1f}s)")
         if pool is not None:
             ev = pool.record(win)
             env.handicap = pool.handicap  # ladder takes effect at next reset

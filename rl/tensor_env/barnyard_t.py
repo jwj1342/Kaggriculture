@@ -424,6 +424,13 @@ def compute(ep, player, want_dicts=False):
     out_op = torch.full((B, U), X.U_PASS, dtype=i64, device=dev)
     out_arg = torch.zeros((B, U), dtype=i64, device=dev)
     out_qty = torch.zeros((B, U), dtype=i64, device=dev)
+    # per-unit INTENT (kickstart teacher labels): the task op a unit was
+    # assigned, independent of whether this turn emits the op itself or a
+    # move toward its target. Wheat errands count as U_FEED (our FEED hand
+    # task owns its own pickup leg), shed-animal errands as U_PLACE,
+    # produce runbacks as U_DROP; unassigned stays U_PASS.
+    out_task = torch.full((B, U), X.U_PASS, dtype=i64, device=dev)
+    out_ta = torch.zeros((B, U), dtype=i64, device=dev)
     claimed = torch.zeros((B, N * N * 18), dtype=torch.bool, device=dev)
     shed_wheat_left = shed_wheat0.clone()
     shed_animals_left = animals_in_shed.clone()
@@ -471,6 +478,8 @@ def compute(ep, player, want_dicts=False):
                                               torch.zeros_like(c_arg))[fb]
                 out_qty[fb, bi] = torch.where(at, c_qty,
                                               torch.zeros_like(c_qty))[fb]
+                out_task[fb, bi] = c_op[fb]
+                out_ta[fb, bi] = c_arg[fb]
                 busy[fb, bi] = True
                 claimed[fb, (c_tile * 18 + c_op)[fb]] = True
 
@@ -504,6 +513,7 @@ def compute(ep, player, want_dicts=False):
                 out_qty[aa, best[aa]] = take[aa]
                 shed_wheat_left = torch.where(aa, shed_wheat_left - take,
                                               shed_wheat_left)
+                out_task[fb, bi] = X.U_FEED
                 busy[fb, bi] = True
             else:
                 # prefer an animal whose structure is open: COW, SHEEP, GOOSE
@@ -525,6 +535,8 @@ def compute(ep, player, want_dicts=False):
                 out_qty[aa, best[aa]] = 1
                 shed_animals_left[aa, pa[aa]] -= 1
                 out_op[mvb, best[mvb]] = mv[mvb]
+                out_task[fb, best[fb]] = X.U_PLACE
+                out_ta[fb, best[fb]] = pa[fb]
                 busy[fb, best[fb]] = True
 
     # ---- idle units: run produce back to the shed ---------------------------
@@ -553,6 +565,9 @@ def compute(ep, player, want_dicts=False):
         shed_wheat_left = torch.where(pick, shed_wheat_left - take,
                                       shed_wheat_left)
         out_op[walk, u] = dir_to_shed_u[:, u][walk]
+        out_task[drop, u] = X.U_DROP
+        out_task[pick, u] = X.U_FEED     # wheat restock serves the feeding loop
+        out_task[walk, u] = X.U_DROP
         busy[:, u] |= idle
 
     # ---- market --------------------------------------------------------------
@@ -693,7 +708,10 @@ def compute(ep, player, want_dicts=False):
            "h_op": [out_op[:, u] for u in range(1, U)],
            "h_arg": [out_arg[:, u] for u in range(1, U)],
            "h_qty": [out_qty[:, u] for u in range(1, U)],
-           "m_op": m_op, "m_item": m_item, "m_rem": m_rem}
+           "m_op": m_op, "m_item": m_item, "m_rem": m_rem,
+           # intent labels (kickstart teachers read these; the override
+           # graft in step_idx ignores unknown keys)
+           "task": out_task, "task_arg": out_ta}
     if not want_dicts:
         return ops
     return ops, _to_dicts(ep, p, ops)
