@@ -1,0 +1,35 @@
+# BC prior + RL fine-tune: parrot's clone of the current-balance top
+# ladder (rl/bc/train_multi_bc.py -> rl/runs/bc-toprec/bc.pt) warmed up
+# and then trained against the wall. Design is all reused, gated
+# machinery:
+#   - --init-from + --freeze-policy-until: value warm-up so a fresh
+#     critic cannot shred the cloned policy (the old line lost a 30k
+#     teacher to exactly this; defect #2 in rl/README §11)
+#   - networth potential: the 2x2 showed future-potential buys wall
+#     margin by destroying generality; the clone's generality IS the
+#     asset here
+#   - barnyard pool + pfsp + league snapshots: the wall carries the
+#     gradient, dominated snapshots drain out (AlphaStar f_hard)
+# Launch after parrot's roster verdict:
+#   sbatch slurm/rl_train.sh --config rl/configs/mynah.yaml \
+#       --save rl/runs/mynah/latest.pt --resume rl/runs/mynah/latest.pt
+device: cuda
+B: 1024
+iters: 240
+algo: ppo
+seat: alt
+multi_head: true
+init_from: rl/runs/bc-toprec/bc.pt
+freeze_policy_until: 15000000
+opponents: barnyard
+league: true
+snapshot_every: 5
+pfsp: 2.0
+advance_at: 0.85
+handicap: 0
+win_bonus: 1.5
+margin_bonus: 1.5
+margin_scale: 50000
+potential: networth
+probe_every: 10
+stop_patience: 6
