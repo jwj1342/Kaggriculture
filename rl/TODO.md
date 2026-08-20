@@ -126,3 +126,22 @@ market 头状态级保真度 57% → ~75%+(见 rl/bc/build_dataset.py 台账),
 的错误标尺;RL 侧 SELL_HALF 仍成立(可跨回合组合任意比例,granger 在用)。
 BC 若重启,用区间匹配(qty ∈ [0.25,0.75]×held → SELL_HALF)或定量动作
 (SELL_N,N∈{4,8})。
+
+## 9. 容量路线图(2026-08-20 夜,调研判词 + draught 探针)
+
+调研核心(全文见会话,来源含 Hilton/Schulman 2301.13442、Neumann&Gros
+2210.00849、BRO/SimBa、Net2Net、OpenAI Five surgery):游戏 RL 历史上
+**普遍尺寸不足**;更大网络在**等环境步数**下就更强(判定性实验);我们
+2.7M actor 的 93% 耗在 4867 维输入投影,主干仅 ~170k;critic(1.3M)
+比 actor 小——与"value 网应更宽"的证据相反。行动序:
+1. **draught 探针在跑**(4× 宽 + 2× critic,granger 配方,等步对照)——
+   赢了即证容量是绑定约束;
+2. 先决条件(下一代前):trunk 加 LayerNorm + weight decay(可塑性
+   前提;注意会破 8 数组导出契约,与 CNN 线一并动);
+3. **critic 4–8×**(部署零成本,长视野 value 欠拟合最可疑)+ PPG 式
+   value 多 epoch;诊断项:分段 explained variance / srank / 死神经元率;
+4. 结构大招:棋盘 CNN 干(4–8 个 SE 残差块 @64–128ch,标量池化后注入,
+   12×8 hand 头映射到逐格头)——kickstart 从最强 MLP checkpoint 蒸馏,
+   平行线不热切;推理预算允许 ~60×(现用 0.02%);
+5. 增长机制:Net2Net 加宽 / 手术式函数保持扩容 / 可塑性注入(也可当
+   诊断:平台期注入容量,曲线复活=容量绑定)。
