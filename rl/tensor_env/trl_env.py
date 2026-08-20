@@ -295,6 +295,11 @@ def _make_opponent(spec, device):
     if spec == "barnyard":
         import barnyard_t
         return barnyard_t.BarnyardOpponent()
+    if str(spec).startswith("tape:"):
+        # recorded top-meta line as an open-loop override opponent
+        # (tape_t; gate: dollar-exact vs the pure python replay)
+        import tape_t
+        return tape_t.TapeOpponent(str(spec)[5:], device)
     return FrozenPolicyOpponent(spec, device)
 
 
