@@ -1345,3 +1345,39 @@ fertilizer stream -- which is what drover (teacher CE on own states,
 running) and granger (kickstart + measured build-curve credit + no
 melon anchor + an opponent-noise ladder, launched from the rebalance
 worktree) are for.
+
+## drover at 170 iterations: the kickstart trades the wall for the field (2026-08-20)
+
+herdsman + --kickstart barnyard (rl/configs/drover.yaml, jobs
+20169420-24, eval 20169425; the 5-link chain ran out at 170/240 -- 9.6k
+sps under the double barnyard compute -- so an extension chain
+20181559-61 continues it; this is the interim verdict).
+
+The teacher CE annealed to zero by ~110M steps, batch money then climbed
+to 18.5k -- the highest any wall arm has shown. The roster is the exact
+MIRROR of herdsman's trade:
+
+| | herdsman (FEED alone) | drover (+kickstart) |
+|---|---|---|
+| barnyard | **-33,965** | -40,824 |
+| ghost-25016 | 0.0% (-12.2k) | **24.0% (-17.9k)** |
+| ghost-30307 | 1.0% (-12.0k) | **38.5% [29,49] (-12.9k)** |
+| spar grazier | -65,738 | **-45,079** |
+| spar berrybaron | -80,832 | **-63,420** |
+| beaten | 2/10 | 2/10 |
+
+herdsman's pure-RL exploration polished one narrow melon line to a
+better wall margin and total mode collapse everywhere else; the teacher
+CE kept drover honest across the field -- ITS ARGMAX does not collapse
+against the ghosts (the sampled-inference A/B on herdsman showed the
+same 28-37% ghost strength hiding inside herdsman's weights: sampling
+recovered it at the cost of ~10k wall margin; a T-sweep found no single
+temperature that keeps both). ghost-30307 at 38.5% with the CI touching
+48.5% is one nudge from this line's first recording win.
+
+Alongside: granger (worktree stack: no melon anchor, kickstart,
+build-curve credit, opponent-noise ladder now actually reaching
+override opponents) posted the line's FIRST NONZERO WINS against
+barnyard -- win 0.028 by the end of its noise-0.40 link, a live win
+gradient at last. The ladder steps down 0.25 -> 0.10 -> 0 over its
+remaining links.
