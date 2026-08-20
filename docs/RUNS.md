@@ -1381,3 +1381,15 @@ override opponents) posted the line's FIRST NONZERO WINS against
 barnyard -- win 0.028 by the end of its noise-0.40 link, a live win
 gradient at last. The ladder steps down 0.25 -> 0.10 -> 0 over its
 remaining links.
+
+### drover addendum: the stopper had already ruled, and sampling touches even (2026-08-20)
+
+The 170-iteration state IS final -- the fifth link's early stopper fired
+(stagnated: six flat probes at ~-50k) and wrote the chain-safe marker;
+the extension links exited cleanly by design. And the sampled-inference
+variant of the same weights closes the day's arc: **ghosts 40.6%
+(margin -1,322, CI to +864) and 39.6% (-1,848, CI to +151)** -- both
+recording matchups statistically indistinguishable from even, the
+closest this line has come to its first recording win. Spar stays 0%
+sampled. rebalance-1327 merged to main (d388291) now both chains are
+concluded; granger continues from the worktree it was launched on.
