@@ -1,0 +1,27 @@
+# foresight + grudge: the interaction arm of the 2x2 on breach's config
+# (RUNS.md 2026-08-19). Future-credit potential (price the animal engine)
+# AND a barnyard-only pool (the wall owns the whole reward hill). If
+# neither single arm moves the -48k margin but this one does, the two
+# constraints were jointly binding; if this one matches grudge alone,
+# the objective was never the problem. Everything else is byte-identical
+# to breach.yaml.
+#
+#   sbatch slurm/rl_train.sh --config rl/configs/vendetta.yaml \
+#       --save rl/runs/vendetta/latest.pt --resume rl/runs/vendetta/latest.pt
+device: cuda
+B: 1024
+iters: 240
+algo: ppo
+seat: alt
+multi_head: true
+residual_base: rl/out/pitchfork/weights.npz
+opponents: barnyard
+league: false
+advance_at: 0.85
+handicap: 800
+win_bonus: 1.5
+margin_bonus: 1.5
+margin_scale: 50000
+potential: future
+probe_every: 10
+stop_patience: 6

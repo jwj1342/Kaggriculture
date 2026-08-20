@@ -1201,3 +1201,66 @@ and gated) does exactly that, one flag away from an A/B; (b) pool
 dynamics -- the beatable half of the pool owns the reward hill; a
 barnyard-weighted or barnyard-only phase would isolate it. Both are
 single-variable follow-ups on breach's config.
+
+## The 2x2 on breach's config: solvency and sell timing learned; the wall is made of labour (2026-08-20)
+
+The breach verdict pre-registered two hypotheses -- (a) the objective is
+blind to the animal engine, (b) the beatable half of the pool owns the
+reward hill -- and both are single flags on breach's config, so they ran
+as a factorial with breach as (0,0): `foresight` (+ `--potential future`),
+`grudge` (`opponents: barnyard` alone, league off), `vendetta` (both).
+Jobs 20163860-71: three ~50-min links per arm, dependent roster eval on
+best.pt. foresight completed 240 iterations (176.7M lane-steps); grudge
+and vendetta early-stopped at 179 (stagnated, 132.5M).
+
+Probe shape, identical in all three arms: pinned at -66..-68k (the breach
+endpoint band) for the first ~70 barnyard iterations, then a ~20k jump
+once each arm had ~50M lane-steps of margin-graded barnyard batches, a
+peak near -41..-43k, and then degradation -- vendetta's last probe fell
+all the way back to -68.5k. Peak-then-collapse is the regime's normal
+behaviour, not an accident of breach; the final-stage-only best.pt
+ratchet is why the artifacts keep the peak (vendetta eval -40,990 vs its
+best probe -40,800 -- calibrated again). Win stayed 0.000 against
+barnyard everywhere: no arm took a single game off the wall.
+
+Roster (96 games per pair, best.pt), breach alongside:
+
+| arm | barnyard | ghost-25016 | ghost-30307 | spar-grazier | beaten |
+|---|---|---|---|---|---|
+| breach (0,0) | -67,270 | 39.6% | 36.5% | -- | 2/10 |
+| foresight (a) | **-36,607** | 0.0% (-21.7k) | 0.0% (-21.2k) | -67.8k | 2/10 |
+| grudge (b) | -42,801 | 39.6% (-4.3k) | **45.8% (-2.6k)** | **-46.7k** | 2/10 |
+| vendetta (ab) | -40,990 | 12.5% | 10.4% | -68.9k | 2/10 |
+
+Three findings:
+
+1. **What the recovered ~25-30k is made of.** Seed-1000 traces of the
+   peak policies against barnyard: both potentials fixed the bankruptcy
+   (cash buffer held, hands paid and retained, weeds ~zero -- breach's
+   farm lost its whole crew to unpaid wages by day 9) and both learned
+   first-harvest timing (sell day 11 at ME 136-152 for +10-13k; breach
+   held until the price hit $1). Solvency plus sell timing, nothing else.
+2. **The future potential buys wall margin with generality.** foresight
+   is 6k better on barnyard and CATASTROPHIC everywhere else: ghosts
+   40->0%, spar margins worse than breach. grudge (networth) kept the
+   ghosts at 40-46% -- ghost-30307 at 45.8% is the multi-head line's best
+   recording result -- and improved spar. The narrow specialist earns
+   ~12k absolute; that loses to any opponent that simply farms well.
+3. **Neither hypothesis was THE constraint.** All four factorial cells
+   stall at 0 wins. The traces say why identically: NEITHER PEAK POLICY
+   EVER BUYS AN ANIMAL. foresight goes dormant on day 22 with 100 melons
+   rotting in the shed; grudge tiles the farm with 25 EMPTY pastures.
+   The mechanical cause was measured while these arms ran: barnyard's
+   hands do 83% of its feeding (181 hand-FEEDs/episode plus the wheat
+   logistics), an animal escapes at two unfed days, and the hand
+   vocabulary had no FEED task -- the 55k engine was unreachable in the
+   action space no matter what the objective priced or the pool sampled.
+
+The FEED hand task is now built and gated (M1-M5 incl. a behavioural
+gate: hands alone sustain a herd, device == CPU bit-exact; BARN/B3B/TRL
+suites green), alongside two tools from the literature review for the
+rounds after: `--pfsp` (win-rate-weighted pool sampling, AlphaStar
+f_hard) and `--kickstart barnyard` (annealed teacher CE on the learner's
+own states, Schmitt et al. / the Lux-S1 recipe; gates K1-K3). Next:
+`herdsman` = vendetta + FEED, the single-variable action-space test, and
+`drover` = herdsman + kickstart on top.
