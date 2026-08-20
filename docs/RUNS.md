@@ -1393,3 +1393,16 @@ recording matchups statistically indistinguishable from even, the
 closest this line has come to its first recording win. Spar stays 0%
 sampled. rebalance-1327 merged to main (d388291) now both chains are
 concluded; granger continues from the worktree it was launched on.
+
+### The ghost matchup is bimodal, not marginal (2026-08-20, 192 games x2)
+
+Per-seed decomposition of drover-samp vs both ghosts (the "even-touching"
+matchups): only 12/192 games land within +-3k. The shape is ~50 blowout
+wins (+8k) against ~50 blowout losses (-8k): OUR income is tight (p10-p90
+15.9k-24.9k) while the GHOST's is wide (12.9k-26.3k) -- we beat broken
+tapes and lose to intact ones. No seat effect. The +1k the liquidation
+mask recovered moved margins, not outcomes (41% before and after),
+because mid-band losses sit at -4.4k median. Flipping the matchup needs
+median income ~19.4k -> ~26k -- absolute economy, the animal/fertilizer
+gap, not endgame crumbs. That is granger's lane (its noisy-wall batch
+money passed 27.4k while this was measured).
