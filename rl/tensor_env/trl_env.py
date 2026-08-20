@@ -499,9 +499,29 @@ class KGTensorEnv(EnvBase):
                                 device=self.device)
             h_idx[:, seat] = action[..., 2:]
         if getattr(self.opp_fn, "provides_ops", False):
-            # raw-encoding opponent (barnyard_t): its seat bypasses the macro
-            # decode via the step_idx override; --opp-noise does not apply
+            # raw-encoding opponent (barnyard_t): its seat bypasses the
+            # macro decode via the step_idx override. --opp-noise here is
+            # ACTION-DROP noise: on a noisy lane the opponent's units PASS
+            # and its market goes silent this step -- a tempo handicap
+            # that weakens the wall without touching its identity (the
+            # macro-path random-legal replacement cannot reach raw ops)
             ops = self.opp_fn(ep, opp)
+            if self.opp_noise > 0.0:
+                import engine_t_idx as X
+                assert X.U_PASS == 0 and engine_t.OP_DEAD == 0
+                noisy = (torch.rand(self.B, device=self.device)
+                         < self.opp_noise)
+                if bool(noisy.any()):
+                    nz2 = noisy.view(-1, 1)
+                    for k in ("f_op", "f_arg", "f_qty"):
+                        ops[k] = torch.where(noisy, torch.zeros_like(ops[k]),
+                                             ops[k])
+                    for k in ("h_op", "h_arg", "h_qty"):
+                        ops[k] = [torch.where(noisy, torch.zeros_like(v), v)
+                                  for v in ops[k]]
+                    for k in ("m_op", "m_item", "m_rem"):
+                        ops[k] = torch.where(nz2, torch.zeros_like(ops[k]),
+                                             ops[k])
             f_idx = torch.zeros((self.B, 2), dtype=torch.int64,
                                 device=self.device)
             m_idx = torch.zeros_like(f_idx)
