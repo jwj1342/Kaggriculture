@@ -1475,3 +1475,24 @@ front: **main 15.6% (-9,908, from 0%/-24.6k)**, ghosts 82.3%/82.3%,
 barnyard 28.1% (-3,961). Still 4/10. Gen-3 forks from its endpoint:
 yeoman = mixed pool (barnyard + the w49 tape via tape_t, pfsp 2.0,
 league snapshots), the re-generalization + k-pressure arm.
+
+## draught interim: capacity was binding -- the wide net eats the ladder (2026-08-21 early)
+
+The 4x-wide probe (1024/512 trunk + 512 critic, ~12M params, identical
+granger recipe, jobs 20197340-45) against granger's own rung finals:
+
+| noise rung | granger final win | draught final win |
+|---|---|---|
+| 0.40 | 0.028 | ~0.47 EMA mid-rung |
+| 0.25 | 0.396 | **0.918** |
+| 0.10 | 0.485 | **0.736** (money 40.6k > wall 36.1k) |
+
+Bigger-is-more-sample-efficient (Neumann & Gros) reproduced exactly: at
+matched rungs and fewer steps the wide net dominates every reading. The
+decisive zero-noise links are queued behind other users' GPU jobs. The
+research verdict (TODO #9) stands confirmed at rungs 1-3: our 3M MLP --
+93% of whose weights are the input projection -- was a binding
+constraint all along. steward's line is pruned (revival to 300 iters
+plateaued at win 0.13; its final sampled roster stays 4/10 with ghosts
+at 90.6/96.9%); reveille's lineage continues through yeoman (mixed
+pool, L2 final 0.249 blended).
