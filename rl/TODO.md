@@ -109,3 +109,13 @@ handicap/opp-noise 已实现，`rl/configs/foothold.yaml` 是首个组合 run。
   2026-08-18 并入 main），逐字节验证链、单卡 22.8 万 lane-steps/s；
   其上是 TorchRL 统一层。当时登记的三处易错点（市场 lockstep、原子 PLANT、
   每日 RNG）全部有独立门覆盖。
+
+## 8. market 头的分批卖出(2026-08-20 测量完毕,待 parrot v1 判词后实施)
+
+55 局当前平衡 replay、13,183 个榜首 SELL 单:47.3% 清仓卖(现 SELL_p 已
+覆盖),其余为小批量(众数 7 单位,多数 ≤ 深度 T 的 5–10%);按品类
+WHEAT 6,627 / FERTILIZER 2,649 / MILK 1,375——顶端在用小麦+化肥做持续
+现金流,甜瓜只有 225 单。方案:`SELL_HALF_<p>`×9(头 22→31,新 run 才
+兼容,与 FEED 的 7→8 同一验收模式);几轮可组合出任意比例。预期把
+market 头状态级保真度 57% → ~75%+(见 rl/bc/build_dataset.py 台账),
+然后重建 BC 数据集重训 parrot。
