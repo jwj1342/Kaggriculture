@@ -34,6 +34,14 @@ import torch.distributions as D
 NEG = -1e9
 
 
+def _n_hand_task():
+    # the hand-task head width tracks actions.HAND_TASKS (grew 7 -> 8 when
+    # FEED landed); resolved lazily so this module stays importable without
+    # the rl/ sys.path dance until a multi-head net is actually built
+    import actions as A
+    return A.N_HAND_TASK
+
+
 def _ortho(layer, gain):
     nn.init.orthogonal_(layer.weight, gain)
     nn.init.constant_(layer.bias, 0.0)
@@ -282,8 +290,9 @@ class MultiActorNet(ActorNet):
     competent default where IDLE is a strike)."""
 
     def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
-                 n_hands=12, n_hand_task=7, auto_bias=2.5):
+                 n_hands=12, n_hand_task=None, auto_bias=2.5):
         super().__init__(obs_dim, n_farmer, n_market, hidden1, hidden2)
+        n_hand_task = n_hand_task or _n_hand_task()
         self.n_hands, self.n_hand_task = n_hands, n_hand_task
         self.hands = _ortho(nn.Linear(hidden2, n_hands * n_hand_task), 1e-4)
         with torch.no_grad():
@@ -308,8 +317,9 @@ class MultiResidualActor(nn.Module):
     (the prior never had hands -- they start at the AUTO bias)."""
 
     def __init__(self, base_path, obs_dim, n_farmer, n_market,
-                 hidden1=512, hidden2=256, n_hands=12, n_hand_task=7):
+                 hidden1=512, hidden2=256, n_hands=12, n_hand_task=None):
         super().__init__()
+        n_hand_task = n_hand_task or _n_hand_task()
         sd = load_actor_state(base_path)
         h1, h2 = sd["l1.weight"].shape[0], sd["l2.weight"].shape[0]
         self.base = ActorNet(obs_dim, n_farmer, n_market, h1, h2)
@@ -348,7 +358,7 @@ except ImportError:  # torchrl absent: the raw nets are still importable
 
 def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                        v_hidden=256, device="cpu", residual_base="",
-                       multi=False, n_hands=12, n_hand_task=7):
+                       multi=False, n_hands=12, n_hand_task=None):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
 
     Construction order (actor layers, then critic layers) matches PolicyT's

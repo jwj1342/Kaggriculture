@@ -415,7 +415,7 @@ def _idx_decode_farmer(self, f_idx, fam, t):
     return f_op, f_arg, f_qty
 
 
-def _idx_decode_hands(self, pool_masks, t, h_tasks=None):
+def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None):
     """actions._hands_actions: per hand, greedy nearest untaken chore with
     strict-< first-pool-index tie-break == min (dist, family, y, x); the
     >=8-carry DROP leg. Serial over hand slots (the reference is), batch
@@ -430,6 +430,17 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None):
     actions._hands_actions_multi. IDLE wins over the DROP leg (the CPU
     reference checks IDLE before the carry test). None == all-AUTO.
 
+    FEED (task index 7) is task-only and consumable, so it never enters
+    the packed pool: AUTO's 5-family mfk machinery is untouched by
+    construction (all-AUTO stays byte-identical to the cascade). FEED
+    slots ride `feed_plane` (the caller's unfed-tile plane) with their own
+    claims -- key constant 500 = family 5, so ties break dist-then-tile
+    exactly like the CPU pool, where FEED entries come last -- and a
+    wheat-less FEED hand runs the shed PICKUP leg: qty = min(stock left
+    after earlier fetchers this turn, 8 - carry), PASS when the stock or
+    the unclaimed targets run out, DROP first when loaded (mirrors
+    actions._hands_actions_multi line for line).
+
     Distance is family-independent, so the untaken pool collapses to a
     per-tile "best remaining family" map mf (9 = none): min over
     dist*1024 + mf*100 + tile is exactly min over (dist, family, y, x), and
@@ -442,12 +453,15 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None):
     nothing (no host sync); the op is one LUT gather on (position, selected
     family*100 + tile), the loaded-hand leg another on position (DROP on a
     shed tile, else the step toward the nearest one). pool_masks: 5
-    (B, P, 100) bool planes in dispatch priority order."""
+    (B, P, 100) bool planes in dispatch priority order.
+
+    Returns (ops, args, qtys): per hand slot (B, P) tensors; args/qtys are
+    all-zero except FEED's PICKUP leg (arg = WHEAT item, its qty)."""
     B, P = self.B, self.NUM_PLAYERS
     i64, i32, i8 = torch.int64, torch.int32, torch.int8
     max_h = int(self.hands_n.max())
     if max_h == 0:
-        return []
+        return [], [], []
     BP = B * P
     NN = N * N
     dev = self.device
@@ -467,18 +481,35 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None):
     loaded = act & (self._idx_carry[:, :, 1:max_h + 1] >= 8)
     seek = act & ~loaded
     idle = None
+    use_feed = False
     if h_tasks is not None:
         ht = h_tasks[:, :, :max_h]
         idle = ht == 1
         is_auto = (ht == 0).unsqueeze(-1)                    # (B, P, U, 1)
-        fam_t = (ht - 2).clamp(min=0)                        # 0..4 on task slots
+        # clamp keeps FEED's shift in range; its famk is never used (seek
+        # excludes FEED slots from the packed-pool path below)
+        fam_t = (ht - 2).clamp(min=0, max=4)                 # 0..4 on task slots
         shift_t = (4 - fam_t).to(i8)
         pk3 = packed[:BP * NN].view(B, P, NN)                # live view: claims show
         seek = seek & ~idle
+        is_feed = ht == 7
+        use_feed = feed_plane is not None and bool(is_feed.any())
+        if use_feed:
+            seek = seek & ~is_feed
+            feedbuf = torch.zeros(BP * NN + 1, dtype=torch.bool, device=dev)
+            feedbuf[:BP * NN] = feed_plane.reshape(-1)
+            feedv = feedbuf[:BP * NN].view(B, P, NN)         # live view: claims show
+            pen5 = torch.full_like(mfk, 500)
+            penBIG = torch.full_like(mfk, BIG)
+            wheat_left = self.shed[:, :, ET.WHEAT_I].to(i64).reshape(-1).clone()
+            hand_wheat = self.unit_inv[:, :, 1:max_h + 1, ET.WHEAT_I].to(i64)
+            carry = self._idx_carry[:, :, 1:max_h + 1].to(i64)
+            on_shed = t.shed100.index_select(0, hpos.view(-1)).view(B, P, max_h)
     drop_op = t.shed_dir.index_select(0, hpos.view(-1)).view(B, P, max_h)
     bp100 = self._idx_ar_bp * NN                             # (B*P,)
     dummy = torch.full((BP,), BP * NN, dtype=i64, device=dev)
-    ops = []
+    zero2 = torch.zeros((B, P), dtype=i64, device=dev)
+    ops, args, qtys = [], [], []
     for u in range(max_h):
         hp = hpos[:, :, u].reshape(-1)                       # (B*P,)
         if h_tasks is None:
@@ -503,10 +534,49 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None):
         # op: pool op on the tile / step toward it; loaded -> DROP leg
         op_u = torch.where(has, t.hand_op_lut[hp * 1024 + sel_], t.c_pass)
         op_u = torch.where(loaded[:, :, u].reshape(-1), drop_op[:, :, u].reshape(-1), op_u)
+        arg_u = qty_u = None
+        if use_feed:
+            act_u = act[:, :, u].reshape(-1)
+            loaded_u = loaded[:, :, u].reshape(-1)
+            isf = is_feed[:, :, u].reshape(-1) & act_u
+            fw = hand_wheat[:, :, u].reshape(-1)
+            # a wheat-carrying FEED hand never runs the DROP leg (feeding
+            # consumes; the CPU skips the carry test for it entirely) --
+            # even when every target is already claimed it PASSes in place
+            op_u = torch.where(isf & (fw > 0) & loaded_u, t.c_pass, op_u)
+            # (a) wheat in hand: claim the nearest unclaimed unfed tile
+            torch.add(t.key1024_lut.index_select(0, hp).view(B, P, NN),
+                      torch.where(feedv, pen5, penBIG), out=keybuf)
+            kf = keybuf.amin(-1).view(-1)
+            hasf = isf & (fw > 0) & (kf < BIG)
+            tile_f = ((kf % 1024) - 500).clamp(min=0, max=NN - 1).to(i64)
+            feedbuf[torch.where(hasf, bp100 + tile_f, dummy)] = False
+            mvf = t.dir_lut.index_select(0, hp * NN + tile_f)
+            opf = torch.where(hp == tile_f,
+                              torch.full_like(op_u, U_FEED), mvf)
+            op_u = torch.where(hasf, opf, op_u)
+            # (b) wheat-less: shed PICKUP leg (loaded slots already DROP);
+            # PASS when no stock or no unclaimed target remains
+            feed_any = feedv.any(-1).reshape(-1)
+            fetch = (isf & (fw <= 0) & ~loaded_u
+                     & (wheat_left > 0) & feed_any)
+            pick = fetch & on_shed[:, :, u].reshape(-1)
+            qty = torch.minimum(
+                wheat_left, (8 - carry[:, :, u].reshape(-1)).clamp(min=0))
+            qty = torch.where(pick, qty, torch.zeros_like(qty))
+            wheat_left = wheat_left - qty                    # serial reservation
+            fop = torch.where(on_shed[:, :, u].reshape(-1),
+                              torch.full_like(op_u, U_PICKUP),
+                              drop_op[:, :, u].reshape(-1))
+            op_u = torch.where(fetch, fop, op_u)
+            arg_u = torch.full_like(qty, ET.WHEAT_I).view(B, P)
+            qty_u = qty.view(B, P)
         if idle is not None:  # IDLE beats the DROP leg (reference order)
             op_u = torch.where(idle[:, :, u].reshape(-1), t.c_pass, op_u)
         ops.append(op_u.view(B, P))
-    return ops
+        args.append(arg_u if arg_u is not None else zero2)
+        qtys.append(qty_u if qty_u is not None else zero2)
+    return ops, args, qtys
 
 
 def _idx_decode_market(self, m_idx, herd, day, t):
@@ -1013,17 +1083,16 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
         if pad > 0:  # short task vectors default to AUTO, like the reference
             h_tasks = torch.nn.functional.pad(h_tasks, (0, pad))
     f_op, f_arg, f_qty = self._idx_decode_farmer(f_idx, fam, t)
-    hand_ops = self._idx_decode_hands(
-        [harv_f, unwat_f, uncared_f, fready_f, weed_f], t, h_tasks)
+    hand_ops, hand_args, hand_qtys = self._idx_decode_hands(
+        [harv_f, unwat_f, uncared_f, fready_f, weed_f], t, h_tasks,
+        unfed_f)
     m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t)
 
     zero = torch.zeros((B, P), dtype=i64, device=dev)
-    hand_args = [zero] * len(hand_ops)
-    hand_qtys = [zero] * len(hand_ops)
     if override is not None:
         # graft one seat's raw internal encodings over the macro decode;
-        # scripted hands never carry arg/qty, so those grow per-slot tensors
-        # only here
+        # clone before writing -- decode may hand back one shared zero
+        # tensor across slots (and FEED slots carry real arg/qty now)
         seat, ops = override
         f_op[:, seat] = ops["f_op"]
         f_arg[:, seat] = ops["f_arg"]
@@ -1037,12 +1106,10 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
             if u < len(h_op):
                 hand_ops[u] = hand_ops[u].clone()
                 hand_ops[u][:, seat] = h_op[u]
-                if bool((h_arg[u] != 0).any()):
-                    hand_args[u] = zero.clone()
-                    hand_args[u][:, seat] = h_arg[u]
-                if bool((h_qty[u] != 0).any()):
-                    hand_qtys[u] = zero.clone()
-                    hand_qtys[u][:, seat] = h_qty[u]
+                hand_args[u] = hand_args[u].clone()
+                hand_args[u][:, seat] = h_arg[u]
+                hand_qtys[u] = hand_qtys[u].clone()
+                hand_qtys[u][:, seat] = h_qty[u]
             else:
                 hand_ops[u] = hand_ops[u].clone()
                 hand_ops[u][:, seat] = U_PASS

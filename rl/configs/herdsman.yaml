@@ -1,0 +1,31 @@
+# The 2x2 on breach's config (foresight / grudge / vendetta, RUNS.md
+# 2026-08-20) held the objective and the pool fixed at every combination
+# and the barnyard margin sat at -66..-68k in all of them: neither was
+# binding. The measured wall is structural: barnyard's hands do 83% of
+# its feeding (181 FEEDs/episode) plus the wheat logistics, and the hand
+# vocabulary had no FEED task -- the animal engine behind its 55k was
+# physically unreachable (an animal dies at 2 unfed days; one farmer
+# tops out at ~10 animals doing nothing else). This run is the breach
+# lineage + the FEED hand task (gates M1-M5, incl. the behavioural one:
+# hands-only feeding sustains a herd, device == CPU bit-exact).
+# Single variable vs vendetta: the action space.
+#
+#   sbatch slurm/rl_train.sh --config rl/configs/herdsman.yaml \
+#       --save rl/runs/herdsman/latest.pt --resume rl/runs/herdsman/latest.pt
+device: cuda
+B: 1024
+iters: 240
+algo: ppo
+seat: alt
+multi_head: true
+residual_base: rl/out/pitchfork/weights.npz
+opponents: barnyard
+league: false
+advance_at: 0.85
+handicap: 800
+win_bonus: 1.5
+margin_bonus: 1.5
+margin_scale: 50000
+potential: future
+probe_every: 10
+stop_patience: 6

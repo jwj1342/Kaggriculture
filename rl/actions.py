@@ -469,8 +469,13 @@ def decode(obs, f_idx, m_idx):
 # to decode() (the gate is rl/tensor_env/test_multi.py). A named task locks
 # that hand to ONE chore family this turn; IDLE passes. Claims ('taken') are
 # shared across all hands in hand order, exactly as in the cascade.
+# FEED is TASK-ONLY: AUTO hands never claim an unfed animal, so all-AUTO
+# stays byte-identical to the classic cascade. It is the one consumable
+# task -- a wheat-less FEED hand runs a shed PICKUP leg first (measured:
+# barnyard's hands do 83% of its feeding, 181 FEEDs/episode; without this
+# task the animal engine is capped by the farmer's 24 turns/day).
 HAND_TASKS = ["AUTO", "IDLE", "HARVEST", "WATER", "CARE",
-              "COLLECT_FERTILIZER", "DIG"]
+              "COLLECT_FERTILIZER", "DIG", "FEED"]
 N_HAND_TASK = len(HAND_TASKS)
 _TASK_IDX = {n: i for i, n in enumerate(HAND_TASKS)}
 
@@ -480,8 +485,9 @@ def _hands_actions_multi(obs, s, tasks):
 
     tasks: sequence of HAND_TASKS indices; entries beyond the live hand
     count are ignored, missing entries default to AUTO. The >=8-carry DROP
-    leg applies to every non-IDLE task (as it does today); a task whose
-    family has no target left PASSes.
+    leg applies to every non-IDLE task except a wheat-carrying FEED hand
+    (feeding consumes; unloading first would livelock the wheat trip); a
+    task whose family has no target left PASSes.
     """
     farm, priv, _inv, _pos = _me(obs)
     hands = farm.get("hands", [])
@@ -491,10 +497,14 @@ def _hands_actions_multi(obs, s, tasks):
             + [("WATER", t) for t in s["unwatered"]]
             + [("CARE", t) for t in s["uncared"]]
             + [("COLLECT_FERTILIZER", t) for t in s["fert_ready"]]
-            + [("DIG", t) for t in s["weeds"]])
+            + [("DIG", t) for t in s["weeds"]]
+            # FEED entries last (device key: family 5); AUTO skips them
+            + [("FEED", t) for t in s["unfed"]])
     taken = set()
     acts = []
     invs = priv["inventories"]
+    # this turn's fetchers share the pre-step shed stock, in hand order
+    wheat_left = priv["shed"].get("WHEAT", 0)
     for i, hpos in enumerate(hands):
         task = HAND_TASKS[tasks[i]] if i < len(tasks) else "AUTO"
         if task == "IDLE":
@@ -502,14 +512,36 @@ def _hands_actions_multi(obs, s, tasks):
             continue
         hx, hy = hpos[0], hpos[1]
         hinv = invs[i + 1] if i + 1 < len(invs) else {}
-        if sum(hinv.values()) >= 8:
+        carry = sum(hinv.values())
+        if task == "FEED" and hinv.get("WHEAT", 0) <= 0:
+            # wheat leg: only worth the trip while stock survives earlier
+            # fetchers' reservations and an unfed target is still unclaimed
+            if carry >= 8:
+                acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
+                continue
+            has_target = any(o == "FEED" and j not in taken
+                             for j, (o, _t) in enumerate(pool))
+            if wheat_left <= 0 or not has_target:
+                acts.append(["PASS"])
+                continue
+            if (hx, hy) in set(_SHED):
+                qty = min(wheat_left, 8 - carry)
+                wheat_left -= qty
+                acts.append(["PICKUP", "WHEAT", qty])
+            else:
+                acts.append(_goto_do((hx, hy), _SHED, ["PASS"]) or ["PASS"])
+            continue
+        if carry >= 8 and task != "FEED":
             acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
             continue
         best, bestd = None, 10 ** 9
         for j, (_op, t) in enumerate(pool):
             if j in taken:
                 continue
-            if task != "AUTO" and _op != task:
+            if task == "AUTO":
+                if _op == "FEED":
+                    continue
+            elif _op != task:
                 continue
             d = abs(hx - t[0]) + abs(hy - t[1])
             if d < bestd:
@@ -537,19 +569,31 @@ def decode_multi(obs, f_idx, hand_idxs, m_idx):
 
 def hand_task_mask(obs):
     """(MAX_HANDS, N_HAND_TASK) bool: AUTO/IDLE always legal for live hands;
-    a chore family is legal while it has at least one target; slots beyond
-    the live hand count are IDLE-only (zero entropy, zero gradient)."""
-    farm, _priv, _inv, _pos = _me(obs)
+    a chore family is legal while it has at least one target; FEED needs an
+    unfed animal plus reachable wheat (that hand's inventory or the shed);
+    slots beyond the live hand count are IDLE-only (zero entropy, zero
+    gradient)."""
+    farm, priv, _inv, _pos = _me(obs)
     n_hands = len(farm.get("hands", []))
     s = _scan(obs)
     fam_has = {"HARVEST": bool(s["harvest"]), "WATER": bool(s["unwatered"]),
                "CARE": bool(s["uncared"]),
                "COLLECT_FERTILIZER": bool(s["fert_ready"]),
                "DIG": bool(s["weeds"])}
-    row = [True, True] + [fam_has[n] for n in HAND_TASKS[2:]]
+    chores = [fam_has[n] for n in HAND_TASKS[2:-1]]
+    shed_wheat = priv["shed"].get("WHEAT", 0) > 0
+    invs = priv["inventories"]
     idle_only = [False, True] + [False] * (N_HAND_TASK - 2)
-    return [list(row) if i < n_hands else list(idle_only)
-            for i in range(MAX_HANDS)]
+    rows = []
+    for i in range(MAX_HANDS):
+        if i >= n_hands:
+            rows.append(list(idle_only))
+            continue
+        hinv = invs[i + 1] if i + 1 < len(invs) else {}
+        feed_ok = bool(s["unfed"]) and (shed_wheat
+                                        or hinv.get("WHEAT", 0) > 0)
+        rows.append([True, True] + list(chores) + [feed_ok])
+    return rows
 
 
 # --------------------------------------------------------------------------

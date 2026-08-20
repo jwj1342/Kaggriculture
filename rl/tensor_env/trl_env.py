@@ -81,7 +81,15 @@ def hand_task_mask_t(ep, player, n_hands=None):
                        device=dev)
     mask[:, :, 0] = alive                                          # AUTO
     mask[:, :, 1] = True                                           # IDLE
-    mask[:, :, 2:] = alive.unsqueeze(-1) & fams.unsqueeze(1)
+    mask[:, :, 2:2 + fams.shape[1]] = alive.unsqueeze(-1) & fams.unsqueeze(1)
+    # FEED: an unfed animal exists and wheat is reachable -- that hand's
+    # own inventory or the shed (actions.hand_task_mask's per-hand row)
+    unfed_any = (anim & ~ep.fed[:, player].reshape(B, NN)).any(-1)  # (B,)
+    shed_wheat = ep.shed[:, player, engine_t.WHEAT_I] > 0           # (B,)
+    hand_wheat = ep.unit_inv[:, player, 1:n_hands + 1,
+                             engine_t.WHEAT_I] > 0                  # (B, H)
+    mask[:, :, -1] = (alive & (shed_wheat.view(B, 1) | hand_wheat)
+                      & unfed_any.view(B, 1))
     return mask
 
 
