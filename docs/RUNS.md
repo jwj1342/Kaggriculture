@@ -1465,3 +1465,13 @@ artifacts are preserved to the main tree and the rebalance worktree is
 released; the second generation (steward revival at 300 iters with the
 stopper off, reveille and shepherd finals) is on the cards to close the
 last -3.3k.
+
+### reveille's verdict and the third generation (2026-08-20 late night)
+
+reveille (fixes + backplay bank) finished all 240: the bank taught even
+the ARGMAX mode to fight the wall (barnyard 25.0% at -6,246 argmax --
+every earlier argmax was 0%), and its sampled roster opened a fifth
+front: **main 15.6% (-9,908, from 0%/-24.6k)**, ghosts 82.3%/82.3%,
+barnyard 28.1% (-3,961). Still 4/10. Gen-3 forks from its endpoint:
+yeoman = mixed pool (barnyard + the w49 tape via tape_t, pfsp 2.0,
+league snapshots), the re-generalization + k-pressure arm.
