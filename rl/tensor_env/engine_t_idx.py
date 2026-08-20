@@ -1092,11 +1092,14 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
     m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t)
 
     zero = torch.zeros((B, P), dtype=i64, device=dev)
-    if override is not None:
+    for seat, ops in ([] if override is None
+                      else [override] if isinstance(override, tuple)
+                      else list(override)):
         # graft one seat's raw internal encodings over the macro decode;
         # clone before writing -- decode may hand back one shared zero
-        # tensor across slots (and FEED slots carry real arg/qty now)
-        seat, ops = override
+        # tensor across slots (and FEED slots carry real arg/qty now).
+        # A list of (seat, ops) grafts several seats (bank generation
+        # plays barnyard on both); the single-tuple form is unchanged.
         f_op[:, seat] = ops["f_op"]
         f_arg[:, seat] = ops["f_arg"]
         f_qty[:, seat] = ops["f_qty"]
