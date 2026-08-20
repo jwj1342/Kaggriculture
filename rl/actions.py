@@ -665,4 +665,16 @@ def market_mask(obs):
                 and money >= R.LAND_PRICES[n_extra])
     vals.append(len(farm.get("hands", [])) < MAX_HANDS   # HIRE
                 and money >= _fib(farm.get("hires_today", 0)))
+    # Mechanics-dead endgame (the PLANT_DEADLINE pattern): on the
+    # liquidation day with products in the shed, everything but selling is
+    # dead -- post-deadline plants never mature, an animal placed now never
+    # yields, escapes stop mattering, and stock held to the end realises
+    # $0. SELL_<p> decodes compound into a full-shed liquidation here, so
+    # any sell choice is a liquidation. Measured: five runs in a row left
+    # 62-100 melons rotting in the shed behind a NOOP-happy argmax.
+    if day >= R.LIQUIDATE_DAY:
+        sellable = [sget(p, 0) > 0 for p in PRODUCT_LIST]
+        if any(sellable):
+            vals = ([False] + sellable
+                    + [False] * (len(vals) - 1 - len(PRODUCT_LIST)))
     return np.array(vals, dtype=bool)

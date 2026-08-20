@@ -381,4 +381,11 @@ def masks_t(ep, player):
             (ep.hands_n[:, player] < A.MAX_HANDS) & (money >= t.fib[hires]),
         ], dim=1),
     ], dim=1)
+    # mechanics-dead endgame: liquidation day + products in the shed ->
+    # SELL_<p> only (actions.market_mask's twin; gate test_b3)
+    if int(day) >= R.LIQUIDATE_DAY:
+        sellable = shed[:, :ET.N_MKT] > 0
+        dead = torch.zeros_like(mm)
+        dead[:, 1:1 + ET.N_MKT] = sellable
+        mm = torch.where(sellable.any(-1, keepdim=True), dead, mm)
     return fm, mm
