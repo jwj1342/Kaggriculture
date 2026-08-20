@@ -1320,3 +1320,28 @@ the pitchfork prior discovered against the starter -- the top meta's
 smallest revenue line. This table is the target program: fertilizer
 and wheat throughput, early animals, strawberries, metered sells
 (SELL_HALF just landed for exactly this).
+
+## herdsman: expressiveness is ruled out -- FEED alone does not summon the herd (2026-08-20)
+
+vendetta + the FEED hand task, single variable (rl/configs/herdsman.yaml,
+jobs 20169415-18, eval 20169419). Ran the full 240 iterations, 176.7M
+lane-steps; the probe ratchet walked -68k -> -38.8k (it 79, ahead of
+vendetta's whole run at the matched checkpoint) -> -33.8k peak.
+
+Roster (best.pt): barnyard **-33,965** -- the line's best wall margin
+(vendetta -40,990, breach -67,270) -- with broad margin gains
+(enhanced/main -59k -> -45k, ghosts -18k -> -12k) and still **2/10**,
+win 0.000 on the wall.
+
+The mechanism question is answered by the trace: **zero animals in
+176.7M steps**. The whole gain is melon-economy polish (first wave sold
+day 11 at 16.1k, second wave still rots). FEED made the animal engine
+REACHABLE; nothing made it REACHED -- the BUY -> BUILD -> PLACE -> FEED
+chain never assembles under on-policy exploration, whatever the
+potential pays for it once assembled. After siege (signal), breach
+(labour steering) and herdsman (task vocabulary), the wall's remaining
+suspects are exploration and the objective's blindness to the
+fertilizer stream -- which is what drover (teacher CE on own states,
+running) and granger (kickstart + measured build-curve credit + no
+melon anchor + an opponent-noise ladder, launched from the rebalance
+worktree) are for.
