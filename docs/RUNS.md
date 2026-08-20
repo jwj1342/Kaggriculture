@@ -1452,3 +1452,16 @@ our best 20:1 (herdsman's argmax earns literally $0 under their market
 pressure -- the starkest overfitting exhibit yet; drover-samp holds
 6.5k). Discipline for this family from here: dual-mode rosters always,
 stoppers off or batch-win-keyed, sampled exports as the deliverable.
+
+### granger's own verdict: the wall at arm's length (2026-08-20 night)
+
+The plain noise-ladder chain completed (L4-L5 at zero noise, batch win
+0.010 -> 0.208), and its sampled roster is the line's new high-water
+mark: **ghosts 92.7% / 92.7% (+20k), barnyard 27.1% at margin -3,285**,
+lena/w49 margins up 55k from the morning (-94/-95k), 4/10 with both
+recordings. The argmax roster of the same weights is 1/10 -- the
+dual-mode discipline is now mandatory for this family. The trunk's
+artifacts are preserved to the main tree and the rebalance worktree is
+released; the second generation (steward revival at 300 iters with the
+stopper off, reveille and shepherd finals) is on the cards to close the
+last -3.3k.
