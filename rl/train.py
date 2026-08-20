@@ -117,6 +117,10 @@ def build_parser():
     ap.add_argument("--ks-anneal", type=float, default=80e6,
                     help="lane-steps over which ks-coef decays linearly "
                          "to zero (0 = constant)")
+    ap.add_argument("--ks-every", type=int, default=1,
+                    help="teacher labels every Nth step (profiler: the "
+                         "teacher is 41%% of step time; 4 buys ~1.7x "
+                         "collection throughput, CE skips the gaps)")
     ap.add_argument("--build-bonus", type=float, default=0.0,
                     help="weight of the curve-capped build credit folded "
                          "into the potential (targets measured from the "
@@ -237,9 +241,11 @@ def _kickstart_ce(actor_net, mb, multi):
 
     for logits, mask, lab in ((fl, mb["farmer_mask"], mb["teacher_f"]),
                               (ml, mb["market_mask"], mb["teacher_m"])):
+        live = lab >= 0                       # -1 = unlabelled step (ks-every)
+        lab_c = lab.clamp(min=0)
         lp = torch.log_softmax(logits.masked_fill(~mask, NEG), -1)
-        legal = mask.gather(-1, lab.unsqueeze(-1)).squeeze(-1)
-        pick = lp.gather(-1, lab.unsqueeze(-1)).squeeze(-1)
+        legal = mask.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1) & live
+        pick = lp.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1)
         acc(-(pick * legal.float()).sum(), legal.sum())
     if multi:
         hl = outs[2]                                     # (B, H, T)
@@ -293,7 +299,7 @@ def train(args, log_fn=None):
         opp_lambda=args.opp_lambda, multi_head=args.multi_head,
         kickstart=args.kickstart, build_bonus=args.build_bonus,
         bank=args.bank, bank_frac=args.bank_frac,
-        shape_gamma=args.shape_gamma)
+        shape_gamma=args.shape_gamma, ks_every=args.ks_every)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],

@@ -348,7 +348,7 @@ class KGTensorEnv(EnvBase):
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
-                 shape_gamma=0.0):
+                 shape_gamma=0.0, ks_every=1):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -446,6 +446,11 @@ class KGTensorEnv(EnvBase):
         if kickstart not in ("", "barnyard"):
             raise ValueError(f"unknown kickstart teacher {kickstart!r}")
         self.kickstart = kickstart
+        # label every Nth step only: the profiler puts the teacher at 41%
+        # of step time (a full barnyard compute per step); -1-filled steps
+        # are skipped by the CE, so this trades label density for ~1.7x
+        # collection throughput at ks_every=4
+        self.ks_every = max(1, int(ks_every))
         # multi-head action space (rl/TODO.md #0): [farmer, market, hand x12]
         self.multi_head = bool(multi_head)
         bs, dev = self.batch_size, self.device
@@ -494,7 +499,14 @@ class KGTensorEnv(EnvBase):
         if self.multi_head:
             out["hand_mask"] = hand_task_mask_t(ep, seat, A.MAX_HANDS)
         if self.kickstart:
-            tf, tm, th = kickstart_labels(ep, seat)
+            if ep._step % self.ks_every == 0:
+                tf, tm, th = kickstart_labels(ep, seat)
+            else:
+                tf = torch.full((self.B,), -1, dtype=torch.int64,
+                                device=self.device)
+                tm = tf.clone()
+                th = torch.full((self.B, A.MAX_HANDS), -1, dtype=torch.int64,
+                                device=self.device)
             out["teacher_f"], out["teacher_m"], out["teacher_h"] = tf, tm, th
         return TensorDict(out, batch_size=self.batch_size, device=self.device)
 
