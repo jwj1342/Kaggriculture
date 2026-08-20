@@ -104,6 +104,7 @@ assert A.MARKET_ACTIONS[10:15] == [f"BUY_SEED_{c}" for c in A.CROP_LIST]
 assert A.MARKET_ACTIONS[15:22] == (
     ["BUY_WHEAT", "BUY_FERT"] + [f"BUY_{a}" for a in A.ANIMAL_LIST]
     + ["BUY_LAND", "HIRE"])
+assert A.MARKET_ACTIONS[22:31] == [f"SELL_HALF_{p}" for p in A.PRODUCT_LIST]
 assert A._SHED == [(4, 4), (5, 4), (4, 5), (5, 5)]
 assert E.FARMER_MOVES == {"NORTH": (0, -1), "SOUTH": (0, 1),
                           "EAST": (1, 0), "WEST": (-1, 0)}
@@ -258,11 +259,11 @@ def _tabs(device):
         # market head index -> slot-0 (op, item, unit-quantity) -- SELL keeps
         # the shed count and BUY_WHEAT the herd-scaled quantity at decode.
         mop = [ET.OP_DEAD] + [ET.OP_SELL] * 9 + [ET.OP_SEED] * 5 + [ET.OP_BUYP] * 2 \
-            + [ET.OP_ANIMAL] * 3 + [OP_LAND, OP_HIRE]
+            + [ET.OP_ANIMAL] * 3 + [OP_LAND, OP_HIRE] + [ET.OP_SELL] * 9
         mitem = [0] + list(range(9)) + list(range(5)) + [ET.WHEAT_I, ET.FERT_I] \
-            + list(range(3)) + [0, 0]
-        mrem = [0] + [0] * 9 + [1] * 5 + [0, 1] + [1] * 3 + [0, 0]
-        assert len(mop) == len(mitem) == len(mrem) == A.N_MARKET == 22
+            + list(range(3)) + [0, 0] + list(range(9))
+        mrem = [0] + [0] * 9 + [1] * 5 + [0, 1] + [1] * 3 + [0, 0] + [0] * 9
+        assert len(mop) == len(mitem) == len(mrem) == A.N_MARKET == 31
         t.mop_lut = mk(mop)
         t.mitem_lut = mk(mitem)
         t.mrem_lut = mk(mrem)
@@ -599,9 +600,11 @@ def _idx_decode_market(self, m_idx, herd, day, t):
     item0 = t.mitem_lut[m]
     cnt = shed9.gather(2, item0.unsqueeze(-1)).squeeze(-1)
     sell = op0 == ET.OP_SELL
+    # indices 22.. are SELL_HALF_<p>: meter to ceil(half) of the holding
+    sq = torch.where(m >= 22, (cnt + 1) // 2, cnt)
     m_op[..., 0] = torch.where(sell & (cnt == 0), torch.zeros_like(op0), op0)
     m_item[..., 0] = item0
-    m_rem[..., 0] = torch.where(sell, cnt, torch.where(
+    m_rem[..., 0] = torch.where(sell, sq, torch.where(
         m == 15, (2 * herd).clamp(min=5), t.mrem_lut[m]))   # 15 = BUY_WHEAT
 
     if day >= R.LIQUIDATE_DAY and bool(sell.any()):

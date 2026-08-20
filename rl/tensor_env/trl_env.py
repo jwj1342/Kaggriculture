@@ -168,8 +168,15 @@ def kickstart_labels(ep, player):
     m = torch.zeros((B,), dtype=torch.int64, device=dev)       # NOOP
     sell = m_op == engine_t.OP_SELL
     qty = torch.where(sell, m_rem, torch.zeros_like(m_rem))
-    s_it = m_item.gather(1, torch.argmax(qty, 1).view(B, 1)).squeeze(1)
-    m = torch.where(sell.any(1), 1 + s_it, m)
+    si = torch.argmax(qty, 1).view(B, 1)
+    s_it = m_item.gather(1, si).squeeze(1)
+    s_q = qty.gather(1, si).squeeze(1)
+    held = ep.shed[:, player].to(torch.int64).gather(
+        1, s_it.view(B, 1)).squeeze(1)
+    # a metered teacher sell (qty <= ceil(half)) maps to SELL_HALF_<p>
+    metered = s_q * 2 <= held + 1
+    m = torch.where(sell.any(1),
+                    torch.where(metered, 22 + s_it, 1 + s_it), m)
     it, any_ = first_item(m_op == engine_t.OP_BUYP)
     m = torch.where(any_ & (it == engine_t.WHEAT_I), torch.full_like(m, 15), m)
     m = torch.where(any_ & (it == engine_t.FERT_I), torch.full_like(m, 16), m)
