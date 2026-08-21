@@ -2165,3 +2165,36 @@ the pool {w49, w10, k06, w03} with pfsp weighting toward whichever the
 policy loses to hardest, forked from harrow's own trunk. If tape
 imitation is what carried harrow to 7/12, a library twice as rich is the
 cheapest multiplier on the board.
+
+## The walls were always trainable: cleo, lena and bea are wrapper-plus-tape (2026-08-21)
+
+`agents/bench3/closer_cleo.py` and `agents/wrapped/w49.py` are the same
+637-line file with a different `_TRACE`: the tier-2 anchors ARE the same
+wrapper-plus-plan construction as the mined tapes. So their plans load
+straight into `tape_t` -- and they gate byte-exact on the current engine:
+
+| anchor | tape replay (this engine) | ladder rating |
+|---|---|---|
+| closer_cleo | **155,344** | 1363.7 |
+| ledger_lena | **150,635** | 1364 tier |
+| broker_bea | **150,150** | 1364 tier |
+
+**The tier this project has never taken a single game from -- 0/96 on
+every roster it has ever appeared in -- has been available as a training
+opponent all along.** docs/GAP-2000.md called this the hardest wall on
+the way to 2000 ("no reactive 1364-tier opponent can be trained
+against") and estimated real work to fix; the actual fix was one command,
+because cleo shares w49's wrapper.
+
+Caveat, stated plainly: the tape is the PLAN, not the agent. The wrapper
+(terminal liquidation from step 680, sell reordering, front-run) is worth
+about 26k -- `tape:w49` replays at 83.8k while the wrapped w49 earns
+~110k against us -- so these are open-loop 150k economies, not reactive
+1364-tier play. Open-loop tapes are exploitable, which is why the roster
+judges and the pool keeps five of them with pfsp.
+
+**anvil** (jobs 20244318-21, roster 20244322): harrow's trunk on the pool
+{k06, bea, lena, cleo, w03} -- the actual walls plus the two richest
+tapes -- gate 0.25, pfsp hardest-first. threshing (generic strong tapes)
+is the control: does training on the EXACT walls beat training on
+comparable strangers?
