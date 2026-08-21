@@ -2060,3 +2060,19 @@ than a whole game's income. bourse forks sower's tail with that single
 change; granary forks the same trunk with the wheat cap; sower's own
 tail roster is the shared control. Queued behind tiller's last link to
 hold GPU concurrency at five.
+
+## tiller verdict: the arc reproduces, the trunk does not decide it (2026-08-21, job 20227805)
+
+tiller = the cropper trunk on the same gen-8 basket that sower ran on
+the draught trunk. Roster: barnyard 94.8% +17,325 (the largest wall
+margin any arm has posted), main 37.5% -3,502, spar grazier 19.8%,
+ghosts 100/100, w49 -83.9k, cleo -86.5k, income distribution median
+40.9k with 16% of games under 20k.
+
+Against sower's tail (barnyard 96.9%, main 55.2%, w49 -78.1k, 10%
+under 20k) it is a shade weaker everywhere except the barnyard margin.
+Verdict: **the basket, not the trunk, is what carries this generation**
+-- two different trunks converge to the same behaviour within noise,
+which is the cleanest evidence yet that the vocabulary/workforce/credit
+package is the causal ingredient. Trunk choice for future forks can
+therefore be made on income-distribution floor rather than lineage.
