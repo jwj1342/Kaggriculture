@@ -2591,3 +2591,52 @@ revenue lines -- and the open question is how to grow production under
 tape pressure, given that the two reward terms which grew it on the
 barnyard diet (land value, base-priced capital credit) both fail when a
 150k opponent crashes the prices those terms assume.
+
+## The -62k is a PRICE gap, not a production gap (2026-08-22, anvil-samp probe)
+
+Same policy (anvil-samp), same three seeds, weak opponent vs the 1364
+tier, counting physical units sold and the price each fetched:
+
+| | vs barnyard | vs closer_cleo |
+|---|---|---|
+| units sold | 3,324 | **4,407 (+33%)** |
+| sale revenue | 299,703 | 276,757 (-8%) |
+| **average unit price** | **90.2** | **62.8 (-30%)** |
+| our final money | 37-59k | 19-37k |
+
+**We produce MORE against the strong opponent and earn less.** The deficit
+is price, not output. Per line:
+
+| product | vs barnyard | vs cleo | price change |
+|---|---|---|---|
+| MILK | 552 u @ **141.3** | 578 u @ **49.5** | **-65%** |
+| STRAWBERRY | 357 u @ 228.2 | 270 u @ 177.4 | -22% |
+| WHEAT | 1,742 u @ 43.8 | 2,862 u @ 46.0 | **+5% (held)** |
+| MELON | 159 u @ 178.9 | 143 u @ **225.6** | **+26%** |
+| FERTILIZER | 514 u @ 69.2 | 554 u @ 65.4 | -5% |
+
+cleo dumps milk and our **second-biggest line loses two thirds of its
+price**, while wheat holds (the town's steady demand) and melon actually
+pays MORE (cleo barely sells it). Our economy is dairy-heavy; that is
+precisely the economy this tier destroys.
+
+Two consequences, both testable:
+
+1. **Product-mix adaptation is the missing behaviour.** The prices are in
+   the observation, so the policy CAN see the crash -- but its production
+   is committed days earlier (a cow bought on day 6 makes milk on day 20
+   whatever the price), so the reallocation has to happen at BUILD time,
+   not sale time. Against a fixed tape that is learnable.
+2. **And the potential blocks it**: future animal/crop output is credited
+   at BASE price, so under a milk crash the potential still says a cow's
+   milk is worth 160 when the market pays 49. That is the third
+   appearance of the base-price assumption, and this time it has a
+   specific cost: the policy cannot see that dairy is the wrong economy
+   against this tier. A mark-to-market production credit is the obvious
+   A/B -- with the caveat that two previous repricing terms
+   (execution-priced inventory, base-priced capital credit) both failed,
+   so it gets its own arm and its own roster, inheriting nothing.
+
+For the record, the top meta is diversified exactly where we are not:
+w49 is strawberry 30% / milk 22% / wool 21%, k06 is fertilizer 32% /
+wheat 18%. Ours is wheat 49% / milk 19% / fertilizer 16%.
