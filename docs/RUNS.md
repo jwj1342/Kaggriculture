@@ -2076,3 +2076,36 @@ Verdict: **the basket, not the trunk, is what carries this generation**
 which is the cleanest evidence yet that the vocabulary/workforce/credit
 package is the causal ingredient. Trunk choice for future forks can
 therefore be made on income-distribution floor rather than lineage.
+
+## The frozen farm, explained: the shaping term punished growth (2026-08-21)
+
+A per-day trace of the submitted agent (sower-it228 vs barnyard, seed
+1000) shows the shape of every arm's ceiling: **8 cows and 8 structures
+by day 6, then twenty-three days without buying a single animal,
+structure or quadrant, while cash climbed from $0 to $46,230 and sat
+idle.** No animals died (8 stayed 8). Feeding was 220 farmer actions and
+**zero hand actions**. The farm did not fail to grow; it stopped
+choosing to.
+
+The cause is in the potential, stacked from two Kilo constants:
+
+1. `ANIMAL_CREDIT 0.4` / `PLANT_CREDIT 0.5` price future production at
+   40-50%, so a cow that really returns +720 (7 milk x 160, cost 400)
+   reads +48;
+2. `UNFED_RISK 0.8` + `UNCARED_RISK 0.3` are charged off the DAILY
+   fed/cared flags, so a newly placed animal is charged **1.1x its own
+   cost the moment it lands** -- and "not fed yet today" is every
+   animal's normal morning state.
+
+Measured deltas for one more cow, net of its price: **day 10 -392,
+day 16 -584** -- the dominant reward term was telling the policy that
+growth is a mistake, all season, in every arm. That single fact explains
+the frozen herd, the 2-quadrant board, the idle cash, and a good part of
+the income gap to the 1364 tier (their farms are 3 land / 13 animals).
+
+Fix (gen13, d896f4a, CAPITAL-PASS): `--capital-credit` replaces both
+haircuts; `--risk-mechanic` charges neglect the way the engine does
+(escape at 2 unfed days, costing that animal's own credited production).
+The pair moves day 10 to **+600** and day 16 to **+120** while keeping a
+genuinely bad day-22 purchase negative. **byre** (jobs above) is the
+A/B: sower's tail trunk, that pair, sower's own tail roster as control.
