@@ -830,8 +830,37 @@ def _idx_apply_slot(self, u, op, arg, qty, day, t, pres):
     s = sub(U_PLACE)
     if s:
         i, L = s
-        ai = arg.view(-1).index_select(0, i)
-        on_struct = ((kind_f.index_select(0, L).to(i64) == t.animal_struct[ai])
+        ai_raw = arg.view(-1).index_select(0, i)
+        # arg >= 100 encodes the reference's SECOND place semantics: a
+        # shed-ADJACENT deposit of item (arg - 100), qty in the qty slot
+        # (top-meta tapes use it for produce logistics -- ['PLACE','MILK',6];
+        # the macro space and barnyard never emit it, so the idx path only
+        # carried the animal branch until tape_t needed this one)
+        dep = ai_raw >= 100
+        jd = dep.nonzero().squeeze(1)
+        if jd.numel():
+            i2 = i.index_select(0, jd)
+            it2 = (ai_raw.index_select(0, jd) - 100).clamp(min=0, max=NI - 1)
+            adj2 = t.shed100[(L.index_select(0, jd)) % NN]
+            n2 = qty.view(-1).index_select(0, i2).clamp(min=0)
+            HI = (1 + self.H) * NI
+            have2 = self.unit_inv.view(-1).index_select(
+                0, i2 * HI + u * NI + it2).to(i64)
+            room2 = (self.shed_capacity
+                     - shed2.index_select(0, i2).to(i64).sum(-1)).clamp(min=0)
+            n2 = torch.minimum(torch.minimum(n2, have2), room2)
+            k = ((n2 > 0) & adj2).nonzero().squeeze(1)
+            if k.numel():
+                i3 = i2.index_select(0, k)
+                it3 = it2.index_select(0, k)
+                n3 = n2.index_select(0, k)
+                self._idx_inv_take(i3, u, it3, n3)
+                sl = i3 * NI + it3
+                shed_f.index_copy_(0, sl, shed_f.index_select(0, sl)
+                                   + n3.to(shed_f.dtype))
+        ai = torch.where(dep, torch.zeros_like(ai_raw), ai_raw)
+        on_struct = (~dep
+                     & (kind_f.index_select(0, L).to(i64) == t.animal_struct[ai])
                      & (animal_f.index_select(0, L) < 0))
         j = on_struct.nonzero().squeeze(1)
         if j.numel():
@@ -849,7 +878,7 @@ def _idx_apply_slot(self, u, op, arg, qty, day, t, pres):
                 fert_avail_f.index_fill_(0, L3, False)
                 self.pending.view(-1).index_fill_(0, L3, 0)
         # off-structure PLACE falls through to the shed-drop path (n = 1)
-        off = ~on_struct & t.shed100[L % NN]
+        off = ~on_struct & ~dep & t.shed100[L % NN]
         j = off.nonzero().squeeze(1)
         if j.numel():
             i2, a2 = i.index_select(0, j), ai.index_select(0, j)
