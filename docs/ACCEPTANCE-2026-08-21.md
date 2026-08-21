@@ -54,3 +54,25 @@ enhanced/main(0%)→ **估计 ~800–950 分段(排名 ~1700–2100/4356)**。
    CNN 干未动、critic 可再放大、混池防 k 档市场压力未加)——gen-4 可从
    draught 续链/分叉直攻 enhanced/main(−36.8k)与 spar(−25k)。
 3. 折中:提交拿读数的同时 gen-4 照跑(两者不冲突,只花一个提交名额)。
+
+---
+
+## 追记(2026-08-21 深夜):验收头名易主 —— cropper-samp
+
+夜间四臂判词更新了交付物排序:
+
+| 产物 | barnyard | ghosts | main | 备注 |
+|---|---|---|---|---|
+| draught-samp(晨间验收版) | 56.8% [51.8,61.6]@384 | 75.0/82.3% | 0% (−36.8k) | 原验收线产物 |
+| **cropper-samp(信用臂)** | **69.8% [60.0,78.1]@96,margin +1,875** | **96.9/91.7%** | 0% (−38.7k) | **新头名;区间整体>50%** |
+| carter-samp(league/pfsp) | 8.3% | 93.8/94.8% | **10.4% (−10.1k)** | 墙滑落换泛化;首个对 main 非零 |
+
+- cropper = draught 配方 + 作物建设曲线 + 化肥流信用(gen-5 项),
+  单变量 +13pp;检查点 `Kaggriculture-gen5 worktree rl/runs/cropper/latest.pt`,
+  采样导出 `rl/out/cropper-samp`(worktree 内)。
+- 若晨间决定提交,**建议提交 cropper-samp**(打包与镜像检查待做——
+  按包装链 SOP:tools/package.sh + get_last_callable 验证 + 整局)。
+- 深夜还在跑:wrangler(磁带混池)与 sower-v3(gen-8 全篮:
+  PLANT+FERTILIZE+10 人日工+原子物理+信用);两者判词晨间可见,
+  可能进一步改写此表。夜间两大机制发现(帮手=日工;原子 PLANT)
+  见 docs/RUNS.md 同日条目。
