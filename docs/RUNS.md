@@ -2236,3 +2236,20 @@ and passes the whole battery -- WHEAT-PASS, CAPITAL-PASS, EXEC-PASS,
 test_trl, MULTI-PASS -- plus an all-flags-on training smoke. Five links,
 roster at the tail. This is the arm the last twelve hours of measurement
 were aiming at.
+
+## sheaf verdict: the mixture buys the best floor (2026-08-21, job 20237092)
+
+barnyard + w49/k06 tapes + league snapshots + pfsp, land 1500, from
+reeve's trunk: barnyard 100% +15,303, grazier 83.3%, main 58.3%
+[48.3, 67.7] +3,006 (interval spans 50), berrybaron 42.7%, ghosts
+100/100, walls cleo -71.7k / lena -71.0k / bea -70.0k / w49 -73.3k.
+**6/12**, and the distribution is the best on record: **income median
+51,933, only 3% of games under 20k** (harrow 47.2k / 4%; the submitted
+it228 35.7k / 20%).
+
+Head to head with harrow (pure tape diet): harrow wins main outright
+(64.6% with the interval clear of 50) and takes 7/12; sheaf has the
+better income distribution and matching walls. Since the ladder's losses
+are floor events, both are live candidates -- a 384-game resolution of
+sheaf's main matchup (queued) decides whether the mixture matches
+harrow's roster too.
