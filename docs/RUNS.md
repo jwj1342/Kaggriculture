@@ -1853,3 +1853,12 @@ vocabulary, the day-labour burst and the credit terms. Whether
 tape-batch money CLIMBS from here is the entire question wrangler's
 verdict posed ("pressure without means moves nothing" -- now the
 means are aboard). Runway ~300 iterations.
+
+## Another first: the learner out-earns the wall (sower-v3, iter 102-105)
+
+win 0.60-0.65 and **money 43.6k vs barnyard's 41.6k -- the first
+positive batch-mean income margin in the project's history** (every
+prior era sat 2-3k under). The curve: 0.43 (it 55) -> 0.52 (77) ->
+0.574 (88) -> 0.64 (105), slope intact. The win-rate phase is rolling
+into the income phase on schedule; what the w49 wall needs is for
+this margin to keep widening as the crop economy scales.
