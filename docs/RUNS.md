@@ -1649,3 +1649,19 @@ PLACE, an order of magnitude smaller than PLANT was (118/100 ops vs
 352). Herd size is the fertilizer feedstock -- k06 buys ~14
 animals/game, our build curve's plateau. Seed variance is huge even at
 the top (k06: 167k on seed 1000, 92k on seed 2000).
+
+## draught-ext: the plateau is real -- the recipe has converged (2026-08-21, job 20220502)
+
+The 140-iteration extension (280 -> 420) of the accepted draught trunk,
+sampled roster at 96 games/opponent: barnyard 47.9% [38.2, 57.8]
+margin -2,217 (the accepted draught-samp resolved 56.8% at 384 games --
+not dethroned, not improved), ghosts 75.0%/76.0% (same band),
+enhanced/main 0% at -33.6k (was -36.8k), spar/lena/w49 walls unmoved.
+Training money sat at 41-43k the whole extension. Verdict: **the
+draught recipe is done** -- more compute on the same recipe buys
+nothing; the 42k dairy plateau is structural (the anatomies say the
+next income lines are crops and fertilizer volume, which this
+vocabulary cannot express). The deliverable remains draught-samp@280.
+The three levers already in flight are exactly the diagnosis: sower
+(PLANT vocabulary), wrangler (tape market pressure), cropper (crop
+credit + fert-credit).
