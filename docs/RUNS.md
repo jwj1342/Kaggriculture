@@ -2109,3 +2109,36 @@ haircuts; `--risk-mechanic` charges neglect the way the engine does
 The pair moves day 10 to **+600** and day 16 to **+120** while keeping a
 genuinely bad day-22 purchase negative. **byre** (jobs above) is the
 A/B: sower's tail trunk, that pair, sower's own tail roster as control.
+
+## harrow rewrites the field: 7/12, the best floor, and wrangler's verdict inverted (2026-08-21, job 20234370)
+
+The pure top-economy diet -- gen-8 basket, w49 then k06 tape, no
+barnyard mass, no teacher -- is the strongest product this project has
+produced, on every axis at once:
+
+| opponent | harrow | previous best |
+|---|---|---|
+| barnyard | **100%** +11,804 | sower-tail 96.9% |
+| **enhanced/main** | **64.6% [54.6, 73.4]** +3,893 | sower-tail 55.2% (CI spanned 50) |
+| **spar grazier** | **84.4% [75.8, 90.3]** +7,037 | reeve 61.5% |
+| spar berrybaron | 36.5% -1,879 | reeve 1.0% |
+| ghosts | 100% / 100% | 100% / 100% |
+| closer_cleo | 0% **-70,040** | reeve -79,128 |
+| ledger_lena | 0% **-70,661** | reeve -78,703 |
+| broker_bea | 0% **-70,036** | reeve -79,656 |
+| w49 | 0% **-68,661** | reeve -70,354 |
+
+**7/12 beaten** (random, starter, both ghosts, barnyard, main, grazier),
+income median **47,218** and -- the number the ladder losses pointed at --
+**only 4% of games under 20k** (sower-it228, the submitted one: 20%).
+
+And it inverts wrangler's verdict. wrangler concluded "pressure without
+means moves nothing": tapes alone, in the 4-hire era, left w49 at
+-98.8k. With the means aboard (vocabulary, day-labour crew, credits),
+**tape pressure is the best diet we have** -- better than barnyard
+self-play (sower) and better than the 50/50 mixture (reeve). The tapes
+are not opponents to beat; they are a 100k economy to imitate under
+market pressure, and the policy learns the production side from them.
+
+Acceptance chain running (job 20240482: mirror, stress, packaging).
+This is the submission candidate whenever the next slot is authorised.
