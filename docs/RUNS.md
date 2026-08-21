@@ -1778,3 +1778,20 @@ PASS is 41% of hand-turns (idle workforce), score 1W-2L in close games
 the exploration tax is buying structure. 170 iterations of the chain
 remain; the number to watch is win rate converting as crops and
 fertilizer reach the market.
+
+## wrangler verdict: pressure without means moves nothing (2026-08-21, job 20220535)
+
+The tape-mixture arm (4-hand era, 50% w49 tape / 50% barnyard after its
+reachable gate): barnyard 59.4% [49.4, 68.7] (above draught-ext's
+47.9%, below cropper's 69.8%), ghosts 80.2/79.2%, and the number the
+arm existed for -- **w49 margin -98,844, statistically where draught
+left it (-99,970)**. lena -111.6k, main 0%/-43.0k. Verdict: market
+pressure alone cannot conjure an economy the action space cannot
+produce; training against a 126k-income open-loop opponent taught
+price-crash survival, not production. The attribution matrix closes:
+credits +13pp on the wall (cropper), league/pfsp trades the wall for
+breadth and the first nonzero on main (carter), tapes alone ~nothing
+on the target tier (wrangler). What remains in flight is the only
+combination the matrix leaves standing: vocabulary + workforce +
+credits (sower-v3, recovered to trunk level at it 55 with the crop
+economy inside), plus the same under tape pressure (reeve).
