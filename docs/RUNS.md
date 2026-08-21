@@ -2198,3 +2198,23 @@ judges and the pool keeps five of them with pfsp.
 tapes -- gate 0.25, pfsp hardest-first. threshing (generic strong tapes)
 is the control: does training on the EXACT walls beat training on
 comparable strangers?
+
+## plowman verdict: land pricing is real but the barnyard-only diet caps it (2026-08-21, job 20234105)
+
+Land at 1500 instead of 300, single variable off sower's trunk:
+barnyard **100% +27,642** (the largest margin any arm has posted against
+the wall), grazier 63.5% (beaten), main 34.4%, ghosts 100/100,
+cleo -76.6k, w49 -76.6k, lena/bea -84.3/-84.6k. **6/12**, income median
+45.7k, 12% of games under 20k.
+
+Read against its control (sower's tail: barnyard 96.9%, main 55.2%,
+cleo -85.4k, 10% under 20k) and against harrow (100%, main 64.6%,
+cleo -70.0k, 4% under 20k): **the land term clearly works on the
+production side** -- +8k of self-play income, +10k of wall margin
+against cleo/w49 -- but on a barnyard-only diet it does not touch the
+reactive matchups the way tape pressure does, and its floor is worse
+than harrow's by 8 points. The lesson matches sheaf's premise: the
+potential fixes and the opponent diet are orthogonal, and the diet is
+what moves the tier-2 walls. The four potential arms (land, wheat,
+market impact, capital credit) are therefore best judged as ingredients
+to fold into a TAPE arm, not as products on their own.
