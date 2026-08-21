@@ -1829,3 +1829,16 @@ still ~42k vs 43k (win rate is moving first -- more games tipped, not
 yet more income; the income lift is what w49 needs). ~320 iterations
 of runway remain; tiller (cropper trunk, same basket) just started
 L1 and reeve climbs toward its tape gate behind them.
+
+## Census at iter 100: the economy deepens, the mix shifts to melon (sower-v3)
+
+L2 closed at **win 0.574** (0.43 -> 0.52 -> 0.574 across 33 iters).
+Census, 3/3 wins (+14.5k/+6.3k/+2.7k): hand WATER doubled to 363 (the
+crops are being maintained, not just planted), hand PLANT holds at
+82, COLLECT_FERTILIZER 628, idle hand-turns down (5,594 from 6,027) --
+and the seed mix flipped on its own: **MELON 56 > WHEAT 35** (was
+96 wheat / 46 melon at iter 28). The policy is discovering melon
+pricing under the hinge without any anchor pointing at it -- the
+credit terms are crop-agnostic. Money at parity-plus (43.6k vs 43.6k
+batch means, wins by margin); the income lift phase is next. L3
+runs; ~300 iterations of runway remain.
