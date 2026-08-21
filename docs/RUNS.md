@@ -2496,3 +2496,19 @@ only. Beating the 1364 tier needs both: earn ~100k AND hold them near
 100k. That reframes the "0% on four walls" number -- we are not one
 production doubling away, we are one production doubling plus a
 suppression policy away.
+
+## vise: the suppression term was saturated all along (2026-08-22, jobs 20260935-38)
+
+The terminal margin reward is `margin_bonus * tanh((mine - theirs) /
+margin_scale)` with scale 50,000. Against the tier we care about our
+margin sits at -70k, i.e. **tanh(-1.4) = -0.89 -- saturated, slope
+~0.06.** Every arm has therefore trained with the second half of the
+objective effectively switched off: crushing the opponent's income by
+20k and losing by 50k instead of 70k earned it almost nothing.
+
+vise unsaturates it -- scale 150,000 (slope ~0.8 in the operating range)
+and weight 3.0 -- with everything else identical to anvil: same trunk,
+same five-tape pool, same potential. If the suppression half of the
+margin is trainable at all, this arm is where it shows, and the number
+to read is not our income but **the opponent's** in the tail roster
+(w49 101.9k under harrow, 118.5k under anvil, 159.2k alone).
