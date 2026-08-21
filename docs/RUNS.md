@@ -1842,3 +1842,14 @@ pricing under the hinge without any anchor pointing at it -- the
 credit terms are crop-agnostic. Money at parity-plus (43.6k vs 43.6k
 batch means, wins by margin); the income lift phase is next. L3
 runs; ~300 iterations of runway remain.
+
+## reeve crosses the gate: the tape stage begins, this time with means (2026-08-21)
+
+reeve's barnyard EMA touched 0.45 around iter 90 and the pool advanced
+to stage 2/3 -- half its batches now face the w49 tape's 84-126k
+economy. Tape-batch money starts at ~27k, exactly where wrangler's
+sat for its whole run; the difference is that reeve carries the
+vocabulary, the day-labour burst and the credit terms. Whether
+tape-batch money CLIMBS from here is the entire question wrangler's
+verdict posed ("pressure without means moves nothing" -- now the
+means are aboard). Runway ~300 iterations.
