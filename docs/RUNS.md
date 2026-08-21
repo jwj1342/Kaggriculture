@@ -1897,3 +1897,21 @@ arrives only through a two-step chain. First concrete gen-10 design
 input from tonight's data: **value land by what it unlocks** (raise
 the build-curve land term or make LAND_VALUE scale with seed/crop
 flow) -- recorded in rl/TODO.md #13.
+
+## Census at iter 228: the top meta's anatomy, reproduced from scratch (sower-v3)
+
+**win 0.909-0.927, money 52.1k vs barnyard's 42.7k (+9.5k batch
+margin).** The census explains it: hand WATER 1,205 (was 405; w49's
+tape does 1,744), hand PLANT 126 = 42 crops a game (was 82), HARVEST
+441 (was 264), FERTILIZE 30 (was 1), idle hand-turns HALVED to 3,351
+(was 6,463) -- and the seed mix moved again, on its own:
+**STRAWBERRY 144 > MELON 31 > WHEAT 9**. Strawberry is the top meta's
+LARGEST revenue line (30.4% of w49's season, RUNS.md 2026-08-21) and
+nothing in the reward names it: the crop-agnostic credit terms plus a
+workforce that can water 1,200 times found it. 3/3 census wins by
++13.9k / +18.8k / +13.9k. A 12-opponent roster on this exact
+checkpoint is running (job 20233430) rather than waiting for the chain
+tail -- if it clears 70% on barnyard this is the new deliverable.
+Two arms confirm the arc: tiller 0.761 / 49.5k at it 143, reeve 0.838
+/ 52.5k at it 259 (its barnyard batches, while half its diet is the
+w49 tape).
