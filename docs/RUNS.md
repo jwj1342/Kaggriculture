@@ -1747,3 +1747,19 @@ what the theory said it would.
 
 Both arms trained at 4 hands. The gen-8 basket (sower-v3) holds the
 credit terms cropper just validated, plus the workforce to use them.
+
+## reeve opens gen-9: the strongest trunk takes the tape ladder with a full crew (2026-08-21, jobs 20224217-20)
+
+The behavioural census of final cropper (3/3 wins over barnyard)
+attributed its 69.8% to a tighter dairy loop and doubled fertilizer
+collection (COLLECT 15 vs 7) -- PLANT stayed at 5; the crop economy is
+still locked behind hand labour, as diagnosed. So gen-9 stacks
+everything at once: **reeve** = cropper trunk (surgery 8 -> 10,
+verified) x the gen-8 basket (PLANT + FERTILIZE + the 10-hire
+day-labour burst + atomic physics + the very credits cropper just
+validated) x wrangler's tape ladder (barnyard -> w49 -> k06 at the
+reachable 0.45 gate), whisper teacher 0.05. Three arms now in flight:
+wrangler (tapes, 4-hand era, control), sower-v3 (basket vs barnyard,
+attribution), reeve (the confluence bet). Rosters queued at every
+tail. If reeve's hands plant under tape pressure, the w49 margin is
+the number to watch.
