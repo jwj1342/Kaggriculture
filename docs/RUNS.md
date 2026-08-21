@@ -2253,3 +2253,18 @@ better income distribution and matching walls. Since the ladder's losses
 are floor events, both are live candidates -- a 384-game resolution of
 sheaf's main matchup (queued) decides whether the mixture matches
 harrow's roster too.
+
+## SUBMITTED: harrow-samp, the second RL read (2026-08-21)
+
+User authorised this one plus one more overnight if a stronger arm lands.
+Uploaded 19.8 MB, 3 submissions left today. Active pair is now
+harrow-samp + sower-it228 (544.0 and climbing, 21 games 10W-11L), so the
+first read stays live as the control -- the displaced slot was the old
+2026-08-16 RL v2 baseline (507.9).
+
+Pre-flight, all archived above: 7/12 roster, mirror margin +0, stress
+28/28 with a 66.7ms worst turn, package unpacked and played ($73,703),
+income median 47.2k with 4% of games under 20k against the submitted
+predecessor's 20%. Honest expectation stated to the user before
+submitting: **900-1300, not 1500** -- a ladder rating is where you stop
+winning, and the cleo/lena/bea tier (1287-1364) is still 0/96 locally.
