@@ -1882,3 +1882,18 @@ workforce and credits aboard IS trainable signal. Slow (+~1k/10 iters)
 but structural; ~270 iterations of runway remain, and every 1k here is
 1k off the -98k w49 margin at the tail. tiller tracks sower-v3's
 recovery arc on schedule (0.361 at it 46).
+
+## Census at iter ~160: the economy is land-gated now (sower-v3)
+
+3/3 wins (+12.0k/+3.7k/+6.2k, margins growing), but the structure
+says the next wall is LAND: BUY_LAND stuck at 1/game (2 quadrants)
+while the 60-crop economy needs 3-4. The policy has adapted around
+the constraint rather than through it -- seed buying tightened from
+143 to 77 orders (it buys what it can plant), idle hand-turns ticked
+back up (no land -> no crop chores). Diagnosis: land is underpriced
+in the potential (LAND_VALUE = 300 flat, vs the ~5k of downstream
+crop credit a quadrant actually unlocks), and the BUY_LAND gradient
+arrives only through a two-step chain. First concrete gen-10 design
+input from tonight's data: **value land by what it unlocks** (raise
+the build-curve land term or make LAND_VALUE scale with seed/crop
+flow) -- recorded in rl/TODO.md #13.
