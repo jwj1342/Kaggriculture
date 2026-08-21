@@ -2288,3 +2288,33 @@ enhanced/main outright and its roster is **7/12**, matching harrow with
 a better floor (3% vs 4%) and a better median (51.9k vs 47.2k). Two
 7/12 products now, both tape-fed; the difference between them is the
 mixture (sheaf keeps barnyard mass + league snapshots).
+
+## bourse verdict: the truest reward term, and it made the agent worse (2026-08-21, job 20238055)
+
+The market-impact potential (`future-exec`, stock valued at execution
+revenue) is the most defensible term in the whole potential -- X2 of its
+gate proves the valuation equals the engine's payment to the dollar --
+and as a single variable off sower's trunk it produced the **largest
+self-play income of any arm (70.4k) and the biggest barnyard margin
+(+31,133)**, while the roster went the other way:
+
+    BEATEN 5/12 (was 5/12 for the control, but the shape is worse)
+    grazier   0.0% (control 28.1%, harrow 84.4%)
+    main     15.6% (control 55.2%)
+    lena  -90.5k, bea -89.3k (control -100.2k / -102.1k)
+    income median 41.2k, **20% of games under 20k** (control 10%)
+
+Read plainly: pricing market impact taught the policy to hoard less and
+sell into thin markets, which maximises money against a passive
+opponent and **collapses against anyone who competes for the same
+demand** -- exactly the matchups (grazier, main) where it fell. The
+honest lesson is the one this repo already has in ROADMAP §11: a term
+being TRUE is not the same as a term being USEFUL, and only the A/B
+tells you which. `future-exec` stays in the tree, off by default, and it
+does NOT go into the harvest package.
+
+Correction filed for harvest: it currently runs with `--potential
+future-exec`. The three fixes that measured well (land, wheat cap,
+capital credit + risk mechanic) stay; the market-impact term should be
+dropped from the combination. Rebuilding the arm with
+`--potential future-mkt` and keeping the rest.
