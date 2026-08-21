@@ -2512,3 +2512,36 @@ same five-tape pool, same potential. If the suppression half of the
 margin is trainable at all, this arm is where it shows, and the number
 to read is not our income but **the opponent's** in the tail roster
 (w49 101.9k under harrow, 118.5k under anvil, 159.2k alone).
+
+## harvest3 verdict: three fixes that each worked, broken by their combination (2026-08-22, job 20252023)
+
+The three "diet-agnostic" reward fixes together (land 1500 + wheat cap
+2.0 + risk-mechanic) on the wall-tape pool, and the roster says
+**bankruptcy**:
+
+    starter        38.5%   (it LOSES to the scripted starter 61% of the time)
+    random         86.5%   (100% for every other arm)
+    p05 income     0       (at least 5% of games end at zero money)
+    under 20k      21%     (anvil 2%, harrow 4%)
+    w49            -138,796  (w49 earns 148,180 -- unsuppressed)
+    BEATEN         5/12
+
+Losing to `starter` and a p05 of exactly zero is a collapse signature,
+not a weak strategy. The mechanism fits an interaction nobody tested:
+**wheat-feed-cap limits the feed stock while risk-mechanic removes the
+daily unfed penalty**, so the policy is free to under-feed, the herd
+escapes (the engine takes an animal at two unfed days), and on the seeds
+where that starts early the farm never recovers. land-value 1500 then
+compounds it by pulling cash into quadrants.
+
+Each of the three measured *well* on its own (plowman 6/12, granary
+6/12, byre 5/12 with the biggest wall margin on record). **Their
+combination is worse than any of them and worse than doing nothing.**
+That is the third distinct way this project has now seen reward terms
+fail -- untrue (land at 300), true-but-useless (execution pricing,
+base-priced capital credit), and individually-fine-but-jointly-toxic.
+Recorded rule: **potential terms compose non-linearly; a package needs
+its own A/B, never inheritance from its parts.**
+
+Product line unchanged: the tape-diet arms (harrow, anvil, threshing,
+forge, vise) carry the line; the reward fixes stay off by default.
