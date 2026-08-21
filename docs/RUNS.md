@@ -2640,3 +2640,29 @@ Two consequences, both testable:
 For the record, the top meta is diversified exactly where we are not:
 w49 is strawberry 30% / milk 22% / wool 21%, k06 is fertilizer 32% /
 wheat 18%. Ours is wheat 49% / milk 19% / fertilizer 16%.
+
+## Ladder calibration: the three reads are indistinguishable (2026-08-22)
+
+| submission | local roster | ladder trajectory |
+|---|---|---|
+| sower-it228 | 5/12, floor 20%, median 35.7k | 498 -> 544 -> 558 -> 568 -> **555** |
+| harrow-samp | 7/12, floor 4%, median 47.2k | 593 -> 633 -> 607 -> **616** |
+| anvil-samp | 7/12, floor 2%, median 53.0k | 627 -> **572** |
+
+harrow and anvil are locally two tiers apart from the first submission
+(7/12 against 5/12, a floor of 2-4% against 20%, +12-17k of median
+income) and **on the ladder all three sit in one 550-620 band**, with
+anvil currently BELOW harrow despite the better roster.
+
+Two honest readings, and the repo already warned about the first:
+CLAUDE.md's "a ranking against a field we wrote is not evidence about the
+ladder" applies exactly here. The second is sample size -- 12 to 25 games
+each, where a 50-game swing is ordinary noise (the project's own rule 7
+was written for this). Neither read is usable for choosing between harrow
+and anvil yet; what IS usable is that the first submission's 20% floor
+did show up as the lowest of the three trajectories.
+
+Consequence for the next choice: **stop treating small local roster gains
+as ladder gains.** The next submission should wait for either a
+qualitative change (a nonzero win rate against the 1364 tier) or a much
+larger local gap than 7/12-vs-7/12.
