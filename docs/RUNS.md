@@ -1611,3 +1611,24 @@ crops are ~50% of w49's revenue. gen-7 headline: the PLANT hand task
 plant the most-held seed; empty-tile claims serialised like FEED's
 wheat reservations). Also noted: w49 spams HIRE too (520 orders, cap
 12) -- dead-HIRE masking (TODO #11) loses nothing against the meta.
+
+## sower: the PLANT arm launches on a widened head (2026-08-21, jobs 20220387-90)
+
+The handplant branch (worktree Kaggriculture-gen7, commit ba99608)
+gives HAND_TASKS its ninth word: PLANT -- task-only like FEED, empty
+tiles as targets, crop = most-held viable seed (deadline-aware; the
+market head owns the mix via BUY_SEED), seed-budgeted serial claims.
+Full battery green including a new M6 (hands-only planting: 138 PLANTs
+across two crops, peak 22 in the ground, farmer never planted, device
+== CPU byte-exact) and both tapes still dollar-exact. The era cross:
+rl/widen_hands.py Net2Net surgery -- draught trunk (~420 iters), old
+head rows copied hand-major, PLANT column zero-weight at bias -4,
+self-check proves the policy identical on old columns. sower runs
+--init-from that surgery ckpt (fresh optimizer, kickstart re-anneals
+from 0.5 -- deliberately: barnyard's hand-PLANT intents now label the
+new column, they were AUTO-lossy before). Single variable vs
+draught-ext: the vocabulary. Opponents barnyard-only, 200 iters, 4
+links. The gen-7 question in one line: with the word available, the
+observation channels already present (seeds at g[38:43]), the teacher
+labelling it, and the build curve paying for crops (cropper's arm),
+does the crop economy finally scale past 1.7 plants a game?
