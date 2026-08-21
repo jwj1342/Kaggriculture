@@ -2404,3 +2404,35 @@ at 5-6/12 with none beating main. The diet finding is now overdetermined.
 Still 0% on cleo/lena/bea/w49. The margins have come from -103k (cropper,
 this morning) to -66k, i.e. 36% of the gap closed in one day, but no arm
 has taken a single game off that tier yet.
+
+## anvil verdict AND submitted: training on the walls themselves (2026-08-21 night, jobs 20244322 / 20258070)
+
+The arm that trains on the tier it has never beaten -- pool {cleo 155k,
+lena 151k, bea 150k, w03 186k, k06 100k}, pfsp, no barnyard, no teacher:
+
+| axis | anvil | harrow (previous best) |
+|---|---|---|
+| enhanced/main | **72.9% [63.3, 80.8]** +6,262 | 64.6% |
+| spar grazier | **72.9%** +1,878 | 84.4% |
+| ghosts | 100/100, **+45.1k / +46.1k** | 100/100, +41k |
+| ledger_lena | **-67,688** | -70,661 |
+| closer_cleo | **-68,087** | -70,040 |
+| broker_bea | **-69,281** | -70,036 |
+| w49 | -74,491 | **-68,661** |
+| income median | **52,998** | 47,218 |
+| **games under 20k** | **2%** | 4% |
+| BEATEN | 7/12 | 7/12 |
+
+Training against a tier moves that tier: the three anchors it trained on
+all improved, and w49 -- the one strong tape NOT in its pool -- got
+worse. That is the cleanest causal statement about opponent diet this
+project has produced, and it is a recipe, not a coincidence: to close a
+wall, put that wall in the pool.
+
+Also the best deliverable on both ladder-relevant axes: median income
+53.0k and a 2% catastrophic tail (the submitted first read had 20%).
+Acceptance: mirror margin +0 [-800, +766], stress 28/28 worst turn
+68.2ms, package unpacked and played $74,983. **Submitted** under the
+user's overnight authorisation (2 submissions left today); active pair is
+now anvil + harrow (632.9), with sower-it228 (568.3) retired to make
+room -- harrow stays as the control.
