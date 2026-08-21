@@ -1665,3 +1665,20 @@ vocabulary cannot express). The deliverable remains draught-samp@280.
 The three levers already in flight are exactly the diagnosis: sower
 (PLANT vocabulary), wrangler (tape market pressure), cropper (crop
 credit + fert-credit).
+
+## sower-v1 KILLED at iter 3: a fresh kickstart anneal is a wrecking ball on a mature trunk (2026-08-21)
+
+Three iterations: win 0.436 -> 0.000, money 42,948 -> 21,520, entropy
+6.84 -> 4.64, while barnyard fattened to 56.8k on our collapsed market
+presence. The mechanism: --init-from resets the step counter, so ks
+re-annealed from coef 0.5 -- a CE loss of ~1.2 against a policy-gradient
+term of ~0.03. Forty-to-one. When granger ran that ratio the policy was
+RANDOM and the teacher was pure gain; on a trained 42k dairy machine the
+same pull scrambles a coherent strategy into half-barnyard incoherence
+within minutes. Chain scancelled (20220387-90), 3 GPU-links saved.
+Rule for every future warm restart: **teacher coefficient scales down
+with trunk maturity** -- a mature trunk gets a whisper (<=0.05), not
+the cold-start dose. sower-v2 relaunches from the same surgery init
+with ks 0.05/40M, plus the gen-5 credit terms (aa38644 merged into
+handplant cleanly): the crop credit, not the teacher, should carry the
+planting gradient.
