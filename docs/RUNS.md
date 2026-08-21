@@ -1817,3 +1817,15 @@ isolates the tapes (same trunk, same basket); and it doubles the
 night's chance that one basket arm monetises by morning -- the
 checkpoint-tree parallelism the project was asked for. Six links
 queued (~260 iters), tail roster 20227805.
+
+## The plateau breaks in training: sower-v3 crosses 0.52 (2026-08-21, iter 74-77)
+
+Twenty iterations after recovering the trunk's level with the crop
+economy inside (it 55: 0.429), sower-v3 reads **win 0.513-0.542** --
+through the 0.42-0.48 batch-win ceiling that defined every 42k-era arm
+of this project, with the teacher at zero and the slope intact
+(+0.10 win in 20 iters). The assembled economy is monetising. Money
+still ~42k vs 43k (win rate is moving first -- more games tipped, not
+yet more income; the income lift is what w49 needs). ~320 iterations
+of runway remain; tiller (cropper trunk, same basket) just started
+L1 and reeve climbs toward its tape gate behind them.
