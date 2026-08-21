@@ -2218,3 +2218,21 @@ potential fixes and the opponent diet are orthogonal, and the diet is
 what moves the tier-2 walls. The four potential arms (land, wheat,
 market impact, capital credit) are therefore best judged as ingredients
 to fold into a TAPE arm, not as products on their own.
+
+## harvest: both halves multiplied (2026-08-21, gen15 b728e61)
+
+plowman's verdict separated the two things this project has been fixing:
+the **reward's truthfulness** (four measured falsehoods, each now a
+gated flag) and the **opponent diet** (tape pressure, which is what moves
+the tier-2 walls). Each was tested alone. **harvest** multiplies them:
+
+  diet   tape:{cleo 155k, lena 151k, bea 150k, w03 186k, k06 100k}, pfsp
+  reward land 1500 + future-exec + wheat-feed-cap 2.0
+         + capital-credit 1.0 + risk-mechanic
+  trunk  harrow's tail (the 7/12 product)
+
+gen15 merges all four flag sets into one tree (wheatgate into capcredit)
+and passes the whole battery -- WHEAT-PASS, CAPITAL-PASS, EXEC-PASS,
+test_trl, MULTI-PASS -- plus an all-flags-on training smoke. Five links,
+roster at the tail. This is the arm the last twelve hours of measurement
+were aiming at.
