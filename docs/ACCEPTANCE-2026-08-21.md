@@ -76,3 +76,13 @@ enhanced/main(0%)→ **估计 ~800–950 分段(排名 ~1700–2100/4356)**。
   PLANT+FERTILIZE+10 人日工+原子物理+信用);两者判词晨间可见,
   可能进一步改写此表。夜间两大机制发现(帮手=日工;原子 PLANT)
   见 docs/RUNS.md 同日条目。
+
+### cropper-samp 证据补全(深夜,job 20223956)
+
+- **镜像公平**:margin **+0** [−1,490, +1,443](48 seeds × 双席),
+  席位无偏;镜像中位收入 23,600(采样方差大,与 draught 同性质)。
+- **打包链干跑通过**:tar 解包 → get_last_callable 解析 → 完整 720 步
+  对局($57,130 收官)。产物:
+  `submissions/2026-08-21-cropper-samp/submission.tar.gz`(20.2 MB)。
+- 提交命令(**决断归用户**):
+  `kaggle competitions submit kaggriculture -f submissions/2026-08-21-cropper-samp/submission.tar.gz -m "..."`
