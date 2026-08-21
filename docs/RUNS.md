@@ -1795,3 +1795,14 @@ on the target tier (wrangler). What remains in flight is the only
 combination the matrix leaves standing: vocabulary + workforce +
 credits (sower-v3, recovered to trunk level at it 55 with the crop
 economy inside), plus the same under tape pressure (reeve).
+
+## The night's lineage merges to main, battery-sealed (2026-08-21, job 20227171)
+
+main <- handfert: the deposit-PLACE (k06 tape), hand PLANT, hand
+FERTILIZE, the 10-hire day-labour burst, the atomic-PLANT physics fix,
+the gen-5 credit terms, and the generalised head surgery
+(rl/widen_hands.py) -- 7 files, one clean merge, and the full battery
+green on main afterwards (MULTI M1-M7 / B3 / B3B / BARN / KICK / TRL /
+PIN / both tapes dollar-exact). Worktrees k6tape, gen5, gen7 are
+superseded; gen8 keeps running the two live chains on the identical
+code. Anything launched from main is now gen-8-native.
