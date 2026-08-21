@@ -1915,3 +1915,31 @@ tail -- if it clears 70% on barnyard this is the new deliverable.
 Two arms confirm the arc: tiller 0.761 / 49.5k at it 143, reeve 0.838
 / 52.5k at it 259 (its barnyard batches, while half its diet is the
 w49 tape).
+
+## BREAKTHROUGH: sower-it228 rewrites every number (2026-08-21, job 20233430)
+
+Twelve opponents, 96 games each, sampled export of the it-228
+checkpoint -- and it is a different agent from anything this project
+has produced:
+
+| opponent | sower-it228 | previous best | delta |
+|---|---|---|---|
+| barnyard | **92.7% [85.7, 96.4]** +11,336 | cropper 69.8% +1,875 | **+23pp** |
+| ghost-89825016 | **100%** +34,494 | cropper 96.9% | +3pp |
+| ghost-89830307 | **100%** +36,017 | cropper 91.7% | +8pp |
+| enhanced/main | **19.8%** -9,753 | carter 10.4% -10,106 | **+9pp** |
+| spar grazier | **6.2%** -11,096 | 0% -13,255 | **first nonzero vs spar** |
+| spar berrybaron | 0% -18,564 | 0% -28,058 | margin -9.5k |
+| **closer_cleo** | 0% **-82,184** | 0% -102,609 | **+20,425** |
+| broker_bea | 0% -89,552 | 0% -104,832 | +15,280 |
+| ledger_lena | 0% **-91,168** | 0% -105,129 | +13,961 |
+| w49 | 0% **-84,468** | 0% -95,976 | +11,508 |
+
+Roster 5/12 with both recordings at 100%, and -- the number that
+matters for the ladder -- **every tier-2/3 wall closed by 11-20k in a
+single generation**. The 1364-tier deficit went from 2.5x income to
+~2.0x. Nothing here is a tuning artefact: the same checkpoint's census
+shows 42 crops a game, 1,205 hand waters, strawberry as the lead crop,
+idle labour halved. The breakthrough protocol is firing: mirror +
+packaging (job 20233780). The chain has ~170 iterations left and the
+slope has not bent -- this is a mid-chain checkpoint, not a tail.
