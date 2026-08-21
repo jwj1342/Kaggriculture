@@ -2268,3 +2268,23 @@ income median 47.2k with 4% of games under 20k against the submitted
 predecessor's 20%. Honest expectation stated to the user before
 submitting: **900-1300, not 1500** -- a ladder rating is where you stop
 winning, and the cleo/lena/bea tier (1287-1364) is still 0/96 locally.
+
+## granary verdict + sheaf resolved (2026-08-21, jobs 20237174 / 20247922)
+
+**granary** (the wheat feed cap, single variable off sower's trunk):
+barnyard **100% +28,243** (largest wall margin on record, edging
+plowman's +27.6k), grazier 72.9% beaten, main 43.8% +413, ghosts
+100/100, walls cleo -78.6k / lena -80.5k / bea -79.8k / w49 -72.1k.
+**6/12**, income median 46.3k, 13% under 20k. The cap does what the
+measurement promised on the production side (+8k of self-play income,
+the wall margin up 12k over its control) but, like plowman's land term,
+a barnyard-only diet leaves the reactive matchups and the floor behind
+harrow's. Third confirmation that reward truth and opponent diet are
+orthogonal.
+
+**sheaf's main matchup resolved**: 384 games, **58.6% [53.6, 63.4],
+margin +2,851** -- interval entirely above 50, so sheaf beats
+enhanced/main outright and its roster is **7/12**, matching harrow with
+a better floor (3% vs 4%) and a better median (51.9k vs 47.2k). Two
+7/12 products now, both tape-fed; the difference between them is the
+mixture (sheaf keeps barnyard mass + league snapshots).
