@@ -2318,3 +2318,16 @@ future-exec`. The three fixes that measured well (land, wheat cap,
 capital credit + risk mechanic) stay; the market-impact term should be
 dropped from the combination. Rebuilding the arm with
 `--potential future-mkt` and keeping the rest.
+
+## Both reads climbing; harrow's floor shows up on the ladder (2026-08-21 evening)
+
+| submission | score | games | our income (ladder) |
+|---|---|---|---|
+| sower-it228 (55668491) | 498.4 -> 544.0 -> **558.2** | 21 (10W-11L) | median ~52k, four games at 14-36k |
+| **harrow-samp (55673426)** | **593.3** (entering) | 11 (5W-6L) | **median 61.8k, minimum 27.8k** |
+
+harrow's first eleven ladder games confirm what the local distribution
+predicted: **its worst game is 27.8k where it228's worst four were
+14-36k**, and its median income is 61.8k against it228's 52k. Every loss
+so far is to an opponent earning 33-84k -- it is losing to production,
+not collapsing. The 4%-floor property is the one that transfers.
