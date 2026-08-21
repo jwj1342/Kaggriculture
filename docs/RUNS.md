@@ -2331,3 +2331,32 @@ predicted: **its worst game is 27.8k where it228's worst four were
 14-36k**, and its median income is 61.8k against it228's 52k. Every loss
 so far is to an opponent earning 33-84k -- it is losing to production,
 not collapsing. The 4%-floor property is the one that transfers.
+
+## byre verdict: the biggest wall margin ever recorded, and still 5/12 (2026-08-21, job 20239591)
+
+The investment-truth pair (capital-credit 1.0 + risk-mechanic) off
+sower's trunk: **barnyard 100% with margin +40,459** -- half again the
+next best (granary +28.2k) and nearly four times the control's +15.4k --
+plus the highest self-play income any arm reached (72.0k). Walls
+cleo -73.4k / w49 -76.3k (control -85.4k / -78.1k), lena/bea -83.5k.
+And yet: grazier 40.6%, main 30.2%, **5/12**, median 44.6k, 13% under
+20k.
+
+Same shape as plowman, granary and bourse: **a reward fix that is
+mechanically right buys production and buys nothing against reactive
+opponents.** Four independent confirmations now. The wall margin ranking
+is almost the inverse of the roster ranking:
+
+| arm | barnyard margin | BEATEN | main |
+|---|---|---|---|
+| byre | **+40,459** | 5/12 | 30.2% |
+| bourse | +31,133 | 5/12 | 15.6% |
+| granary | +28,243 | 6/12 | 43.8% |
+| plowman | +27,642 | 6/12 | 34.4% |
+| harrow (tape diet) | +11,804 | **7/12** | **64.6%** |
+| sheaf (tape+mix) | +15,303 | **7/12** | **58.6%** |
+
+Beating barnyard harder is not progress; it is overfitting to barnyard.
+The tape arms win less crushingly against the wall and far more against
+everything that fights back. Every future product line goes through a
+tape diet -- that is now settled by six arms, not an argument.
