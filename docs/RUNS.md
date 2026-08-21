@@ -1723,3 +1723,27 @@ shared 42k plateau has a concrete mechanical reading (a 4-hand farm
 against the meta's 12), which the anatomies' labour numbers said all
 along. The plateau was never about training method; it was about the
 size of the workforce the action space could buy.
+
+## cropper takes the wall at 69.8%; carter trades it for generalisation (2026-08-21, jobs 20220646 / 20213998)
+
+Two verdicts, one morning. **cropper-samp (the credit arm: crop curve
++ fert-credit 0.3 over the draught recipe): barnyard 69.8%
+[60.0, 78.1], margin +1,875 -- the interval clears 50% whole, at 96
+games; ghosts 96.9% / 91.7%; random/starter 100/99.** The previous
+best was draught-samp's 56.8% at 384 games. Single-variable answer:
+the gen-5 credit terms work, +13pp on the wall -- and this under the
+4-hire day-labour cap, with the planting we know it still doesn't do.
+Roster stands 5/10 with fatter margins everywhere; main 0% (-38.7k),
+spar/lena/w49 walls unmoved. cropper-samp is the acceptance
+front-runner now.
+
+**carter-samp (league/pfsp): the yeoman pattern** -- the wall slips to
+8.3% (-33.6k) while ghosts hit the line's best-ever 93.8% / 94.8%, and
+**main 10.4% (-10.1k): the first nonzero win rate any arm has taken
+off enhanced/main**, at a third of draught's margin deficit. Mixed
+self-play pools trade the anchored wall for breadth; as a deliverable
+it loses, as evidence it says the pool composition steers exactly
+what the theory said it would.
+
+Both arms trained at 4 hands. The gen-8 basket (sower-v3) holds the
+credit terms cropper just validated, plus the workforce to use them.
