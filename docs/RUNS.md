@@ -1957,3 +1957,18 @@ makes this the cleanest single-variable test the project has run --
 same trunk, same recipe, same seeds stream, one constant. Four links
 (~170 iters), roster 20234105. Watch BUY_LAND per game (1 -> 3?) and
 whether crops move past 42.
+
+## The income curve keeps going: 56.9k, and reeve's tape batches hit 38.7k (2026-08-21)
+
+sower-v3 at iter 258-259: **win 0.945, money 56.9k vs the wall's
+45.6k** -- +11.3k batch margin, and the income is now 35% above the
+42k plateau that stood for the project's whole history. plowman forked
+from this trunk reads the same on its first iterations (0.945 / 57.7k
+at land 1500, too early to attribute).
+
+reeve, meanwhile, answers wrangler's question completely: its
+**tape-batch income is 38.7k, up from 27.0k when the stage opened**
+(iter 96 -> 301). wrangler, without the means, sat at 26-27k for its
+entire chain. +11.7k of income earned inside a market the w49 tape has
+crashed -- that is the mechanism that closes the -84k margin, measured
+directly.
