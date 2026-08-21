@@ -1632,3 +1632,20 @@ links. The gen-7 question in one line: with the word available, the
 observation channels already present (seeds at g[38:43]), the teacher
 labelling it, and the build curve paying for crops (cropper's arm),
 does the crop economy finally scale past 1.7 plants a game?
+
+## The k06 anatomy: industrial fertilizer, and the third-tier vocabulary gaps (2026-08-21)
+
+Census of the k06 tape (2 reference episodes vs barnyard, 167k/92k):
+revenue FERTILIZER 31.8% (qty 3,342 -- eight times w49's volume),
+WHEAT 17.8% (qty 2,132; 276 wheat seeds a pair -- feed AND commodity),
+WOOL 14.9%, MILK 14.4%, STRAWBERRY 13.5%, MELON 7.3%. The k-line's
+structural step over w49 is fertilizer-led volume production: hand
+COLLECT_FERTILIZER 600, hand FERTILIZE 118 (crop yield boost), hand
+PLACE 100 (the shed-deposit metering the tape gate needed). Our
+infrastructure already covers the big pieces (COLLECT task, SELL
+vocabulary, cropper's fert-credit potential term, and now PLANT);
+the remaining vocabulary gaps are third-tier: hand FERTILIZE and hand
+PLACE, an order of magnitude smaller than PLANT was (118/100 ops vs
+352). Herd size is the fertilizer feedstock -- k06 buys ~14
+animals/game, our build curve's plateau. Seed variance is huge even at
+the top (k06: 167k on seed 1000, 92k on seed 2000).
