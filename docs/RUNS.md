@@ -1568,3 +1568,25 @@ verified 3-anchor pool construction and trunk resume under the k6tape
 tree; the k06 tape itself is gate-proven dollar-exact (100,032).
 Watch: batch win vs w49 tape will read ~0 at first (an 84k open-loop
 economy) -- the signal to track is MONEY under tape pressure, not win.
+
+## Why the 35 tiles stay empty: the planting chain is reachable, not reinforced (2026-08-21)
+
+Action census of cropper-peek (sampled export, 3 reference-engine
+episodes vs barnyard, 2,157 farmer turns): BUY_SEED 12, PLANT 5,
+HARVEST 20 -- the chain works end to end (wheat is ongoing; 5 plants
+yielded 20 harvests), it is just never scaled: ~1.7 plants a game
+against the anatomy's ~60. Where the capacity actually goes: FEED 635
++ PICKUP 169 + 1,146 movement turns (53% of the farmer's life is
+walking the dairy loop), and the market head -- one action a turn --
+spends 18% of them on DEAD HIRE (397 orders with hands already at 12:
+silent no-ops, zero cost, zero gradient, so the habit never prunes,
+yet each one displaces a possible BUY_SEED). Verdict: not a mask bug,
+not an exploration hole -- a credit/scale problem. The marginal crop
+has tiny ROI while the farmer is saturated and AUTO hands won't orbit
+1-2 plants; there is no smooth gradient from 1.7 to 30 crops.
+Side-notes: seed 2000 produced this line's first 70k game (70,762 vs
+61,317); seed 3000 lost 42.6k vs 64k -- variance is huge. gen-7
+candidates that follow: mask HIRE at the hand cap (kill the dead 18%),
+and whatever cropper's 30/crop curve verdict says about the credit
+side. (Probe: $CLAUDE_JOB_DIR/tmp/probe_plant.py pattern, worth
+promoting to tools/ if reused.)

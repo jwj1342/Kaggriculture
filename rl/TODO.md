@@ -159,3 +159,13 @@ BC 若重启,用区间匹配(qty ∈ [0.25,0.75]×held → SELL_HALF)或定量�
   future 势给动物产品按 base 定价,鹅被 3× 低估——候选:动物未来产出按
   max(base, 当前价) 定价(注意别复活市值 mark-to-market 的旧病,只对
   above-base 方向开口)。
+
+## 11. gen-7 候选:给死动作上掩码(2026-08-21 动作普查)
+
+cropper-peek 3 局普查:市场头 18% 的动作是雇满 12 人后的死 HIRE(静默
+no-op 零梯度,习惯永不剪除,挤占 BUY_SEED 槽位)。候选修法:hands==cap
+时掩掉 HIRE(actions.py market_mask + features_t 孪生 + 门)。同理可查:
+土地满后的 BUY_LAND、无空格时的 BUY_SEED。种植不起量的判词见 RUNS.md
+同日条目——信用/规模问题:农夫被奶业循环占满(53% 回合在走路),边际
+一株的 ROI 撑不起从 1.7 到 30 株的梯度上坡;等 cropper(30/株曲线)与
+wrangler(磁带价格压力)判词后定 gen-7 配方。
