@@ -88,8 +88,13 @@ def hand_task_mask_t(ep, player, n_hands=None):
     shed_wheat = ep.shed[:, player, engine_t.WHEAT_I] > 0           # (B,)
     hand_wheat = ep.unit_inv[:, player, 1:n_hands + 1,
                              engine_t.WHEAT_I] > 0                  # (B, H)
-    mask[:, :, -1] = (alive & (shed_wheat.view(B, 1) | hand_wheat)
-                      & unfed_any.view(B, 1))
+    mask[:, :, 7] = (alive & (shed_wheat.view(B, 1) | hand_wheat)
+                     & unfed_any.view(B, 1))
+    # PLANT: a viable farm seed (deadline not passed) plus an empty tile
+    viable = ((ep.seeds_t[:, player] > 0)
+              & (day <= X._tabs(dev).plant_deadline).view(1, -1))
+    plant_ok = viable.any(-1) & (kind == engine_t.K_EMPTY).any(-1)  # (B,)
+    mask[:, :, 8] = alive & plant_ok.view(B, 1)
     return mask
 
 
@@ -97,9 +102,9 @@ def hand_task_mask_t(ep, player, n_hands=None):
 # barnyard_t's per-unit INTENTS (ops["task"/"task_arg"]) mapped into the
 # policy's head vocabulary, queried on the LEARNER's own states -- teacher
 # supervision without the distribution shift that killed the old line's BC.
-# Lossy by measurement, not accident: per-hand plant/place/build fall back
-# to AUTO (~7% of barnyard's hand work), the metered multi-order market
-# collapses to one priority-picked head index.
+# Lossy by measurement, not accident: per-hand place/build fall back to
+# AUTO (hand PLANT has its own task index since the w49 anatomy), the
+# metered multi-order market collapses to one priority-picked head index.
 
 _KS_LUTS = {}
 
@@ -117,6 +122,7 @@ def _ks_luts(device):
         hand[X.U_COLLECT] = A.HAND_TASKS.index("COLLECT_FERTILIZER")
         hand[X.U_DIG] = A.HAND_TASKS.index("DIG")
         hand[X.U_FEED] = A.HAND_TASKS.index("FEED")
+        hand[X.U_PLANT] = A.HAND_TASKS.index("PLANT")
         farmer = [0] * 18                   # default PASS
         for op, name in ((X.U_WATER, "WATER"), (X.U_HARVEST, "HARVEST"),
                          (X.U_FEED, "FEED"), (X.U_CARE, "CARE"),

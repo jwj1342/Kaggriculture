@@ -85,6 +85,12 @@ def _check_mixed(obs, s, rng):
                 hinv = invs[i + 1] if i + 1 < len(invs) else {}
                 want = ((i < n_hands) and bool(s["unfed"])
                         and (shed_wheat or hinv.get("WHEAT", 0) > 0))
+            elif name == "PLANT":
+                day = obs.get("day", 0)
+                want = ((i < n_hands) and bool(s["empty"])
+                        and any(priv["seeds"].get(c, 0) > 0
+                                and day <= A.PLANT_DEADLINE[c]
+                                for c in A.CROP_LIST))
             else:
                 want = (i < n_hands) and bool(fam_lists[name])
             assert mask[i][k] == want, (i, name, mask[i][k], want)
@@ -367,6 +373,88 @@ def gate_m5(args):
     return True
 
 
+def gate_m6(args):
+    """M6 (PLANT): the second consumable hand task closes the loop
+    behaviourally. A scripted scenario -- hire hands, keep two crops'
+    seeds stocked, the FARMER never plants -- must put crops in the
+    ground on hand labour alone, in at least two distinct crops (the
+    most-held-viable-seed switch), with claims bounded by the seed stock,
+    and the device and CPU paths must agree on the full state every
+    step."""
+    import verify
+
+    crop_a, crop_b = A.CROP_LIST[0], A.CROP_LIST[1]
+    m_noop = A.MARKET_ACTIONS.index("NOOP")
+    m_hire = A.MARKET_ACTIONS.index("HIRE")
+    m_seed_a = A.MARKET_ACTIONS.index(f"BUY_SEED_{crop_a}")
+    m_seed_b = A.MARKET_ACTIONS.index(f"BUY_SEED_{crop_b}")
+    f_pass = A.FARMER_ACTIONS.index("PASS")
+    plant_idx = A.HAND_TASKS.index("PLANT")
+
+    steps = 8 * 24
+    ep_m = engine_t.EpisodeT([88_000], episode_steps=steps, device=args.device)
+    ep_r = engine_t.EpisodeT([88_000], episode_steps=steps, device=args.device)
+
+    water_idx = A.HAND_TASKS.index("WATER")
+
+    def drive(obs):
+        priv = obs["private"]
+        mm = A.market_mask(obs)
+        n_hands = len(obs["farms"][obs["player"]].get("hands", []))
+        day = obs.get("day", 0)
+        sa = priv["seeds"].get(crop_a, 0)
+        sb = priv["seeds"].get(crop_b, 0)
+        if n_hands < 3 and mm[m_hire]:
+            mi = m_hire
+        elif day < 4 and sa < 2 and mm[m_seed_a]:
+            mi = m_seed_a
+        elif day >= 4 and sb < 2 and mm[m_seed_b]:
+            mi = m_seed_b
+        else:
+            mi = m_noop
+        # the farmer NEVER plants; two hands plant, the third waters
+        # (unwatered crops decay -- planting without water is a null test)
+        return f_pass, mi, [plant_idx, plant_idx, water_idx][:n_hands]
+
+    plants = {}
+    grown = n = 0
+    while not ep_m.done:
+        obs0 = lane_obs(ep_m, 0, 0)
+        obs1 = lane_obs(ep_m, 0, 1)
+        d0, d1 = drive(obs0), drive(obs1)
+        dicts = [[A.decode_multi(obs0, d0[0], d0[2], d0[1]),
+                  A.decode_multi(obs1, d1[0], d1[2], d1[1])]]
+        for d in dicts[0]:
+            for h in d["hands"]:
+                if h and h[0] == "PLANT":
+                    plants[h[1]] = plants.get(h[1], 0) + 1
+        farm = obs0["farms"][0]
+        grown = max(grown, sum(1 for row in farm["tiles"] for t in row
+                               if isinstance(t, dict) and "crop" in t))
+        h0 = d0[2] + [0] * (A.MAX_HANDS - len(d0[2]))
+        h1 = d1[2] + [0] * (A.MAX_HANDS - len(d1[2]))
+        ep_m.step_idx(torch.tensor([[d0[0], d1[0]]]),
+                      torch.tensor([[d0[1], d1[1]]]),
+                      h_idx=torch.tensor([[h0, h1]]))
+        ep_r.step_raw(dicts)
+        d = verify.first_diff(ep_m.snapshot(0), ep_r.snapshot(0))
+        if d:
+            print(f"M6 state diff after step {n}: {d}")
+            return False
+        n += 1
+    total = sum(plants.values())
+    if not (total >= 6 and len(plants) >= 2 and grown >= 3):
+        print(f"M6 behaviour check failed: hand PLANTs {total} (want >=6) "
+              f"in {len(plants)} crops (want >=2), peak {grown} in the "
+              f"ground (want >=3)")
+        return False
+    print(f"M6: hands-only planting puts a peak of {grown} crops in the "
+          f"ground over {n} steps ({total} hand PLANTs across "
+          f"{sorted(plants)}, farmer never planted, one hand watering); "
+          f"device == CPU state throughout")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=480)
@@ -381,6 +469,9 @@ def main():
         print("MULTI-FAIL")
         return 1
     if not gate_m5(args):
+        print("MULTI-FAIL")
+        return 1
+    if not gate_m6(args):
         print("MULTI-FAIL")
         return 1
 
