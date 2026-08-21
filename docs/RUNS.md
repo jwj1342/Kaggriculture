@@ -2360,3 +2360,26 @@ Beating barnyard harder is not progress; it is overfitting to barnyard.
 The tape arms win less crushingly against the wall and far more against
 everything that fights back. Every future product line goes through a
 tape diet -- that is now settled by six arms, not an argument.
+
+## harvest killed at iter 50, and why: base-priced credit lies under tape pressure (2026-08-21)
+
+harvest (three reward fixes on the wall-tape pool) degraded instead of
+adapting: tape-batch income 39.6k -> 37.3k -> 34.0k -> 32.6k across 50
+iterations, against anvil's 44.5k and threshing's 44.2k on the same diet
+with no reward changes. Killed; four GPU-links saved.
+
+The mechanism is bourse's lesson in a second costume. `capital-credit
+1.0` credits future production at **base** price. That is exactly right
+when you can sell at base -- which is the barnyard world, where byre
+posted a +40k wall margin -- and it is a lie when a 150k tape is dumping
+into the same market and realised prices sit far below base. The
+potential then over-values production, so the policy over-invests into a
+crashed market and its income falls. Both of the two reward terms that
+looked most principled (execution pricing, base-priced capital credit)
+fail specifically under the diet that matters.
+
+**harvest3** (jobs above) keeps only the diet-agnostic fixes: land 1500
+(a quadrant unlocks 25 tiles regardless of price), wheat-feed-cap 2.0
+(pure churn prevention, no price assumption) and risk-mechanic (removes
+a spurious placement penalty). capital-credit stays in the tree, off,
+with this verdict attached: **it belongs to barnyard-diet runs only.**
