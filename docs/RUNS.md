@@ -2453,3 +2453,46 @@ they are generated atom agents, not wrapper-plus-plan) and
 genuinely held-out opponents on the roster -- spar grazier, spar
 berrybaron and enhanced/main -- so forge cannot be scored against a field
 it trained on.
+
+## The margin has two terms, and we had only ever measured one (2026-08-22)
+
+Measuring the OPPONENT's income on the roster's own 48 seeds, for the
+first time:
+
+| opponent | alone (vs passive starter) | with harrow present | with anvil present |
+|---|---|---|---|
+| w49 | **159,195** | 101,952 (**-57,244**) | 118,491 (-40,704) |
+| closer_cleo | **148,150** | 106,204 (-41,946) | 112,769 (-35,382) |
+
+Three things follow, one of them a correction of my own claim.
+
+**(1) Correction: the "tape replay value" numbers were single-seed
+noise.** The tape gate replays on seed 424242, where w49's plan earns
+83,778 -- but on the roster's 48 seeds the same plan averages 159,195
+against a passive opponent. So "the library has a 186k tape" (w03)
+overstated w03's specialness: every one of these plans is a 150k+
+economy, and the ordering I read off single-seed replays was mostly
+seed luck. The pool choices survive (they were all strong), the ranking
+does not.
+
+**(2) The wrapper is worth ~nothing on the same board.** Wrapped w49 vs
+starter 83,684 against the pure tape's 83,778; wrapped cleo 154,165
+against 155,344 -- both slightly LOWER. So `GAP-2000.md`'s "the wrapper
+is worth about 26k" was a confounded comparison (tape-vs-starter against
+wrapped-vs-us) and is withdrawn. The terminal-liquidation port
+(gen16 tapewrap, TAPEWRAP-PASS) adds +109 for cleo and +0 for w49
+because **the recorded plans already liquidate**. It stays in the tree,
+default on, as a correctness nicety, not a lever.
+
+**(3) The real decomposition, and where the next gain is.** margin =
+our income - theirs, and both halves are ours to move:
+
+    harrow:  we 33.6k, w49 102.0k  ->  margin -68.4k   (suppresses -57.2k)
+    anvil:   we 43.0k, w49 118.5k  ->  margin -75.5k   (suppresses -40.7k)
+
+**anvil earns 9.4k more than harrow and lets w49 earn 16.5k more, so its
+margin is worse.** Every arm so far has been optimised for the first term
+only. Beating the 1364 tier needs both: earn ~100k AND hold them near
+100k. That reframes the "0% on four walls" number -- we are not one
+production doubling away, we are one production doubling plus a
+suppression policy away.
