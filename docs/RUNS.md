@@ -1682,3 +1682,23 @@ the cold-start dose. sower-v2 relaunches from the same surgery init
 with ks 0.05/40M, plus the gen-5 credit terms (aa38644 merged into
 handplant cleanly): the crop credit, not the teacher, should carry the
 planting gradient.
+
+## Hands are DAY LABOUR, and the 4-hand plateau was our own decode (2026-08-21)
+
+Chasing TODO #11's "dead HIRE" hypothesis with a per-day probe
+overturned it completely. The engine's _end_of_day does
+`farm["hands"] = []` -- **the whole crew is fired every night**. Hands
+are day labour: a full 12-hand day costs fib(0..11) = $376, re-bought
+every morning; the tops' HIRE spam (k06: 554 orders in 2 episodes) is
+simply the daily payroll, and so were our census's "397 dead HIREs".
+Nothing was dead. What WAS broken: our HIRE decode bursts at most 4
+hires per action, so a 12-hand morning needs the policy to press HIRE
+three times before the day's work -- a habit no arm learned in 400+
+iterations. The probe showed it plainly: day 21 hired to 8, day 22
+back to 4; a permanent 4-hand farm run by an action cap we wrote
+ourselves. Fix (handfert branch, with the FERTILIZE task): burst cap
+4 -> 10 (the order-slot bound), budget cap unchanged -- one HIRE
+action now buys the working day. Effect available to every future arm:
+3x labour for pennies, which is exactly the workforce the crop economy
+(PLANT/WATER/HARVEST/FERTILIZE at scale) was missing. TODO #11's
+masking premise is retired; measured before masked, and a good thing.
