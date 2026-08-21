@@ -1806,3 +1806,14 @@ green on main afterwards (MULTI M1-M7 / B3 / B3B / BARN / KICK / TRL /
 PIN / both tapes dollar-exact). Worktrees k6tape, gen5, gen7 are
 superseded; gen8 keeps running the two live chains on the identical
 code. Anything launched from main is now gen-8-native.
+
+## tiller: the trunk-comparison cell (2026-08-21, jobs 20227799-804)
+
+Third live arm, filling the matrix cell the night still lacked:
+**tiller** = the CROPPER trunk (reeve's own widened init, reused) x the
+gen-8 basket x plain barnyard, seed 1. Against sower-v3 it isolates
+the trunk (draught vs cropper at a fixed recipe); against reeve it
+isolates the tapes (same trunk, same basket); and it doubles the
+night's chance that one basket arm monetises by morning -- the
+checkpoint-tree parallelism the project was asked for. Six links
+queued (~260 iters), tail roster 20227805.
