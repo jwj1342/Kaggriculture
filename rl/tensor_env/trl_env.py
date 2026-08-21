@@ -88,8 +88,22 @@ def hand_task_mask_t(ep, player, n_hands=None):
     shed_wheat = ep.shed[:, player, engine_t.WHEAT_I] > 0           # (B,)
     hand_wheat = ep.unit_inv[:, player, 1:n_hands + 1,
                              engine_t.WHEAT_I] > 0                  # (B, H)
-    mask[:, :, -1] = (alive & (shed_wheat.view(B, 1) | hand_wheat)
-                      & unfed_any.view(B, 1))
+    mask[:, :, 7] = (alive & (shed_wheat.view(B, 1) | hand_wheat)
+                     & unfed_any.view(B, 1))
+    # PLANT: a viable farm seed (deadline not passed) plus an empty tile
+    viable = ((ep.seeds_t[:, player] > 0)
+              & (day <= X._tabs(dev).plant_deadline).view(1, -1))
+    plant_ok = viable.any(-1) & (kind == engine_t.K_EMPTY).any(-1)  # (B,)
+    mask[:, :, 8] = alive & plant_ok.view(B, 1)
+    # FERTILIZE: an unfert plant exists and fertilizer is reachable --
+    # that hand's own inventory or the shed (FEED's shape, item renamed)
+    unfert_any = (plant & ((ep.fert_until[:, player].reshape(B, NN)
+                            - day) < 0)).any(-1)                    # (B,)
+    shed_fert = ep.shed[:, player, engine_t.FERT_I] > 0             # (B,)
+    hand_fert = ep.unit_inv[:, player, 1:n_hands + 1,
+                            engine_t.FERT_I] > 0                    # (B, H)
+    mask[:, :, 9] = (alive & (shed_fert.view(B, 1) | hand_fert)
+                     & unfert_any.view(B, 1))
     return mask
 
 
@@ -97,9 +111,9 @@ def hand_task_mask_t(ep, player, n_hands=None):
 # barnyard_t's per-unit INTENTS (ops["task"/"task_arg"]) mapped into the
 # policy's head vocabulary, queried on the LEARNER's own states -- teacher
 # supervision without the distribution shift that killed the old line's BC.
-# Lossy by measurement, not accident: per-hand plant/place/build fall back
-# to AUTO (~7% of barnyard's hand work), the metered multi-order market
-# collapses to one priority-picked head index.
+# Lossy by measurement, not accident: per-hand place/build fall back to
+# AUTO (hand PLANT has its own task index since the w49 anatomy), the
+# metered multi-order market collapses to one priority-picked head index.
 
 _KS_LUTS = {}
 
@@ -117,6 +131,8 @@ def _ks_luts(device):
         hand[X.U_COLLECT] = A.HAND_TASKS.index("COLLECT_FERTILIZER")
         hand[X.U_DIG] = A.HAND_TASKS.index("DIG")
         hand[X.U_FEED] = A.HAND_TASKS.index("FEED")
+        hand[X.U_PLANT] = A.HAND_TASKS.index("PLANT")
+        hand[X.U_FERTILIZE] = A.HAND_TASKS.index("FERTILIZE")
         farmer = [0] * 18                   # default PASS
         for op, name in ((X.U_WATER, "WATER"), (X.U_HARVEST, "HARVEST"),
                          (X.U_FEED, "FEED"), (X.U_CARE, "CARE"),
@@ -330,6 +346,12 @@ _BUILD_ANIMALS = _interp30([(0, 0.0), (2, 4.0), (8, 9.0), (11, 13.0),
                             (14, 14.5)])
 _BUILD_LAND = _interp30([(0, 1.0), (7, 2.0), (10, 3.0)])
 _BUILD_HANDS = _interp30([(0, 0.0), (2, 4.0), (8, 11.0), (11, 12.0)])
+# crops-by-day from the same 40-seat anatomy (18.5 by day 2, ~60 at the
+# day-14 plateau): draught's dairy line left 35 tiles EMPTY all season --
+# the missing 38% of top income is crops, and nothing paid for planting
+# breadth until this term
+_BUILD_CROPS = _interp30([(0, 0.0), (2, 18.0), (8, 27.0), (11, 32.0),
+                          (14, 58.0), (26, 54.0), (29, 8.0)])
 
 
 def build_phi(ep, player, tabs):
@@ -338,10 +360,13 @@ def build_phi(ep, player, tabs):
     a = (ep.animal[:, player] >= 0).sum((-1, -2)).to(torch.float64)
     land = ep.quad_unlocked[:, player].to(torch.float64).sum(-1)
     hands = ep.hands_n[:, player].to(torch.float64)
-    ta, tl, th = tabs[0][day], tabs[1][day], tabs[2][day]
+    kind = ep.kind[:, player]
+    crops = (kind == engine_t.K_PLANT).to(torch.float64).sum((-1, -2))
+    ta, tl, th, tc = tabs[0][day], tabs[1][day], tabs[2][day], tabs[3][day]
     return (400.0 * torch.clamp(a, max=ta)
             + 1000.0 * torch.clamp(land - 1.0, min=0.0, max=tl - 1.0)
-            + 100.0 * torch.clamp(hands, max=th))
+            + 100.0 * torch.clamp(hands, max=th)
+            + 30.0 * torch.clamp(crops, max=tc))
 
 
 class KGTensorEnv(EnvBase):
@@ -353,7 +378,7 @@ class KGTensorEnv(EnvBase):
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
-                 shape_gamma=0.0, ks_every=1):
+                 shape_gamma=0.0, ks_every=1, fert_credit=0.0):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -414,13 +439,32 @@ class KGTensorEnv(EnvBase):
             f64 = torch.float64
             tabs = (torch.tensor(_BUILD_ANIMALS, dtype=f64, device=device),
                     torch.tensor(_BUILD_LAND, dtype=f64, device=device),
-                    torch.tensor(_BUILD_HANDS, dtype=f64, device=device))
+                    torch.tensor(_BUILD_HANDS, dtype=f64, device=device),
+                    torch.tensor(_BUILD_CROPS, dtype=f64, device=device))
             base_pot, bb = self._pot, self.build_bonus
 
             def _pot_build(ep, player):
                 return base_pot(ep, player) + bb * build_phi(ep, player, tabs)
 
             self._pot = _pot_build
+        # fertilizer-stream credit: every placed animal accrues a daily
+        # fertilizer (fert_avail) that neither potential priced, yet it is
+        # the top meta's #1 income line (29.7% of the 231k anatomy). Each
+        # animal carries w x base x remaining-days of stream value; being
+        # a potential, escapes surrender it.
+        self.fert_credit = float(fert_credit)
+        if self.fert_credit > 0.0:
+            base_pot_f, fc = self._pot, self.fert_credit
+            fbase = float(A.R.MARKET_PARAMS["FERTILIZER"]["base"])
+
+            def _pot_fert(ep, player):
+                day = min(29, ep._step // ep.turns_per_day)
+                n_a = (ep.animal[:, player] >= 0).sum((-1, -2)).to(
+                    torch.float64)
+                return (base_pot_f(ep, player)
+                        + fc * fbase * (30.0 - day) * n_a)
+
+            self._pot = _pot_fert
         self._prev_wo = None
         self.opp_fn = _make_opponent(opponent, self.device)
         # when set (e.g. trl_pool.OpponentPool.sample), called at every reset

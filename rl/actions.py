@@ -453,9 +453,14 @@ def _market_action(obs, name):
         # No floor under the budget cap: max(4, ...) let a bankrupt policy
         # keep hiring at fib pennies -- collapsed episodes showed 66-99 hires
         # on ~$0. Below $80 of cash the burst is simply empty.
+        # Burst bound 10 = the order-slot cap, not 4: hands are DAY LABOUR
+        # (the engine fires the whole crew at end of day), so a full crew
+        # must be re-bought every morning -- at 4/action the policy needed
+        # three HIREs a day and never learned the habit (the 4-hand
+        # plateau); at 10 one action buys the working day.
         burst, cost_cap = [], 0.05 * farm["money"]
         hires = farm.get("hires_today", 0)
-        while (len(burst) < 4 and n_hands + len(burst) < MAX_HANDS
+        while (len(burst) < 10 and n_hands + len(burst) < MAX_HANDS
                and _fib(hires + len(burst)) <= cost_cap):
             burst.append(["HIRE"])
         return burst or [["HIRE"]]
@@ -485,19 +490,29 @@ def decode(obs, f_idx, m_idx):
 # barnyard's hands do 83% of its feeding, 181 FEEDs/episode; without this
 # task the animal engine is capped by the farmer's 24 turns/day).
 HAND_TASKS = ["AUTO", "IDLE", "HARVEST", "WATER", "CARE",
-              "COLLECT_FERTILIZER", "DIG", "FEED"]
+              "COLLECT_FERTILIZER", "DIG", "FEED", "PLANT", "FERTILIZE"]
 N_HAND_TASK = len(HAND_TASKS)
 _TASK_IDX = {n: i for i, n in enumerate(HAND_TASKS)}
 
 
-def _hands_actions_multi(obs, s, tasks):
+def _hands_actions_multi(obs, s, tasks, farmer=None):
     """Per-hand chores under per-hand task choices.
 
     tasks: sequence of HAND_TASKS indices; entries beyond the live hand
     count are ignored, missing entries default to AUTO. The >=8-carry DROP
-    leg applies to every non-IDLE task except a wheat-carrying FEED hand
-    (feeding consumes; unloading first would livelock the wheat trip); a
-    task whose family has no target left PASSes.
+    leg applies to every non-IDLE task except a consumable-carrying FEED
+    or FERTILIZE hand (both consume; unloading first would livelock the
+    fetch trip); a task whose family has no target left PASSes.
+
+    FERTILIZE is FEED with the item renamed: unfert plants as targets,
+    FERTILIZER as the consumable, the same shed fetch leg and the same
+    per-turn stock reservations in hand order.
+
+    PLANT (like FEED, task-only: AUTO never plants) targets empty tiles;
+    the crop is the farm's most-held VIABLE seed (held, and its
+    PLANT_DEADLINE not passed; CROP_LIST order on ties -- the market head
+    owns the mix via BUY_SEED), and this turn's planters share the
+    pre-step seed stock in hand order, like FEED's wheat reservations.
     """
     farm, priv, _inv, _pos = _me(obs)
     hands = farm.get("hands", [])
@@ -508,13 +523,28 @@ def _hands_actions_multi(obs, s, tasks):
             + [("CARE", t) for t in s["uncared"]]
             + [("COLLECT_FERTILIZER", t) for t in s["fert_ready"]]
             + [("DIG", t) for t in s["weeds"]]
-            # FEED entries last (device key: family 5); AUTO skips them
-            + [("FEED", t) for t in s["unfed"]])
+            # FEED entries next (device key: family 5), then PLANT
+            # (family 6) and FERTILIZE (family 7); AUTO skips all three
+            + [("FEED", t) for t in s["unfed"]]
+            + [("PLANT", t) for t in s["empty"]]
+            + [("FERTILIZE", t) for t in s["unfert"]])
     taken = set()
     acts = []
     invs = priv["inventories"]
     # this turn's fetchers share the pre-step shed stock, in hand order
     wheat_left = priv["shed"].get("WHEAT", 0)
+    fert_left = priv["shed"].get("FERTILIZER", 0)
+    seeds = priv["seeds"]
+    day = obs.get("day", 0)
+    viable = [c for c in CROP_LIST
+              if seeds.get(c, 0) > 0 and day <= PLANT_DEADLINE[c]]
+    plant_crop = max(viable, key=lambda c: seeds.get(c, 0)) if viable else None
+    plant_left = seeds.get(plant_crop, 0) if plant_crop else 0
+    # hands defer to the farmer: the engine's atomic PLANT validation
+    # blocks a whole crop on over-demand, so a same-crop farmer PLANT
+    # this turn takes one seed off the hands' budget
+    if farmer and farmer[0] == "PLANT" and farmer[1] == plant_crop:
+        plant_left -= 1
     for i, hpos in enumerate(hands):
         task = HAND_TASKS[tasks[i]] if i < len(tasks) else "AUTO"
         if task == "IDLE":
@@ -541,15 +571,36 @@ def _hands_actions_multi(obs, s, tasks):
             else:
                 acts.append(_goto_do((hx, hy), _SHED, ["PASS"]) or ["PASS"])
             continue
-        if carry >= 8 and task != "FEED":
+        if task == "FERTILIZE" and hinv.get("FERTILIZER", 0) <= 0:
+            # fertilizer leg: the FEED wheat trip, item for item
+            if carry >= 8:
+                acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
+                continue
+            has_target = any(o == "FERTILIZE" and j not in taken
+                             for j, (o, _t) in enumerate(pool))
+            if fert_left <= 0 or not has_target:
+                acts.append(["PASS"])
+                continue
+            if (hx, hy) in set(_SHED):
+                qty = min(fert_left, 8 - carry)
+                fert_left -= qty
+                acts.append(["PICKUP", "FERTILIZER", qty])
+            else:
+                acts.append(_goto_do((hx, hy), _SHED, ["PASS"]) or ["PASS"])
+            continue
+        if carry >= 8 and task not in ("FEED", "FERTILIZE"):
             acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
+            continue
+        if task == "PLANT" and plant_left <= 0:
+            # no seed survives earlier planters' reservations (or none held)
+            acts.append(["PASS"])
             continue
         best, bestd = None, 10 ** 9
         for j, (_op, t) in enumerate(pool):
             if j in taken:
                 continue
             if task == "AUTO":
-                if _op == "FEED":
+                if _op in ("FEED", "PLANT", "FERTILIZE"):
                     continue
             elif _op != task:
                 continue
@@ -561,8 +612,10 @@ def _hands_actions_multi(obs, s, tasks):
             continue
         taken.add(best)
         op, t = pool[best]
+        if op == "PLANT":
+            plant_left -= 1  # reserved at claim time, walking hands included
         if (hx, hy) == t:
-            acts.append([op])
+            acts.append(["PLANT", plant_crop] if op == "PLANT" else [op])
         else:
             acts.append([_step_toward(hx, hy, t[0], t[1]) or "PASS"])
     return acts
@@ -573,7 +626,7 @@ def decode_multi(obs, f_idx, hand_idxs, m_idx):
     s = _scan(obs)
     farmer = _farmer_action(obs, FARMER_ACTIONS[f_idx], s) or ["PASS"]
     return {"farmer": farmer,
-            "hands": _hands_actions_multi(obs, s, hand_idxs),
+            "hands": _hands_actions_multi(obs, s, hand_idxs, farmer),
             "market": _market_action(obs, MARKET_ACTIONS[m_idx])}
 
 
@@ -581,8 +634,9 @@ def hand_task_mask(obs):
     """(MAX_HANDS, N_HAND_TASK) bool: AUTO/IDLE always legal for live hands;
     a chore family is legal while it has at least one target; FEED needs an
     unfed animal plus reachable wheat (that hand's inventory or the shed);
-    slots beyond the live hand count are IDLE-only (zero entropy, zero
-    gradient)."""
+    PLANT needs a viable farm seed (PLANT_DEADLINE not passed) plus an
+    empty tile; slots beyond the live hand count are IDLE-only (zero
+    entropy, zero gradient)."""
     farm, priv, _inv, _pos = _me(obs)
     n_hands = len(farm.get("hands", []))
     s = _scan(obs)
@@ -590,8 +644,14 @@ def hand_task_mask(obs):
                "CARE": bool(s["uncared"]),
                "COLLECT_FERTILIZER": bool(s["fert_ready"]),
                "DIG": bool(s["weeds"])}
-    chores = [fam_has[n] for n in HAND_TASKS[2:-1]]
+    chores = [fam_has[n] for n in HAND_TASKS[2:7]]
+    day = obs.get("day", 0)
+    plant_ok = (bool(s["empty"])
+                and any(priv["seeds"].get(c, 0) > 0
+                        and day <= PLANT_DEADLINE[c] for c in CROP_LIST))
     shed_wheat = priv["shed"].get("WHEAT", 0) > 0
+    shed_fert = priv["shed"].get("FERTILIZER", 0) > 0
+    unfert_any = bool(s["unfert"])
     invs = priv["inventories"]
     idle_only = [False, True] + [False] * (N_HAND_TASK - 2)
     rows = []
@@ -602,7 +662,10 @@ def hand_task_mask(obs):
         hinv = invs[i + 1] if i + 1 < len(invs) else {}
         feed_ok = bool(s["unfed"]) and (shed_wheat
                                         or hinv.get("WHEAT", 0) > 0)
-        rows.append([True, True] + list(chores) + [feed_ok])
+        fert_ok = unfert_any and (shed_fert
+                                  or hinv.get("FERTILIZER", 0) > 0)
+        rows.append([True, True] + list(chores) + [feed_ok, plant_ok,
+                                                   fert_ok])
     return rows
 
 

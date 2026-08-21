@@ -73,7 +73,14 @@ def _unit(act):
     if act[0] == "PLANT" and len(act) > 1:
         arg = _CROP_IDX.get(act[1], 0)
     elif act[0] == "PLACE" and len(act) > 1:
-        arg = _ANIMAL_IDX.get(act[1], 0)
+        if act[1] in _ANIMAL_IDX:
+            arg = _ANIMAL_IDX[act[1]]
+        else:
+            # the reference's SECOND place semantics: a shed deposit of
+            # n units of an item (top tapes: ['PLACE','MILK',6]); encoded
+            # as arg = 100 + item for the idx apply's deposit branch
+            arg = 100 + _ITEM_IDX.get(act[1], 0)
+            qty = int(act[2]) if len(act) > 2 else 1
     elif act[0] == "PICKUP" and len(act) > 1:
         arg = _ITEM_IDX.get(act[1], 0)
         qty = int(act[2]) if len(act) > 2 else 1

@@ -150,14 +150,14 @@ class _Tabs:
     __slots__ = ("fam", "op", "arg", "ws", "ws_item", "ws_want",
                  "shed100", "crop_first", "crop_maxday", "crop_maxy",
                  "crop_ongoing", "animal_struct", "animal_product",
-                 "fib", "fib_int", "land_prices", "ar9", "j4", "ar4",
+                 "fib", "fib_int", "land_prices", "ar9", "j4", "j10", "ar4",
                  "shed4x", "shed4y", "shed4t", "c_pass",
                  # B4b LUTs -- one gather replaces an elementwise chain; see
                  # _tabs for the exact definitions.
                  "dir_lut", "key100_lut", "key1024_lut", "shed_dir",
                  "crop_first_i8", "u_arange", "hand_op_lut", "mfk_lut",
                  "pack_clear", "mop_lut", "mitem_lut", "mrem_lut", "move_lut",
-                 "move_code")
+                 "move_code", "plant_deadline")
 
 
 _CACHE = {}
@@ -173,6 +173,7 @@ def _tabs(device):
         t.fam = mk(_LUT_FAM)
         t.op = mk(_LUT_OP)
         t.arg = mk(_LUT_ARG)
+        t.plant_deadline = mk([A.PLANT_DEADLINE[c] for c in A.CROP_LIST])
         t.ws = torch.tensor(_LUT_WS, dtype=torch.bool, device=device)
         t.ws_item = mk(_LUT_WS_ITEM)
         t.ws_want = mk(_LUT_WS_WANT)
@@ -200,6 +201,7 @@ def _tabs(device):
                                      device=device)
         t.ar9 = torch.arange(ET.N_MKT, dtype=i64, device=device)
         t.j4 = torch.arange(4, dtype=i64, device=device)
+        t.j10 = torch.arange(10, dtype=i64, device=device)
         t.c_pass = mk(U_PASS)
 
         # ---- B4b position LUTs, built on the host from the reference
@@ -416,7 +418,8 @@ def _idx_decode_farmer(self, f_idx, fam, t):
     return f_op, f_arg, f_qty
 
 
-def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None):
+def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
+                      plant_kit=None, fert_plane=None):
     """actions._hands_actions: per hand, greedy nearest untaken chore with
     strict-< first-pool-index tie-break == min (dist, family, y, x); the
     >=8-carry DROP leg. Serial over hand slots (the reference is), batch
@@ -441,6 +444,24 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None):
     after earlier fetchers this turn, 8 - carry), PASS when the stock or
     the unclaimed targets run out, DROP first when loaded (mirrors
     actions._hands_actions_multi line for line).
+
+    PLANT (task index 8) rides `plant_kit` the same way: (plane,
+    crop_flat, budget_flat) where plane is the empty-tile plane,
+    crop_flat (B*P,) the farm's most-held seed (argmax = CPU's first-max
+    over CROP_LIST), and budget_flat (B*P,) the pre-step seed stock --
+    no farmer adjustment on either side; same-turn contention resolves
+    in the slot-serial apply, the reference's unit order. Key constant
+    600 = family 6 (PLANT pool entries come after FEED on the CPU);
+    claims are serial in hand order and each claim -- walking hands
+    included -- reserves one seed from the budget, exactly the CPU's
+    plant_left. A loaded PLANT hand takes the generic DROP leg (the CPU
+    carry test precedes target selection for every task but the
+    consumable fetchers FEED and FERTILIZE).
+
+    FERTILIZE (task index 9) is FEED with the item renamed: `fert_plane`
+    is the unfert-plant plane, FERTILIZER the consumable, key constant
+    700 = family 7, the same shed PICKUP leg with per-turn stock
+    reservations in hand order.
 
     Distance is family-independent, so the untaken pool collapses to a
     per-tile "best remaining family" map mf (9 = none): min over
@@ -483,6 +504,8 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None):
     seek = act & ~loaded
     idle = None
     use_feed = False
+    use_plant = False
+    use_fert = False
     if h_tasks is not None:
         ht = h_tasks[:, :, :max_h]
         idle = ht == 1
@@ -506,6 +529,30 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None):
             hand_wheat = self.unit_inv[:, :, 1:max_h + 1, ET.WHEAT_I].to(i64)
             carry = self._idx_carry[:, :, 1:max_h + 1].to(i64)
             on_shed = t.shed100.index_select(0, hpos.view(-1)).view(B, P, max_h)
+        is_plant = ht == 8
+        use_plant = plant_kit is not None and bool(is_plant.any())
+        if use_plant:
+            seek = seek & ~is_plant
+            p_plane, crop_flat, plant_left = plant_kit
+            plant_left = plant_left.clone()
+            plantbuf = torch.zeros(BP * NN + 1, dtype=torch.bool, device=dev)
+            plantbuf[:BP * NN] = p_plane.reshape(-1)
+            plantv = plantbuf[:BP * NN].view(B, P, NN)       # live view: claims show
+            pen6 = torch.full_like(mfk, 600)
+            pen6BIG = torch.full_like(mfk, BIG)
+        is_fert = ht == 9
+        use_fert = fert_plane is not None and bool(is_fert.any())
+        if use_fert:
+            seek = seek & ~is_fert
+            fertbuf = torch.zeros(BP * NN + 1, dtype=torch.bool, device=dev)
+            fertbuf[:BP * NN] = fert_plane.reshape(-1)
+            fertv = fertbuf[:BP * NN].view(B, P, NN)         # live view: claims show
+            pen7 = torch.full_like(mfk, 700)
+            pen7BIG = torch.full_like(mfk, BIG)
+            fstock_left = self.shed[:, :, ET.FERT_I].to(i64).reshape(-1).clone()
+            hand_fert = self.unit_inv[:, :, 1:max_h + 1, ET.FERT_I].to(i64)
+            carryF = self._idx_carry[:, :, 1:max_h + 1].to(i64)
+            on_shedF = t.shed100.index_select(0, hpos.view(-1)).view(B, P, max_h)
     drop_op = t.shed_dir.index_select(0, hpos.view(-1)).view(B, P, max_h)
     bp100 = self._idx_ar_bp * NN                             # (B*P,)
     dummy = torch.full((BP,), BP * NN, dtype=i64, device=dev)
@@ -572,6 +619,65 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None):
             op_u = torch.where(fetch, fop, op_u)
             arg_u = torch.full_like(qty, ET.WHEAT_I).view(B, P)
             qty_u = qty.view(B, P)
+        if use_plant:
+            act_u = act[:, :, u].reshape(-1)
+            loaded_u = loaded[:, :, u].reshape(-1)
+            # a loaded PLANT hand already took the generic DROP leg above
+            isp = is_plant[:, :, u].reshape(-1) & act_u & ~loaded_u
+            torch.add(t.key1024_lut.index_select(0, hp).view(B, P, NN),
+                      torch.where(plantv, pen6, pen6BIG), out=keybuf)
+            kp = keybuf.amin(-1).view(-1)
+            hasp = isp & (kp < BIG) & (plant_left > 0)
+            tile_p = ((kp % 1024) - 600).clamp(min=0, max=NN - 1).to(i64)
+            plantbuf[torch.where(hasp, bp100 + tile_p, dummy)] = False
+            plant_left = plant_left - hasp.to(i64)  # claim reserves the seed
+            mvp = t.dir_lut.index_select(0, hp * NN + tile_p)
+            op_p = torch.where(hp == tile_p,
+                               torch.full_like(op_u, U_PLANT), mvp)
+            op_u = torch.where(hasp, op_p, op_u)
+            base_arg = (arg_u.reshape(-1) if arg_u is not None
+                        else torch.zeros_like(op_u))
+            arg_u = torch.where(hasp, crop_flat, base_arg).view(B, P)
+        if use_fert:
+            act_u = act[:, :, u].reshape(-1)
+            loaded_u = loaded[:, :, u].reshape(-1)
+            isft = is_fert[:, :, u].reshape(-1) & act_u
+            fh = hand_fert[:, :, u].reshape(-1)
+            # a fertilizer-carrying FERTILIZE hand never runs the DROP leg
+            # (it consumes; the CPU skips the carry test for it entirely)
+            op_u = torch.where(isft & (fh > 0) & loaded_u, t.c_pass, op_u)
+            # (a) fertilizer in hand: claim the nearest unclaimed unfert tile
+            torch.add(t.key1024_lut.index_select(0, hp).view(B, P, NN),
+                      torch.where(fertv, pen7, pen7BIG), out=keybuf)
+            kt = keybuf.amin(-1).view(-1)
+            hasft = isft & (fh > 0) & (kt < BIG)
+            tile_t = ((kt % 1024) - 700).clamp(min=0, max=NN - 1).to(i64)
+            fertbuf[torch.where(hasft, bp100 + tile_t, dummy)] = False
+            mvt = t.dir_lut.index_select(0, hp * NN + tile_t)
+            opt = torch.where(hp == tile_t,
+                              torch.full_like(op_u, U_FERTILIZE), mvt)
+            op_u = torch.where(hasft, opt, op_u)
+            # (b) fertilizer-less: shed PICKUP leg (loaded slots already
+            # DROP); PASS when no stock or no unclaimed target remains
+            fert_any = fertv.any(-1).reshape(-1)
+            fetchf = (isft & (fh <= 0) & ~loaded_u
+                      & (fstock_left > 0) & fert_any)
+            pickf = fetchf & on_shedF[:, :, u].reshape(-1)
+            qtyf = torch.minimum(
+                fstock_left, (8 - carryF[:, :, u].reshape(-1)).clamp(min=0))
+            qtyf = torch.where(pickf, qtyf, torch.zeros_like(qtyf))
+            fstock_left = fstock_left - qtyf                 # serial reservation
+            fopt = torch.where(on_shedF[:, :, u].reshape(-1),
+                               torch.full_like(op_u, U_PICKUP),
+                               drop_op[:, :, u].reshape(-1))
+            op_u = torch.where(fetchf, fopt, op_u)
+            base_arg = (arg_u.reshape(-1) if arg_u is not None
+                        else torch.zeros_like(op_u))
+            base_qty = (qty_u.reshape(-1) if qty_u is not None
+                        else torch.zeros_like(op_u))
+            arg_u = torch.where(pickf, torch.full_like(base_arg, ET.FERT_I),
+                                base_arg).view(B, P)
+            qty_u = torch.where(pickf, qtyf, base_qty).view(B, P)
         if idle is not None:  # IDLE beats the DROP leg (reference order)
             op_u = torch.where(idle[:, :, u].reshape(-1), t.c_pass, op_u)
         ops.append(op_u.view(B, P))
@@ -627,15 +733,17 @@ def _idx_decode_market(self, m_idx, herd, day, t):
 
     hire = m == 21
     if bool(hire.any()):
-        # burst: up to 4 while fib(hires_today + j) <= 0.05 * money and the
-        # crew stays under MAX_HANDS; empty burst falls back to one HIRE
-        # (slot 0 already carries OP_HIRE from the LUT).
-        hires = self.hires_today.to(i64).unsqueeze(-1) + t.j4
+        # burst: up to 10 (the order-slot cap; hands are day labour, one
+        # action buys the working day) while fib(hires_today + j) <=
+        # 0.05 * money and the crew stays under MAX_HANDS; empty burst
+        # falls back to one HIRE (slot 0 already carries OP_HIRE from the
+        # LUT).
+        hires = self.hires_today.to(i64).unsqueeze(-1) + t.j10
         fib = t.fib[hires.clamp(max=78)]
-        cond = (((self.hands_n.to(i64).unsqueeze(-1) + t.j4) < A.MAX_HANDS)
+        cond = (((self.hands_n.to(i64).unsqueeze(-1) + t.j10) < A.MAX_HANDS)
                 & (fib <= 0.05 * self.money.unsqueeze(-1)))
         k = cond.to(i64).cumprod(-1).sum(-1)                 # leading-true run
-        for j in range(1, 4):
+        for j in range(1, 10):
             slot = hire & (k > j)
             m_op[..., j] = torch.where(slot, OP_HIRE, m_op[..., j])
     return m_op, m_item, m_rem
@@ -802,8 +910,11 @@ def _idx_apply_slot(self, u, op, arg, qty, day, t, pres):
     s = sub(U_PLANT)
     if s:
         # Atomic PLANT validation degenerates to the plain seed check here:
-        # decode emits at most one PLANT per (lane, player) per turn (hands
-        # never plant), so per-crop demand is <= 1.
+        # one unit per (lane, player) per SLOT, and slots apply serially
+        # (farmer first, hands in order), so per-crop demand is <= 1 per
+        # sub call and hands planting re-read the post-farmer stock --
+        # same-turn contention resolves exactly like the reference's
+        # serial unit order.
         i, L = s
         ci = arg.view(-1).index_select(0, i)
         seeds_f = self.seeds_t.view(-1)
@@ -830,8 +941,37 @@ def _idx_apply_slot(self, u, op, arg, qty, day, t, pres):
     s = sub(U_PLACE)
     if s:
         i, L = s
-        ai = arg.view(-1).index_select(0, i)
-        on_struct = ((kind_f.index_select(0, L).to(i64) == t.animal_struct[ai])
+        ai_raw = arg.view(-1).index_select(0, i)
+        # arg >= 100 encodes the reference's SECOND place semantics: a
+        # shed-ADJACENT deposit of item (arg - 100), qty in the qty slot
+        # (top-meta tapes use it for produce logistics -- ['PLACE','MILK',6];
+        # the macro space and barnyard never emit it, so the idx path only
+        # carried the animal branch until tape_t needed this one)
+        dep = ai_raw >= 100
+        jd = dep.nonzero().squeeze(1)
+        if jd.numel():
+            i2 = i.index_select(0, jd)
+            it2 = (ai_raw.index_select(0, jd) - 100).clamp(min=0, max=NI - 1)
+            adj2 = t.shed100[(L.index_select(0, jd)) % NN]
+            n2 = qty.view(-1).index_select(0, i2).clamp(min=0)
+            HI = (1 + self.H) * NI
+            have2 = self.unit_inv.view(-1).index_select(
+                0, i2 * HI + u * NI + it2).to(i64)
+            room2 = (self.shed_capacity
+                     - shed2.index_select(0, i2).to(i64).sum(-1)).clamp(min=0)
+            n2 = torch.minimum(torch.minimum(n2, have2), room2)
+            k = ((n2 > 0) & adj2).nonzero().squeeze(1)
+            if k.numel():
+                i3 = i2.index_select(0, k)
+                it3 = it2.index_select(0, k)
+                n3 = n2.index_select(0, k)
+                self._idx_inv_take(i3, u, it3, n3)
+                sl = i3 * NI + it3
+                shed_f.index_copy_(0, sl, shed_f.index_select(0, sl)
+                                   + n3.to(shed_f.dtype))
+        ai = torch.where(dep, torch.zeros_like(ai_raw), ai_raw)
+        on_struct = (~dep
+                     & (kind_f.index_select(0, L).to(i64) == t.animal_struct[ai])
                      & (animal_f.index_select(0, L) < 0))
         j = on_struct.nonzero().squeeze(1)
         if j.numel():
@@ -849,7 +989,7 @@ def _idx_apply_slot(self, u, op, arg, qty, day, t, pres):
                 fert_avail_f.index_fill_(0, L3, False)
                 self.pending.view(-1).index_fill_(0, L3, 0)
         # off-structure PLACE falls through to the shed-drop path (n = 1)
-        off = ~on_struct & t.shed100[L % NN]
+        off = ~on_struct & ~dep & t.shed100[L % NN]
         j = off.nonzero().squeeze(1)
         if j.numel():
             i2, a2 = i.index_select(0, j), ai.index_select(0, j)
@@ -1086,9 +1226,30 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
         if pad > 0:  # short task vectors default to AUTO, like the reference
             h_tasks = torch.nn.functional.pad(h_tasks, (0, pad))
     f_op, f_arg, f_qty = self._idx_decode_farmer(f_idx, fam, t)
+    plant_kit = None
+    if h_tasks is not None and bool((h_tasks == 8).any()):
+        # hand PLANT: most-held VIABLE seed (seed held and the planting
+        # deadline not passed; argmax = CPU first-max over CROP_LIST),
+        # budget = the pre-step stock -- no farmer adjustment, exactly
+        # like the CPU decode; same-turn contention (farmer takes the
+        # last seed or the claimed tile) resolves in the slot-serial
+        # apply, the reference's unit order
+        seeds64 = self.seeds_t.to(i64)
+        viable = (seeds64 > 0) & (day <= t.plant_deadline).view(1, 1, -1)
+        key6 = torch.where(viable, seeds64, torch.full_like(seeds64, -1))
+        crop_sel = key6.argmax(-1)                           # (B, P)
+        stock = (seeds64.gather(-1, crop_sel.unsqueeze(-1)).squeeze(-1)
+                 * viable.gather(-1, crop_sel.unsqueeze(-1)).squeeze(-1))
+        # hands defer to the farmer: a same-crop farmer PLANT this turn
+        # takes one seed off the hands' budget, so our own decode never
+        # trips the engine's atomic over-demand block (the CPU decode
+        # subtracts identically)
+        stock = stock - ((f_op == U_PLANT) & (f_arg == crop_sel)).to(i64)
+        plant_kit = (fam[F_EMPTY], crop_sel.reshape(-1),
+                     stock.clamp(min=0).reshape(-1))
     hand_ops, hand_args, hand_qtys = self._idx_decode_hands(
         [harv_f, unwat_f, uncared_f, fready_f, weed_f], t, h_tasks,
-        unfed_f)
+        unfed_f, plant_kit, unfert_f)
     m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t)
 
     zero = torch.zeros((B, P), dtype=i64, device=dev)
@@ -1122,6 +1283,32 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
         m_op[:, seat] = ops["m_op"]
         m_item[:, seat] = ops["m_item"]
         m_rem[:, seat] = ops["m_rem"]
+
+    # ---- atomic PLANT validation (the reference's, verbatim): if the
+    # turn's total PLANT requests for a crop exceed the farm's seeds, ALL
+    # of that crop's PLANTs -- farmer's included -- become PASS. Runs
+    # after the override graft so tape/barnyard raw ops are covered too.
+    # (Slot-serial consumption alone is first-come-first-served, which is
+    # NOT the engine: gate_m2 caught the difference the day hands learned
+    # to plant.)
+    C = len(ET.CROP_NAMES)
+    stack_ops = torch.stack([f_op] + hand_ops, 0)                # (S, B, P)
+    stack_args = torch.stack([f_arg] + hand_args, 0)
+    is_pl = stack_ops == U_PLANT
+    if bool(is_pl.any()):
+        ci = stack_args.clamp(min=0, max=C - 1)
+        flat = self._idx_ar_bp.view(1, B, P) * C + ci
+        demand = torch.zeros(B * P * C, dtype=i64, device=dev)
+        demand.scatter_add_(0, flat.reshape(-1),
+                            is_pl.to(i64).reshape(-1))
+        blocked = demand > self.seeds_t.to(i64).view(-1)         # (B*P*C,)
+        blk = blocked.index_select(0, flat.reshape(-1)).view_as(is_pl) & is_pl
+        if bool(blk.any()):
+            stack_ops = torch.where(blk, torch.full_like(stack_ops, U_PASS),
+                                    stack_ops)
+            f_op = stack_ops[0]
+            for u in range(len(hand_ops)):
+                hand_ops[u] = stack_ops[u + 1]
 
     # ---- apply: unit phase (slot-serial, batch-parallel), then market ----
     # op presence per slot: one (S, 18) host read for the whole step.
