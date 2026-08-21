@@ -2047,3 +2047,16 @@ same again off every wall margin.
 
 Five arms now: tiller and plowman (land A/B) finishing, harrow (pure
 tape diet), sheaf, granary. Rosters queued at every tail.
+
+## bourse: the missing term gets an A/B (2026-08-21, jobs 20238051-54)
+
+The gap analysis traced hoarding, the wheat churn and the absent
+sell-timing skill to ONE missing term -- the potential believed a sale
+does not move the price. `--potential future-exec` (gen12, 37e8623,
+EXEC-PASS) values shed stock at what the engine would actually pay for
+it, unit by unit down its own price curve. The gate quantified the old
+distortion: **a 300-unit milk hoard was overvalued by 37,436** -- more
+than a whole game's income. bourse forks sower's tail with that single
+change; granary forks the same trunk with the wheat cap; sower's own
+tail roster is the shared control. Queued behind tiller's last link to
+hold GPU concurrency at five.
