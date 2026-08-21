@@ -1526,3 +1526,24 @@ a 384-game resolution run (job 20213873) decides whether the fifth
 roster slot -- and with it the acceptance line -- has fallen. Its argmax
 mode stays broken (0% wall, 34-41% ghosts): the sampled export IS this
 family's deliverable.
+
+## THE ACCEPTANCE LINE FALLS: draught-samp resolves barnyard at 56.8% (2026-08-21 morning)
+
+The 384-game resolution run (job 20213873): **218W-166L, 56.8%
+[51.8, 61.6], interval entirely above 50% -- the eval's own verdict:
+"A is better."** With random, starter and both ghosts already beaten,
+the roster stands at **5/10 including two recordings**: the acceptance
+bar this line has chased since its first eval is met. Mirror match is
+seat-fair (margin +0 +-1.7k). Full evidence pack with the honest ladder
+estimate (~800-950 if submitted; 2000 needs the lena/w49 mountain) and
+the user's decision options: docs/ACCEPTANCE-2026-08-21.md. Nothing has
+been submitted -- that call is the user's, per standing instruction.
+
+The arc, for the record: 26 hours ago this line had never taken a game
+off barnyard (-67,270) and its best roster was 2/10. The pieces, in
+landing order: FEED (the vocabulary), the 2x2 (solvency + sell timing),
+the anatomy (the target economy), kickstart (drift-immune imitation),
+the noise ladder (the first win gradient), the reward-hacking fixes
+(the hoarding subsidy), sampled inference (the mode-collapse unlock),
+the checkpoint tree (parallel search), and capacity (the 4x net that
+carried it over). Every one measured, gated, and archived.
