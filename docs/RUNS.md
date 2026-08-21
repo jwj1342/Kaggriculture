@@ -1702,3 +1702,24 @@ action now buys the working day. Effect available to every future arm:
 3x labour for pennies, which is exactly the workforce the crop economy
 (PLANT/WATER/HARVEST/FERTILIZE at scale) was missing. TODO #11's
 masking premise is retired; measured before masked, and a good thing.
+
+## sower pivots to the gen-8 basket; the whisper dose is validated (2026-08-21)
+
+sower-v2's 43 iterations answered the dose question: at ks 0.05
+(annealed to 0.01) the trunk did NOT collapse -- money held 41-42k
+throughout, entropy climbed 6.5 -> 8.0 as the policy paid an
+exploration tax (win 0.44 -> 0.27-0.32) hunting new behaviour. The
+maturity rule holds. But v2 was hunting under-equipped: the gen7 tree
+still had the 4-hire burst (a 4-hand farm cannot run a crop economy)
+and the first-come-first-served PLANT semantics gate_m2 later proved
+wrong. Killed at it 43 (checkpoint preserved in the gen7 worktree) and
+relaunched as sower-v3 (20223777-81, roster 20223782) from the gen8
+tree: PLANT + FERTILIZE + 10-hire day-labour burst + atomic-PLANT
+physics + crop/fert credits + whisper ks. One arm, the full basket.
+
+Interpretive note for every verdict now in flight: draught, carter,
+cropper and wrangler all trained under the 4-hire burst -- their
+shared 42k plateau has a concrete mechanical reading (a 4-hand farm
+against the meta's 12), which the anatomies' labour numbers said all
+along. The plateau was never about training method; it was about the
+size of the workforce the action space could buy.
