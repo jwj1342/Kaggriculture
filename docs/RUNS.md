@@ -2563,3 +2563,31 @@ the deficit is a production gap that scale can close; if it stays at 0%
 with the margin term unsaturated and the opponent in the pool, then
 something structural is missing and the next generation needs a different
 idea, not more of this one.
+
+## Suppression is not a separate lever: production is upstream of both terms (2026-08-22)
+
+vise (margin term unsaturated: weight 3.0, scale 150k) and chisel (one
+wall in the pool, same margin term) both ran ~40 iterations past their
+forks, and the opponent's income did not budge:
+
+    vise    it 81 -> 117:  ours 48.2k -> 47.6k,  opponent 118.9k -> 117.6k
+    chisel  it  0 ->  36:  ours 42.2k -> 46.0k,  opponent 107.5k -> 107.3k
+
+Our own income rose (chisel +3.8k in 36 iterations); **theirs is flat.**
+So the premise behind vise -- that the second half of the margin is an
+untapped lever -- is wrong in an instructive way. You suppress a market
+opponent by OUT-SELLING them: pushing inventory into the products they
+sell so their prices collapse. That requires production. The policy is
+already selling everything it grows, so re-weighting the reward toward
+margin cannot buy more suppression; it just buys more production, which
+is what the numbers show.
+
+**Corrected model: production is upstream of both terms.** The -62k
+deficit against cleo (we 44k, they 106k, and they earn 148k when left
+alone) decomposes as "we suppress 42k already, and we need ~60k more of
+our own output". There is no cheap second axis. What remains is the
+anatomy gap itself -- 3-4 quadrants, 13-14 animals, ~60 crops, 5-6
+revenue lines -- and the open question is how to grow production under
+tape pressure, given that the two reward terms which grew it on the
+barnyard diet (land value, base-priced capital credit) both fail when a
+150k opponent crashes the prices those terms assume.
