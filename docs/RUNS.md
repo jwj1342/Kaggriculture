@@ -2002,3 +2002,29 @@ scored 506.9 while losing 0/96 to barnyard; this agent beats barnyard
 numbers calibrates the whole local->ladder mapping for this line.
 Expect a floor, not a level, for the first hours (rule 7: a score does
 not count until the agent has lost a third of its games).
+
+## Two tails, two firsts, and a clean complementarity (2026-08-21)
+
+**sower-samp (tail, it 286; basket vs barnyard):** barnyard 96.9%
++15,437, **enhanced/main 55.2% [45.3, 64.8] margin +2,020 -- the first
+time this project's RL line has WON against main**, spar grazier 28.1%
+(was 6.2% at it 228), w49 -78.1k. Interval spans 50 so main is
+"unresolved" pending a 384-game run, but the point estimate and the
+margin are both positive for the first time.
+
+**reeve-samp (gen-9 confluence; 50/50 barnyard + w49 tape):** barnyard
+94.8%, **spar grazier 61.5% [51.5, 70.6] -- interval entirely above 50,
+the first outright win over an `agents/spar/` agent (the field
+reconstructed from real ladder replays)**, and the best wall margins
+this project has recorded: **cleo -79.1k, lena -78.7k, bea -79.7k,
+w49 -70.4k**. Its weakness is exactly where sower is strong: main 8.3%.
+
+The complementarity is the finding: **tape pressure buys wall margin,
+barnyard/self-play buys reactive skill against reactive opponents.**
+sower is +47pp on main; reeve is 6-22k better on every tier-2/3 wall.
+Neither dominates. The next arm has to be the mixture, and that is
+what sheaf (below) is.
+
+For the record, the arc of the wall margins in one night:
+draught -100.0k -> cropper -96.0k -> sower-it228 -84.5k ->
+sower-tail -78.1k -> reeve -70.4k (w49); and cleo -102.6k -> -79.1k.
