@@ -2142,3 +2142,26 @@ market pressure, and the policy learns the production side from them.
 
 Acceptance chain running (job 20240482: mirror, stress, packaging).
 This is the submission candidate whenever the next slot is authorised.
+
+## The library has a 186k tape (2026-08-21) -- threshing takes the pool
+
+harrow reached 7/12 on ONE tape that replays at 83.8k, and its pool
+never even advanced past stage 1. Checking what else the mined library
+holds, all four gate-verified byte-exact on the current engine:
+
+| tape | replayed money (this engine) | recorded (manifest) |
+|---|---|---|
+| **w03** | **186,101** | 155,241 |
+| k06 | 100,032 | -- |
+| w10 | 96,168 | -- |
+| w01 | 86,215 | 157,577 |
+| w49 | 83,778 | -- |
+| w02 | 80,265 | 155,280 |
+
+w03 replays at over twice w49 and above k06 -- the richest economy
+available to train against, and it was sitting unused all along.
+**threshing** (jobs 20243698-704, roster 20243705) is harrow's recipe on
+the pool {w49, w10, k06, w03} with pfsp weighting toward whichever the
+policy loses to hardest, forked from harrow's own trunk. If tape
+imitation is what carried harrow to 7/12, a library twice as rich is the
+cheapest multiplier on the board.
