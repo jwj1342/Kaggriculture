@@ -95,6 +95,15 @@ def hand_task_mask_t(ep, player, n_hands=None):
               & (day <= X._tabs(dev).plant_deadline).view(1, -1))
     plant_ok = viable.any(-1) & (kind == engine_t.K_EMPTY).any(-1)  # (B,)
     mask[:, :, 8] = alive & plant_ok.view(B, 1)
+    # FERTILIZE: an unfert plant exists and fertilizer is reachable --
+    # that hand's own inventory or the shed (FEED's shape, item renamed)
+    unfert_any = (plant & ((ep.fert_until[:, player].reshape(B, NN)
+                            - day) < 0)).any(-1)                    # (B,)
+    shed_fert = ep.shed[:, player, engine_t.FERT_I] > 0             # (B,)
+    hand_fert = ep.unit_inv[:, player, 1:n_hands + 1,
+                            engine_t.FERT_I] > 0                    # (B, H)
+    mask[:, :, 9] = (alive & (shed_fert.view(B, 1) | hand_fert)
+                     & unfert_any.view(B, 1))
     return mask
 
 
@@ -123,6 +132,7 @@ def _ks_luts(device):
         hand[X.U_DIG] = A.HAND_TASKS.index("DIG")
         hand[X.U_FEED] = A.HAND_TASKS.index("FEED")
         hand[X.U_PLANT] = A.HAND_TASKS.index("PLANT")
+        hand[X.U_FERTILIZE] = A.HAND_TASKS.index("FERTILIZE")
         farmer = [0] * 18                   # default PASS
         for op, name in ((X.U_WATER, "WATER"), (X.U_HARVEST, "HARVEST"),
                          (X.U_FEED, "FEED"), (X.U_CARE, "CARE"),

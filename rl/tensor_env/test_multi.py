@@ -60,11 +60,17 @@ def _check_mixed(obs, s, rng):
             assert op in _MOVES | {"PASS", "DROP", "HARVEST", "WATER", "CARE",
                                    "COLLECT_FERTILIZER", "DIG"}, (task, act)
         elif task == "FEED":
-            # the one consumable task: FEED on target, PICKUP on the wheat
-            # leg, moves between, DROP when loaded, PASS when starved
+            # consumable task: FEED on target, PICKUP on the wheat leg,
+            # moves between, DROP when loaded, PASS when starved
             assert op in _MOVES | {"PASS", "DROP", "FEED", "PICKUP"}, (task, act)
             if op == "PICKUP":
                 assert act[1] == "WHEAT" and act[2] >= 1, (task, act)
+        elif task == "FERTILIZE":
+            # FEED's twin with the item renamed
+            assert op in _MOVES | {"PASS", "DROP", "FERTILIZE",
+                                   "PICKUP"}, (task, act)
+            if op == "PICKUP":
+                assert act[1] == "FERTILIZER" and act[2] >= 1, (task, act)
         else:
             assert op in _MOVES | {"PASS", "DROP", task}, (task, act)
             if op == "PASS":
@@ -91,6 +97,11 @@ def _check_mixed(obs, s, rng):
                         and any(priv["seeds"].get(c, 0) > 0
                                 and day <= A.PLANT_DEADLINE[c]
                                 for c in A.CROP_LIST))
+            elif name == "FERTILIZE":
+                hinv = invs[i + 1] if i + 1 < len(invs) else {}
+                want = ((i < n_hands) and bool(s["unfert"])
+                        and (priv["shed"].get("FERTILIZER", 0) > 0
+                             or hinv.get("FERTILIZER", 0) > 0))
             else:
                 want = (i < n_hands) and bool(fam_lists[name])
             assert mask[i][k] == want, (i, name, mask[i][k], want)
@@ -455,6 +466,78 @@ def gate_m6(args):
     return True
 
 
+def gate_m7(args):
+    """M7 (FERTILIZE): FEED's twin closes the loop behaviourally. Hands
+    plant and water, the market buys fertilizer to the shed, one hand on
+    the FERTILIZE task must fetch it (PICKUP leg) and spread it on
+    growing crops -- the farmer never fertilizes -- with device and CPU
+    agreeing on the full state every step."""
+    import verify
+
+    crop_a = A.CROP_LIST[0]
+    m_noop = A.MARKET_ACTIONS.index("NOOP")
+    m_hire = A.MARKET_ACTIONS.index("HIRE")
+    m_seed_a = A.MARKET_ACTIONS.index(f"BUY_SEED_{crop_a}")
+    m_fert = A.MARKET_ACTIONS.index("BUY_FERT")
+    f_pass = A.FARMER_ACTIONS.index("PASS")
+    plant_idx = A.HAND_TASKS.index("PLANT")
+    water_idx = A.HAND_TASKS.index("WATER")
+    fert_idx = A.HAND_TASKS.index("FERTILIZE")
+
+    steps = 8 * 24
+    ep_m = engine_t.EpisodeT([99_000], episode_steps=steps, device=args.device)
+    ep_r = engine_t.EpisodeT([99_000], episode_steps=steps, device=args.device)
+
+    def drive(obs):
+        priv = obs["private"]
+        mm = A.market_mask(obs)
+        n_hands = len(obs["farms"][obs["player"]].get("hands", []))
+        if n_hands < 4 and mm[m_hire]:
+            mi = m_hire
+        elif priv["seeds"].get(crop_a, 0) < 2 and mm[m_seed_a]:
+            mi = m_seed_a
+        elif priv["shed"].get("FERTILIZER", 0) < 2 and mm[m_fert]:
+            mi = m_fert
+        else:
+            mi = m_noop
+        # the farmer NEVER fertilizes
+        return f_pass, mi, [plant_idx, plant_idx, water_idx,
+                            fert_idx][:n_hands]
+
+    ferts = picks = n = 0
+    while not ep_m.done:
+        obs0 = lane_obs(ep_m, 0, 0)
+        obs1 = lane_obs(ep_m, 0, 1)
+        d0, d1 = drive(obs0), drive(obs1)
+        dicts = [[A.decode_multi(obs0, d0[0], d0[2], d0[1]),
+                  A.decode_multi(obs1, d1[0], d1[2], d1[1])]]
+        for d in dicts[0]:
+            for h in d["hands"]:
+                if h and h[0] == "FERTILIZE":
+                    ferts += 1
+                elif h and h[0] == "PICKUP" and h[1] == "FERTILIZER":
+                    picks += 1
+        h0 = d0[2] + [0] * (A.MAX_HANDS - len(d0[2]))
+        h1 = d1[2] + [0] * (A.MAX_HANDS - len(d1[2]))
+        ep_m.step_idx(torch.tensor([[d0[0], d1[0]]]),
+                      torch.tensor([[d0[1], d1[1]]]),
+                      h_idx=torch.tensor([[h0, h1]]))
+        ep_r.step_raw(dicts)
+        d = verify.first_diff(ep_m.snapshot(0), ep_r.snapshot(0))
+        if d:
+            print(f"M7 state diff after step {n}: {d}")
+            return False
+        n += 1
+    if not (ferts >= 3 and picks >= 1):
+        print(f"M7 behaviour check failed: hand FERTILIZEs {ferts} "
+              f"(want >=3), fert PICKUPs {picks} (want >=1)")
+        return False
+    print(f"M7: hands-only fertilizing spreads {ferts} FERTILIZEs "
+          f"({picks} shed PICKUPs, farmer never fertilized) over {n} "
+          f"steps; device == CPU state throughout")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=480)
@@ -472,6 +555,9 @@ def main():
         print("MULTI-FAIL")
         return 1
     if not gate_m6(args):
+        print("MULTI-FAIL")
+        return 1
+    if not gate_m7(args):
         print("MULTI-FAIL")
         return 1
 
