@@ -2028,3 +2028,22 @@ what sheaf (below) is.
 For the record, the arc of the wall margins in one night:
 draught -100.0k -> cropper -96.0k -> sower-it228 -84.5k ->
 sower-tail -78.1k -> reeve -70.4k (w49); and cleo -102.6k -> -79.1k.
+
+## sheaf and granary: the mixture and the leak (2026-08-21, jobs 20237088-91 / 20237170-73)
+
+**sheaf** (gen-11 mixture): reeve's trunk -- the best wall margins on
+record -- on barnyard + w49 tape + k06 tape **with league snapshots and
+pfsp**, plus land 1500. The two tails proved tape pressure and reactive
+self-play buy different things and trade off; sheaf trains both at once,
+which is the only combination the verdict matrix leaves untried.
+
+**granary** (gen-11 A/B): sower's tail continued with exactly one
+change, `--wheat-feed-cap 2.0`. It runs from the gen11 worktree
+(c401c8c, WHEAT-PASS: cap-off twins byte-equal, cap-on twins agree and
+differ, the promise verified pointwise on a synthetic grid). The
+control is sower's own tail roster, already archived. Expected value if
+the measurement holds: +21k a game, a third of current income, and the
+same again off every wall margin.
+
+Five arms now: tiller and plowman (land A/B) finishing, harrow (pure
+tape diet), sheaf, granary. Rosters queued at every tail.
