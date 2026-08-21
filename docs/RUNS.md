@@ -1862,3 +1862,13 @@ prior era sat 2-3k under). The curve: 0.43 (it 55) -> 0.52 (77) ->
 0.574 (88) -> 0.64 (105), slope intact. The win-rate phase is rolling
 into the income phase on schedule; what the w49 wall needs is for
 this margin to keep widening as the crop economy scales.
+
+## Deploy check at iter ~110: the curve is real (sower-v3)
+
+Reference-engine validation of the mid-chain checkpoint: **67.7%
+[57.8, 76.2] vs barnyard, margin +1,659, median money 45,878** -- the
+training climb transfers to deployment intact, and at a third of its
+runway sower-v3 already matches cropper-samp's tail (69.8%). Median
+income 45.9k is the highest this line has recorded (the 42k era is
+over). The tail roster (12 opponents, tier-2 anchors included) will
+say what the income curve bought against the walls.
