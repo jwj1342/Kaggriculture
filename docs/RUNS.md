@@ -1763,3 +1763,18 @@ wrangler (tapes, 4-hand era, control), sower-v3 (basket vs barnyard,
 attribution), reeve (the confluence bet). Rosters queued at every
 tail. If reeve's hands plant under tape pressure, the w49 margin is
 the number to watch.
+
+## First light: the crop-and-fertilizer economy assembles (sower-v3, iter ~28/200)
+
+Mid-link census (3 episodes, sampled export): **hand PLANT 87** (~29
+plants a game, from 1.7), hand WATER 180, hand HARVEST 265, **hand
+COLLECT_FERTILIZER 567 + farmer 62 = 629 -- k06-tape volume (600)**,
+BUY_SEED 143 orders (96 wheat + 46 melon, from 24), HIRE 663 orders =
+the daily payroll flowing. The pieces the whole night was built for --
+day-labour burst, PLANT/FERTILIZE vocabulary, credit terms -- are
+running simultaneously for the first time. Not yet monetised: hand
+PASS is 41% of hand-turns (idle workforce), score 1W-2L in close games
+(52.6/62.4/20.7k vs 60.4/61.4/22.1k), entropy 12.2 still climbing --
+the exploration tax is buying structure. 170 iterations of the chain
+remain; the number to watch is win rate converting as crops and
+fertilizer reach the market.
