@@ -1508,3 +1508,21 @@ the wall slipped (sampled barnyard 11.5% at -36k) as PFSP moved mass to
 the beatable tape and snapshots. 4/10 either mode. Lesson for gen-4
 pool design: keep the wall's mass floored (f_var-style or a fixed
 anchor share) when adding tapes.
+
+## draught: capacity confirmed, and the wall shows a positive margin (2026-08-21 morning)
+
+The 4x-wide probe finished all 280 iterations (12M params, granger
+recipe, jobs 20197340-45). Rung-by-rung it dominated the 3M control at
+every noise level (0.918 vs 0.396 at 0.25; 0.736 vs 0.485 at 0.10) and
+at ZERO noise ended at batch win 0.449 vs the full-strength wall --
+granger's control finished 0.208. Capacity was a binding constraint;
+TODO #9's roadmap (bigger critic, LayerNorm prerequisites, CNN trunk as
+the structural line) is now evidence-backed, not speculative.
+
+The roster: **draught-sampled vs barnyard 55.2% [45.3, 64.8], margin
++504 -- the line's first positive margin against the wall.** Ghosts
+75.0% / 82.3%. The eval marks barnyard "unresolved" (CI spans 50%), so
+a 384-game resolution run (job 20213873) decides whether the fifth
+roster slot -- and with it the acceptance line -- has fallen. Its argmax
+mode stays broken (0% wall, 34-41% ghosts): the sampled export IS this
+family's deliverable.
