@@ -52,11 +52,35 @@ def widen(model, n_hands, old_tasks, new_tasks, hidden2):
     return out
 
 
+def widen_flat(model, head, old_n, new_n):
+    """Widen a flat head (farmer / market): new actions are APPENDED to
+    the action list by convention (SELL_HALF set the precedent), so the
+    old rows copy in place and the tail starts at zero weight, NEW_BIAS.
+    Residual actors carry a delta twin (d_<head>) -- widened the same."""
+    out = dict(model)
+    for key in (head, f"d_{head}"):
+        wk, bk = f"{key}.weight", f"{key}.bias"
+        if wk not in model:
+            continue
+        w, b = model[wk], model[bk]
+        assert w.shape[0] == old_n, (wk, w.shape, old_n)
+        nw = torch.zeros((new_n, w.shape[1]), dtype=w.dtype)
+        nb = torch.full((new_n,), NEW_BIAS, dtype=b.dtype)
+        nw[:old_n], nb[:old_n] = w, b
+        out[wk], out[bk] = nw, nb
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
     ap.add_argument("dst")
-    ap.add_argument("--old-tasks", type=int, default=8)
+    ap.add_argument("--old-tasks", type=int, default=0,
+                    help="source hand-task count (0 = head unchanged)")
+    ap.add_argument("--old-market", type=int, default=0,
+                    help="source market head width (0 = head unchanged)")
+    ap.add_argument("--old-farmer", type=int, default=0,
+                    help="source farmer head width (0 = head unchanged)")
     args = ap.parse_args()
 
     ck = torch.load(args.src, map_location="cpu", weights_only=False)
@@ -64,9 +88,22 @@ def main():
     hidden = ck.get("hidden") or [1024, 512]
     v_hidden = ck.get("v_hidden") or 512
     n_hands = A.MAX_HANDS
-    new_tasks = A.N_HAND_TASK
-    assert new_tasks > args.old_tasks, (new_tasks, args.old_tasks)
-    widened = widen(model, n_hands, args.old_tasks, new_tasks, hidden[1])
+    old_tasks = args.old_tasks or A.N_HAND_TASK
+    old_market = args.old_market or A.N_MARKET
+    old_farmer = args.old_farmer or A.N_FARMER
+    parts = []
+    widened = dict(model)
+    if old_tasks != A.N_HAND_TASK:
+        widened = widen(widened, n_hands, old_tasks, A.N_HAND_TASK,
+                        hidden[1])
+        parts.append(f"hands {old_tasks}->{A.N_HAND_TASK}")
+    if old_market != A.N_MARKET:
+        widened = widen_flat(widened, "market", old_market, A.N_MARKET)
+        parts.append(f"market {old_market}->{A.N_MARKET}")
+    if old_farmer != A.N_FARMER:
+        widened = widen_flat(widened, "farmer", old_farmer, A.N_FARMER)
+        parts.append(f"farmer {old_farmer}->{A.N_FARMER}")
+    assert parts, "nothing to widen: pass --old-tasks/--old-market/--old-farmer"
 
     # -- self-check on real reset observations ------------------------------
     import engine_t
@@ -79,27 +116,31 @@ def main():
         O.OBS_DIM, A.N_FARMER, A.N_MARKET, hidden1=hidden[0],
         hidden2=hidden[1], v_hidden=v_hidden, device="cpu", multi=True)
     load_merged_state_dict(neta, netc, widened)
-    # the OLD net needs the old vocabulary width to load the old weights
+    # the OLD net needs the old vocabulary widths to load the old weights
     _, _, olda, oldc = build_actor_critic(
-        O.OBS_DIM, A.N_FARMER, A.N_MARKET, hidden1=hidden[0],
+        O.OBS_DIM, old_farmer, old_market, hidden1=hidden[0],
         hidden2=hidden[1], v_hidden=v_hidden, device="cpu", multi=True,
-        n_hand_task=args.old_tasks)
+        n_hand_task=old_tasks)
     load_merged_state_dict(olda, oldc, model)
     with torch.no_grad():
         f_n, m_n, h_n = neta(obs)[:3]
         f_o, m_o, h_o = olda(obs)[:3]
-    hn = h_n.view(-1, n_hands, new_tasks)
-    ho = h_o.view(-1, n_hands, args.old_tasks)
-    assert torch.equal(f_n, f_o) and torch.equal(m_n, m_o), \
-        "farmer/market heads changed"
-    assert torch.equal(hn[..., :args.old_tasks], ho), "old task logits moved"
-    nc = hn[..., args.old_tasks:]
-    assert torch.allclose(nc, torch.full_like(nc, NEW_BIAS)), \
-        "new column is not the bare bias"
+    hn = h_n.view(-1, n_hands, A.N_HAND_TASK)
+    ho = h_o.view(-1, n_hands, old_tasks)
+    for name, new, old in (("farmer", f_n, f_o), ("market", m_n, m_o)):
+        assert torch.equal(new[..., :old.shape[-1]], old), \
+            f"{name} head prefix moved"
+        tail = new[..., old.shape[-1]:]
+        assert tail.numel() == 0 or torch.allclose(
+            tail, torch.full_like(tail, NEW_BIAS)), f"{name} tail not bias"
+    assert torch.equal(hn[..., :old_tasks], ho), "old task logits moved"
+    nc = hn[..., old_tasks:]
+    assert nc.numel() == 0 or torch.allclose(
+        nc, torch.full_like(nc, NEW_BIAS)), "new column is not the bare bias"
     torch.save({"model": widened, "hidden": hidden, "v_hidden": v_hidden},
                args.dst)
-    print(f"widened {args.old_tasks} -> {new_tasks} hand tasks; "
-          f"heads verified identical on {ep.B} reset lanes -> {args.dst}")
+    print(f"widened {', '.join(parts)}; heads verified identical on "
+          f"{ep.B} reset lanes -> {args.dst}")
     return 0
 
 
