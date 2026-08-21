@@ -86,3 +86,27 @@ enhanced/main(0%)→ **估计 ~800–950 分段(排名 ~1700–2100/4356)**。
   `submissions/2026-08-21-cropper-samp/submission.tar.gz`(20.2 MB)。
 - 提交命令(**决断归用户**):
   `kaggle competitions submit kaggriculture -f submissions/2026-08-21-cropper-samp/submission.tar.gz -m "..."`
+
+---
+
+## 头名再易主(2026-08-21 拂晓后):sower-it228
+
+| 产物 | barnyard | ghosts | main | spar | 二梯队墙 |
+|---|---|---|---|---|---|
+| draught-samp | 56.8%@384 | 75/82% | 0% | 0% | cleo −103k / w49 −100k |
+| cropper-samp | 69.8% +1,875 | 96.9/91.7% | 0% | 0% | cleo −102.6k / w49 −96.0k |
+| **sower-it228** | **92.7% +11,336** | **100/100%** | **19.8%** | **6.2%(首非零)** | **cleo −82.2k / w49 −84.5k** |
+
+- 产物 = gen-8 全篮(PLANT+FERTILIZE 词表 × 10 人日工连发 × 作物/化肥
+  信用 × 原子 PLANT 物理)在 draught 树干上的 it-228 **链中**检查点,
+  采样导出。行为:42 株/局、帮手浇水 1,205 次、草莓为主作物(顶端第一
+  收入线,自主发现)、闲置工时腰斩。
+- **镜像 margin +0** [−1,515, +1,521](48 seeds × 双席),席位公平。
+- **打包链验证通过**:解包 → get_last_callable → 整局 $60,365。
+  tar:`submissions/2026-08-21-sower-it228/submission.tar.gz`(20.3 MB)。
+- 提交命令(决断归用户):
+  `kaggle competitions submit kaggriculture -f submissions/2026-08-21-sower-it228/submission.tar.gz -m "..."`
+- 天梯预期 **~1000–1300**(barnyard 档 92.7% + main 19.8% + 二梯队收窄
+  20k;真实天梯中位对手 68–71k 收入,我们已到 52k 批次均值)。
+- 注意:链还有 ~170 迭代,链尾检查点大概率更强(花名册 20226407 会自动
+  出);若你晨间看到更高的数,用更新的那个。
