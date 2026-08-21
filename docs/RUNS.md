@@ -1547,3 +1547,24 @@ the noise ladder (the first win gradient), the reward-hacking fixes
 (the hoarding subsidy), sampled inference (the mode-collapse unlock),
 the checkpoint tree (parallel search), and capacity (the 4x net that
 carried it over). Every one measured, gated, and archived.
+
+## wrangler: the tape ladder opens (2026-08-21 pre-dawn, jobs 20218380-83)
+
+carter's audit found its curriculum gate unreachable: `advance-at 0.85`
+vs barnyard when this line's best-ever EMA is ~0.50 means carter spends
+all 480 iterations on stage 0 -- in practice it is a league/pfsp A/B of
+draught (50% barnyard / 50% self-snapshots), and the w49 tape it was
+named for never enters the mix. Kept running as that A/B; the real
+mixed-pool arm is **wrangler**, launched from the k6tape worktree
+(91e36bb, deposit-PLACE fix): draught trunk (~350 iters) + granger
+recipe, opponents `barnyard -> tape:w49 (84k) -> tape:k06 (100k)` with
+**advance-at 0.45** -- a gate the trunk's carried-over EMA (~0.47)
+steps through immediately, putting the mix at 50% w49 tape / 50%
+barnyard from the first links (the yeoman floor arrives free as the
+pool's "earlier" mass). This is the user's requested mixture -- higher
+tiers blended in by ratio -- rather than a wall we never summit.
+Single variable vs draught-ext: the opponent mixture. Smoke on CPU
+verified 3-anchor pool construction and trunk resume under the k6tape
+tree; the k06 tape itself is gate-proven dollar-exact (100,032).
+Watch: batch win vs w49 tape will read ~0 at first (an 84k open-loop
+economy) -- the signal to track is MONEY under tape pressure, not win.
