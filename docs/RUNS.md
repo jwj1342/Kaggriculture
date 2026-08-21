@@ -2383,3 +2383,24 @@ fail specifically under the diet that matters.
 (pure churn prevention, no price assumption) and risk-mechanic (removes
 a spurious placement penalty). capital-credit stays in the tree, off,
 with this verdict attached: **it belongs to barnyard-diet runs only.**
+
+## threshing verdict: the richer library buys the best main and w49 numbers (2026-08-21, job 20245143)
+
+harrow's recipe on the pool {w49 84k, w10 96k, k06 100k, w03 186k} with
+pfsp, 300 iterations: **main 68.8% [58.9, 77.1] +5,991** (harrow 64.6%,
+the best reactive-matchup number this line has posted), **w49 -66,334**
+(harrow -68.7k, the smallest tier-3 deficit on record), cleo -68.9k,
+lena -74.1k, bea -77.7k, grazier 63.5%, ghosts 100/100, barnyard 89.6%
++9,003. **7/12**, income median 48.6k, 5% under 20k.
+
+Against harrow (single w49 tape): main +4.2pp, w49 margin +2.3k, cleo
+-1.1k, barnyard -10.4pp, floor +1pp. So the richer library helps exactly
+where it should -- the matchups that require production and adaptation --
+and costs a little of the barnyard saturation nobody needs. Three tape
+arms now sit at 7/12 (harrow, sheaf, threshing), each with a different
+mixture, and all three beat main; the four barnyard-diet reward arms sit
+at 5-6/12 with none beating main. The diet finding is now overdetermined.
+
+Still 0% on cleo/lena/bea/w49. The margins have come from -103k (cropper,
+this morning) to -66k, i.e. 36% of the gap closed in one day, but no arm
+has taken a single game off that tier yet.
