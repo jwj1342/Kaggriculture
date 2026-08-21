@@ -2545,3 +2545,21 @@ its own A/B, never inheritance from its parts.**
 
 Product line unchanged: the tape-diet arms (harrow, anvil, threshing,
 forge, vise) carry the line; the reward fixes stay off by default.
+
+## chisel: the single-point attack on the 1364 tier (2026-08-22, jobs 20264844-47)
+
+Four walls at 0/96 is the most stubborn number on the board, and anvil
+proved the rule that moves walls (put the wall in the pool). chisel puts
+exactly ONE wall in the pool -- closer_cleo, the 1364-tier anchor -- with
+vise's unsaturated margin reward, and asks a diagnostic question instead
+of a product one: **can this line take a single game off that tier, and
+what does the board look like when it does?**
+
+The cost is known and accepted: one open-loop tape is exploitable, so the
+tail roster (12 opponents, three of which -- spar x2 and enhanced/main --
+are never trained against) prices the overfit. What we want out of it is
+not a deliverable but an answer: if chisel beats cleo even 5% of the time,
+the deficit is a production gap that scale can close; if it stays at 0%
+with the margin term unsaturated and the opponent in the pool, then
+something structural is missing and the next generation needs a different
+idea, not more of this one.
