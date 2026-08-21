@@ -91,7 +91,7 @@ def _luts(device):
     return _LUTS[key]
 
 
-def future_worth_t(ep, player, shed_at_market=False):
+def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE):
     """(B,) float64 future-credit potential for one seat.
 
     shed_at_market: value shed PRODUCTS at min(current market price, base)
@@ -144,7 +144,12 @@ def future_worth_t(ep, player, shed_at_market=False):
 
     phi = phi - WEED_COST * (kind == ET.K_WEED).to(f64).sum((-1, -2))
     phi = phi + HAND_VALUE * ep.hands_n[:, player].to(f64)
-    phi = phi + LAND_VALUE * ep.quad_unlocked[:, player].to(f64).sum(-1)
+    # land_value: Kilo's flat $300/quadrant. The iter-160 census (RUNS.md
+    # 2026-08-21) showed the economy land-gated with BUY_LAND's true value
+    # (~5k of downstream crop credit per quadrant) invisible at 300 --
+    # --land-value raises it for the A/B; the default keeps Kilo's path
+    # byte-exact for the gate.
+    phi = phi + land_value * ep.quad_unlocked[:, player].to(f64).sum(-1)
     if shed_at_market:
         eff9 = torch.minimum(ep.mkt_price.to(f64), L["base9"])   # (B, 9)
         shed9 = ep.shed[:, player, :len(_BASE9)].to(f64)

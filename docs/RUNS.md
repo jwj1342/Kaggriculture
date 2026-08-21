@@ -1943,3 +1943,17 @@ shows 42 crops a game, 1,205 hand waters, strawberry as the lead crop,
 idle labour halved. The breakthrough protocol is firing: mirror +
 packaging (job 20233780). The chain has ~170 iterations left and the
 slope has not bent -- this is a mid-chain checkpoint, not a tail.
+
+## plowman: the land A/B, forked off the breakthrough (2026-08-21, jobs 20234101-04)
+
+The iter-160 census named the next wall (land: BUY_LAND stuck at 1/game
+while a 60-crop economy needs 3-4 quadrants) and diagnosed why -- the
+potential prices a quadrant at Kilo's flat $300 while it unlocks ~5k of
+downstream crop credit. `--land-value` (main tree, default off,
+test_trl green) is the lever; **plowman** is the A/B: the sower trunk
+forked at iter 251 with ONE change, land 300 -> 1500. The control is
+the sower chain itself, still running the same recipe at 300, which
+makes this the cleanest single-variable test the project has run --
+same trunk, same recipe, same seeds stream, one constant. Four links
+(~170 iters), roster 20234105. Watch BUY_LAND per game (1 -> 3?) and
+whether crops move past 42.

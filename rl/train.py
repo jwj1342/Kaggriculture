@@ -121,6 +121,11 @@ def build_parser():
                     help="per-animal fertilizer-stream credit folded into "
                          "the potential: w x base x remaining days (the top "
                          "meta's #1 income line was unpriced; 0 = off)")
+    ap.add_argument("--land-value", type=float, default=0.0,
+                    help="override the potential's per-quadrant land value "
+                         "(Kilo's flat 300; the iter-160 census found the "
+                         "economy land-gated because a quadrant unlocks "
+                         "~5k of downstream crop credit. 0 = keep 300)")
     ap.add_argument("--ks-every", type=int, default=1,
                     help="teacher labels every Nth step (profiler: the "
                          "teacher is 41%% of step time; 4 buys ~1.7x "
@@ -304,7 +309,7 @@ def train(args, log_fn=None):
         kickstart=args.kickstart, build_bonus=args.build_bonus,
         bank=args.bank, bank_frac=args.bank_frac,
         shape_gamma=args.shape_gamma, ks_every=args.ks_every,
-        fert_credit=args.fert_credit)
+        fert_credit=args.fert_credit, land_value=args.land_value)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],

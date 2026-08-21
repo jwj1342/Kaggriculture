@@ -378,7 +378,8 @@ class KGTensorEnv(EnvBase):
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
-                 shape_gamma=0.0, ks_every=1, fert_credit=0.0):
+                 shape_gamma=0.0, ks_every=1, fert_credit=0.0,
+                 land_value=0.0):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -412,7 +413,9 @@ class KGTensorEnv(EnvBase):
             self._pot = potential_t.net_worth_t
         elif potential == "future":
             import potential_future
-            self._pot = potential_future.future_worth_t
+            lv = float(land_value) or potential_future.LAND_VALUE
+            self._pot = lambda ep, p: potential_future.future_worth_t(
+                ep, p, land_value=lv)
         elif potential == "future-mkt":
             # future-credit with the HOARDING SUBSIDY removed: shed stock
             # valued at min(current market price, base) x 0.9, so selling
@@ -420,8 +423,9 @@ class KGTensorEnv(EnvBase):
             # documented hack: five runs held 62-100 melons because the
             # potential priced dead inventory at 48x its market value)
             import potential_future
+            lv = float(land_value) or potential_future.LAND_VALUE
             self._pot = lambda ep, p: potential_future.future_worth_t(
-                ep, p, shed_at_market=True)
+                ep, p, shed_at_market=True, land_value=lv)
         else:
             raise ValueError(f"unknown potential {potential!r}")
         # Ng-correct shaping: r = gamma*phi(s') - phi(s). The plain
