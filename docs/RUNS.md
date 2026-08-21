@@ -1986,3 +1986,19 @@ tapes are exploitable, so the roster (barnyard / main / spar / ghosts
 will read ~0 by construction. The number that matters: tape-batch
 income, and whether the tail roster's w49/lena/cleo margins fall
 below -80k.
+
+## SUBMITTED: sower-it228, the RL line's first ladder read (2026-08-21)
+
+User authorised one submission. Pre-flight per SUBMISSION_POLICY: stress
+**28/28 clean, worst turn 238ms** (limit 1000), mirror margin +0, package
+unpacked-and-played ($60,365), snapshot in
+`submissions/2026-08-21-sower-it228/`. Uploaded 19.8 MB; 4 submissions
+left today. Side effect noted at submit time: only the latest two are
+active, so this retires 55489160 (2035.9 -- a mined top-of-ladder plan
+replayed open-loop, not ours and not RL) and leaves the RL v2 baseline
+(55542013, 506.9) plus this one. That is the point of the read: RL v2
+scored 506.9 while losing 0/96 to barnyard; this agent beats barnyard
+92.7% and takes 19.8% off enhanced/main, so the gap between those two
+numbers calibrates the whole local->ladder mapping for this line.
+Expect a floor, not a level, for the first hours (rule 7: a score does
+not count until the agent has lost a third of its games).
