@@ -2436,3 +2436,20 @@ Acceptance: mirror margin +0 [-800, +766], stress 28/28 worst turn
 user's overnight authorisation (2 submissions left today); active pair is
 now anvil + harrow (632.9), with sower-it228 (568.3) retired to make
 room -- harrow stays as the control.
+
+## forge: every tape-able wall in one pool (2026-08-21 night, jobs 20258762-66)
+
+anvil established the rule and its own gap proved it: the three anchors
+in its pool improved (cleo -70.0k -> -68.1k, lena -70.7k -> -67.7k,
+bea -70.0k -> -69.3k) while w49, the one strong tape left out, regressed
+(-68.7k -> -74.5k). forge applies the rule completely -- **seven tapes,
+every wall this project can compile**: cleo 155k, lena 151k, bea 150k,
+w03 186k, k06 100k, w10 96k, w49 84k, pfsp hardest-first, from anvil's
+own trunk.
+
+Checked and excluded: `agents/spar/*` (0 of 30 files carry a `_TRACE` --
+they are generated atom agents, not wrapper-plus-plan) and
+`agents/enhanced` (hand-written). Those stay eval-only, which keeps three
+genuinely held-out opponents on the roster -- spar grazier, spar
+berrybaron and enhanced/main -- so forge cannot be scored against a field
+it trained on.
