@@ -1972,3 +1972,17 @@ reeve, meanwhile, answers wrangler's question completely: its
 entire chain. +11.7k of income earned inside a market the w49 tape has
 crashed -- that is the mechanism that closes the -84k margin, measured
 directly.
+
+## harrow: a pure top-economy diet (2026-08-21, jobs 20234367-69)
+
+Fifth arm, fifth GPU. reeve proved income is trainable under tape
+pressure (27.0k -> 38.7k); harrow asks how far that goes when the diet
+is ONLY the target economies: the breakthrough trunk (sower @ 251) vs
+tape:w49 -> tape:k06, gate 0.30, no barnyard mass, no teacher (ks 0 --
+barnyard's intents are the wrong teacher for a 100k economy). reeve is
+the mixed control. The known risk is the documented one: open-loop
+tapes are exploitable, so the roster (barnyard / main / spar / ghosts
+/ tier-2 anchors) is the judge, not the training win rate -- which
+will read ~0 by construction. The number that matters: tape-batch
+income, and whether the tail roster's w49/lena/cleo margins fall
+below -80k.
