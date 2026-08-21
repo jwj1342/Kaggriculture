@@ -1872,3 +1872,13 @@ runway sower-v3 already matches cropper-samp's tail (69.8%). Median
 income 45.9k is the highest this line has recorded (the 42k era is
 over). The tail roster (12 opponents, tier-2 anchors included) will
 say what the income curve bought against the walls.
+
+## The counterfactual answers: tape-batch income moves (reeve, iter 96-133)
+
+Under the w49 tape's crashed market, reeve's income climbs 27.0k ->
+30.5k across 37 iterations -- the exact number wrangler sat on for its
+entire run without means (26-27k, flat). Pressure with vocabulary,
+workforce and credits aboard IS trainable signal. Slow (+~1k/10 iters)
+but structural; ~270 iterations of runway remain, and every 1k here is
+1k off the -98k w49 margin at the tail. tiller tracks sower-v3's
+recovery arc on schedule (0.361 at it 46).
