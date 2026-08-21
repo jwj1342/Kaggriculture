@@ -1496,3 +1496,15 @@ constraint all along. steward's line is pruned (revival to 300 iters
 plateaued at win 0.13; its final sampled roster stays 4/10 with ghosts
 at 90.6/96.9%); reveille's lineage continues through yeoman (mixed
 pool, L2 final 0.249 blended).
+
+### yeoman (gen-3, mixed pool with the w49 tape): the tape teaches the argmax (2026-08-21)
+
+480 iterations from reveille's endpoint with barnyard + tape:w49 +
+league snapshots under pfsp 2.0. The headline: **its ARGMAX beats both
+ghosts (93.8% / 86.5%)** -- training against a recorded line fixed the
+mode collapse against recordings without inference-time sampling; the
+sampled roster pushes them to 99.0% / 96.9%, the line's best. The cost:
+the wall slipped (sampled barnyard 11.5% at -36k) as PFSP moved mass to
+the beatable tape and snapshots. 4/10 either mode. Lesson for gen-4
+pool design: keep the wall's mass floored (f_var-style or a fixed
+anchor share) when adding tapes.
