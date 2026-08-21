@@ -2666,3 +2666,20 @@ Consequence for the next choice: **stop treating small local roster gains
 as ladder gains.** The next submission should wait for either a
 qualitative change (a nonzero win rate against the 1364 tier) or a much
 larger local gap than 7/12-vs-7/12.
+
+## Observability is not the problem (2026-08-22, ruling out a class)
+
+Before attributing the missing product-mix adaptation to the reward, the
+cheaper explanation had to be ruled out: maybe the policy simply cannot
+SEE the dumping. It can. `features_t._globals` already carries
+
+    g[8:17]   the nine current market prices, normalised by base
+    g[17:26]  market inventory deviation, (I0 - inv) / T
+
+so both the price collapse and its cause (inventory piling above target)
+are in every observation, every step. The 4,867-dim observation was never
+the constraint.
+
+That leaves the reward, which is exactly what ledger tests: the policy
+sees milk trading at 49 and the potential tells it a cow's milk is worth
+160. One class of explanation eliminated for the cost of one grep.
