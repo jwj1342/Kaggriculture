@@ -1590,3 +1590,24 @@ candidates that follow: mask HIRE at the hand cap (kill the dead 18%),
 and whatever cropper's 30/crop curve verdict says about the credit
 side. (Probe: $CLAUDE_JOB_DIR/tmp/probe_plant.py pattern, worth
 promoting to tools/ if reused.)
+
+## The w49 anatomy: planting is hand labour, and our hands cannot plant (2026-08-21)
+
+Census of the w49 tape itself (2 reference episodes vs barnyard,
+163k/98k finals): revenue is six lines -- STRAWBERRY 30.4%, MILK 22.3%,
+WOOL 20.8%, MELON 11.4%, WHEAT 7.7%, FERTILIZER 7.3% -- on ~177 seeds
+a game (we plant ~1.7). The structural fact: **hands do the crops**
+(hand ops: WATER 1,744, HARVEST 680, PLANT 352, FERTILIZE 168; the
+farmer planted ZERO times), while the farmer specialises in animals
+(CARE 150, COLLECT_FERT 146, FEED 134) and walks only 32% of turns to
+our 53%. Meanwhile our HAND_TASKS vocabulary is AUTO/IDLE/HARVEST/
+WATER/CARE/COLLECT_FERTILIZER/DIG/FEED -- **no PLANT**: the planting
+chain we measured this morning is farmer-only by construction, which
+is why no credit scheme can scale it -- the farmer has no spare turns.
+This is FEED all over again (83% of barnyard's feeding was hand
+labour; adding the task moved the wall -48k -> -36k), except bigger:
+crops are ~50% of w49's revenue. gen-7 headline: the PLANT hand task
+(one new index; crop choice stays in the market head via BUY_SEED --
+plant the most-held seed; empty-tile claims serialised like FEED's
+wheat reservations). Also noted: w49 spams HIRE too (520 orders, cap
+12) -- dead-HIRE masking (TODO #11) loses nothing against the meta.
