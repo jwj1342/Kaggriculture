@@ -533,7 +533,7 @@ def train(args, log_fn=None):
                     "pool": pool.state() if pool is not None else None,
                     "records": [{k: v for k, v in r.items() if k != "_t_end"}
                                 for r in records]}
-            torch.save(ckpt, args.save)
+            _atomic_save(ckpt, args.save)
             # peak ratchet (the old line's best.pt): a policy can regress
             # after its peak; the best checkpoint is what eval/export wants.
             # With probes on, the ratchet reads the deterministic fixed-field
@@ -552,11 +552,11 @@ def train(args, log_fn=None):
                     if pscore > best_probe:
                         best_probe = pscore
                         ckpt["best_probe"] = best_probe
-                        torch.save(ckpt, best_path)
+                        _atomic_save(ckpt, best_path)
             elif win > best_win:
                 best_win = win
                 ckpt["best_win"] = best_win
-                torch.save(ckpt, best_path)
+                _atomic_save(ckpt, best_path)
         if stop_reason:
             log_fn(f"early stop: {stop_reason} (iter {it})")
             break
@@ -581,6 +581,23 @@ def train(args, log_fn=None):
             log_fn(f"plots skipped: {type(e).__name__}: {e}")
     return (actor_net, critic_net), records
 
+
+
+def _atomic_save(obj, path):
+    """torch.save through a temp file plus os.replace.
+
+    Chains run as ~30-minute links against --max-minutes 50, so a link normally
+    ENDS by walltime kill. The save is about one second of each ~37-second
+    iteration, so a kill lands inside it a few percent of the time -- and across
+    a night of two dozen links that is closer to a coin flip than a corner case.
+    A truncated latest.pt breaks --resume for the rest of the chain and silently
+    poisons whatever the roster exports. os.replace is atomic within a
+    filesystem, so the file a reader sees is always a complete checkpoint.
+    Behaviour-neutral: same object, same path, only the write ordering changes.
+    """
+    tmp = path + ".tmp"
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
 
 def main(argv=None):
     args = parse_args(argv)
