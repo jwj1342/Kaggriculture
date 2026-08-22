@@ -16,6 +16,9 @@ The four, with the baselines they are judged against (docs/RUNS.md 2026-08-22):
                 measured deficit the seedsman / bulkhead arms attack.
   bare tiles    empty UNLOCKED tiles at day 18 and day 28. Baseline 18 and 27,
                 k06 2 and 5 -- it never leaves land idle, we hold it bare.
+  margin        our final money minus the opponent's, over a FULL game from day
+                0. This is the ruler for every curriculum arm (d0-chisel,
+                d0-d12, backplay-d8): it must beat chisel's -54,849.
 
 Also reported because they are cheap and were load-bearing tonight: standing
 crops and animals at day 18 (penner's herd regression showed up here first), and
@@ -81,7 +84,13 @@ def measure(agent, opp, seed, steps=720):
     out["seeds"] = sum(seeds_bought.values())
     out["melon"] = seeds_bought.get("MELON", 0)
     out["straw"] = seeds_bought.get("STRAWBERRY", 0)
-    out["money"] = env.steps[-1][0].observation["farms"][0]["money"]
+    ours = env.steps[-1][0].observation["farms"][0]["money"]
+    theirs = env.steps[-1][1].observation["farms"][1]["money"]
+    out["money"] = ours
+    # the day-0 FULL-GAME margin, which is the acceptance ruler for every
+    # curriculum arm (d0-chisel, d0-d12, backplay-d8): it must beat chisel's
+    # -54,849. Reported here so it is not re-derived ad hoc per arm.
+    out["margin"] = ours - theirs
     return out
 
 
@@ -95,7 +104,7 @@ def main():
     print(f"\nvs {os.path.basename(a.opp)}, {a.seeds} seeds\n")
     print(f"  {'agent':<26}{'land':>5}{'crew':>6}{'seeds':>7}{'melon':>6}"
           f"{'straw':>6}{'bare d18':>9}{'bare d28':>9}{'crop':>6}{'herd':>6}"
-          f"{'money':>10}")
+          f"{'money':>10}{'margin':>11}")
     for ag in a.agents:
         name = os.path.basename(os.path.dirname(ag)) or os.path.basename(ag)
         acc = collections.defaultdict(float)
@@ -111,13 +120,17 @@ def main():
             acc["crop"] += m["d18"]["crop"] / a.seeds
             acc["herd"] += m["d18"]["animal"] / a.seeds
             acc["money"] += m["money"] / a.seeds
+            acc["margin"] += m["margin"] / a.seeds
         print(f"  {name[:26]:<26}{acc['land']:>5.1f}{acc['crew']:>6.2f}"
               f"{acc['seeds']:>7.0f}{acc['melon']:>6.0f}{acc['straw']:>6.0f}"
               f"{acc['b18']:>9.0f}{acc['b28']:>9.0f}{acc['crop']:>6.0f}"
-              f"{acc['herd']:>6.0f}{acc['money']:>10,.0f}")
+              f"{acc['herd']:>6.0f}{acc['money']:>10,.0f}"
+              f"{acc['margin']:>+11,.0f}")
     print(f"\n  baselines: land 2.0 (tier 3.0) | crew 7.9 (tier 8.4-8.6) | "
           f"seeds 47 (k06 207)")
     print(f"             bare d18 18 / d28 27 (k06 2 / 5) | herd 6 (tier 14)")
+    print(f"             day-0 full-game MARGIN must beat chisel's -54,849 "
+          f"(the curriculum arms' ruler)")
     print("ARM-BEHAVIOUR-DONE")
     return 0
 
