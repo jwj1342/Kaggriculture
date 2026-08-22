@@ -596,8 +596,19 @@ def _atomic_save(obj, path):
     Behaviour-neutral: same object, same path, only the write ordering changes.
     """
     tmp = path + ".tmp"
-    torch.save(obj, tmp)
-    os.replace(tmp, path)
+    try:
+        torch.save(obj, tmp)
+        os.replace(tmp, path)
+    except (OSError, RuntimeError):
+        # the target's directory may not be writable, or `path` may not be a
+        # regular file at all (--save /dev/null is a real usage in throughput
+        # probes). Fall back to the direct write rather than failing the run:
+        # the atomicity is a safety net, not a requirement.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        torch.save(obj, path)
 
 def main(argv=None):
     args = parse_args(argv)
