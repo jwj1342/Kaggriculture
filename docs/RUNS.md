@@ -2859,3 +2859,29 @@ Running alongside the two action-layer arms (reaper: metered selling;
 sweeper: metered selling plus the sell sweep), which share anvil's trunk
 and pool and differ from it by one decode rule each. Three-point ladder
 in flight: anvil (dump) -> reaper (meter) -> sweeper (meter + sweep).
+
+## reaper verdict: metering wins the price and loses the matchups (2026-08-22, job 20289583)
+
+Metered selling (floor 0.85 x base) as the single variable off anvil's
+trunk: **6/12**, ghosts at record margins (+47.3k / +48.0k, the largest
+this project has posted), grazier 81.2% +6,330, barnyard 96.9%, income
+median 51.9k, floor 5%. Against anvil (7/12, main 72.9%, median 53.0k,
+floor 2%): **main falls to 40.6%**, cleo -73.2k (anvil -68.1k), lena and
+bea both worse, w49 -68.8k (better).
+
+So the gate's finding was real but incomplete. Metering does raise the
+realised price per unit -- that is arithmetic, and the training income
+was consistently 1-2k above anvil's at equal iterations. What the roster
+adds is the cost: **holding stock for a better price means holding stock,
+and an opponent who competes for the same demand sells it out from under
+you.** Against the tapes (open loop, never adapting) metering is free
+money; against main and cleo it is inventory left on the shelf.
+
+That is the same shape as every reward-side price experiment, arriving
+from the action side: **price-aware behaviour helps against opponents who
+do not react and hurts against opponents who do.** The regularity now
+spans both halves of the design -- reward and action -- and the honest
+summary is that our price sophistication is worth less than our
+production. sweeper (metering plus the sell sweep) is still running and
+its training income has been consistently BELOW reaper's, which fits:
+sweeping sells the stock metering was holding.
