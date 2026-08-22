@@ -2944,3 +2944,47 @@ credit at 3x) and compute (longhaul, running: the same recipe at 1200
 iterations). If both come back flat, the honest conclusion is that this
 architecture tops out here and the next step is structural -- capacity or
 inference-time search -- not another knob.
+
+## THE OPENING WAS THE GAP: a 12-day scripted opening, zero training, +1 opponent and every wall 20-26k closer (2026-08-22)
+
+The trajectory diff localised the deficit to the first twelve days (the
+1364 tier reaches 3 quadrants / 14 animals / 37-61 crops by day 12; we
+reach 1-2 / 8-9 / 16). Testing that needed no training at all: replay a
+tier tape's first 288 steps, then hand the board to our own network.
+
+| opponent | anvil | + cleo's 12-day opening | delta |
+|---|---|---|---|
+| barnyard | 92.7% +10,926 | **100% +37,244** | +3.4x margin |
+| **spar berrybaron** | **10.4% -7,977** | **99.0% +15,443** | **the 8th opponent falls** |
+| enhanced/main | 72.9% +6,262 | **99.0% +34,664** | +26pp |
+| spar grazier | 72.9% +1,878 | 83.3% +18,483 | +10pp |
+| ghosts | 100% +45k/+46k | 100% +54k/+55k | +9k each |
+| closer_cleo | 0% **-68,087** | 0% **-42,248** | **+25,839** |
+| ledger_lena | 0% -67,688 | 0% -43,999 | +23,689 |
+| broker_bea | 0% -69,281 | 0% -43,335 | +25,946 |
+| w49 | 0% -74,491 | 0% -52,299 | +22,192 |
+| **BEATEN** | 7/12 | **8/12** | |
+| income median | 53.0k | **64.4k** | +11.4k |
+| p05 income | 23.2k | **39.6k** | +16.4k |
+| games under 20k | 2% | **0%** | floor gone |
+
+w49's opening gives nearly the same (8/12, median 64.0k, walls -45 to
+-54k), so this is the tier's SCHEDULE paying off, not one tape's luck.
+
+Three things follow.
+
+1. **Our network is competent at the harvest and incompetent at the
+   opening.** Given a farm it has never managed to build, it runs it well
+   enough to add 11k of median income and erase the catastrophic tail
+   entirely. Every arm since gen-4 has been spending its capacity
+   re-deriving a capital-formation schedule that the library already
+   contains.
+2. **The remaining wall gap is the harvest, and it is smaller than we
+   thought**: from the tier's own day-12 position they earn ~110k against
+   us and we earn ~64k, so ~42k of the original 68k is post-opening play.
+   That is now the well-posed target.
+3. **This is the cheapest result of the entire project**: no GPU, no
+   retraining, one export-time change. It also vindicates the 2035.9
+   tape-replay submission from a new angle -- following a proven
+   trajectory beats discovering one, and the correct use of RL here is to
+   improve what happens AFTER the script, not to rediscover the script.
