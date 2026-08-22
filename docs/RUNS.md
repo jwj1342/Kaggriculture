@@ -2885,3 +2885,29 @@ summary is that our price sophistication is worth less than our
 production. sweeper (metering plus the sell sweep) is still running and
 its training income has been consistently BELOW reaper's, which fits:
 sweeping sells the stock metering was holding.
+
+## grange: the only production lever the regularity does not forbid (2026-08-22, jobs above)
+
+Two things are now established by measurement. Production is what
+separates us from the 1364 tier (they earn 2.5x on every board type, and
+chisel's 313 focused iterations moved the margin 8k without a single
+win). And price sophistication does not pay: four reward-side experiments
+(bourse, harvest, vise, ledger) and now one action-side experiment
+(reaper) all helped against open-loop tapes and hurt against reactive
+opponents.
+
+`--build-bonus` is the exception that fits both facts. It credits
+structures, animals and crops **by count** against the 231k-season
+anatomy curve, with no price anywhere in the term, so it cannot inject an
+opponent's behaviour into our objective -- and the traced gap is exactly
+count-shaped:
+
+    animals   8   vs the ladder field's 13, k06's ~14
+    quadrants 2   vs the field's 3 (50 tiles LOCKED all game)
+    crops     42  vs the top meta's ~60 standing, ~177 seeds bought
+
+granger.yaml has run this at 1.0 in every arm since gen-4. grange runs
+**3.0**, single variable off anvil's trunk and pool. If the count credit
+at triple weight does not move the build numbers, then the shaping term
+is not what is holding production back and the remaining explanations are
+structural (capacity, or search at inference).
