@@ -2683,3 +2683,53 @@ the constraint.
 That leaves the reward, which is exactly what ledger tests: the policy
 sees milk trading at 49 and the potential tells it a cow's milk is worth
 160. One class of explanation eliminated for the cost of one grep.
+
+## What 2000 actually looks like on our own scale (2026-08-22, job 20274290)
+
+Running the two tape-replay submissions that scored **2035.9** and
+**2302.2** through the exact 12-opponent roster our arms are judged on:
+
+| agent | ladder | BEATEN | income median | p05 | under 20k |
+|---|---|---|---|---|---|
+| **topline** | **2035.9** | **12/12** | **118,374** | **63,999** | **0%** |
+| kawashigi-k06 | 2302.2 | 12/12 | 124,373 | 68,971 | 0% |
+| anvil-samp (our best) | ~572-627 | 7/12 | 53,0 | ~23,2 | 2% |
+| harrow-samp | ~607-616 | 7/12 | 47,2 | ~21,3 | 4% |
+
+**A 2035-scoring agent beats every one of our twelve opponents --
+including cleo, lena, bea and w49 -- and its FIFTH PERCENTILE income
+(64.0k) is higher than our MEDIAN (53.0k).**
+
+This replaces every estimate I have made about the distance to 2000, and
+it is much larger than the one I gave last night:
+
+    BEATEN          7/12  ->  12/12
+    median income   53k   ->  118k   (2.2x)
+    p05 income      23k   ->  64k    (2.8x)
+
+My earlier "+18% of income" figure came from comparing LADDER-game
+incomes (61k ours against a weak ladder field, 72k for the 2035 agent) --
+same-field arithmetic on a field that is far softer than our roster. The
+roster comparison is the honest one because it holds the opponents fixed,
+and it says the gap is a **doubling**, not a nudge.
+
+Two consolations, both real. First, the target is now a measurable
+local number instead of a ladder guess: 12/12 and a 118k median, on a
+roster we run in 45 minutes. Second, the 2035 agent is an open-loop
+replay of a human team's plan -- it proves the ECONOMY is reachable on
+this engine (118k median against our whole field), not that a policy
+must be superhuman to get there.
+
+## vise verdict: best cleo margin on record, worst generality (2026-08-22, job 20260939)
+
+Unsaturating the margin term (weight 3.0, scale 150k) off anvil's trunk:
+**closer_cleo -66,320 -- the smallest deficit against the 1364 tier this
+project has recorded** (anvil -68.1k, harrow -70.0k), and lena -69.9k.
+But main 44.8% (anvil 72.9%), grazier 55.2% (anvil 72.9%), w49 -78.6k,
+**5/12**, income median 48.9k, floor 4%.
+
+So the margin re-weighting does exactly what the trajectory suggested: it
+buys production and pressure against the tapes it trains on, and pays for
+it in the matchups that need adaptation. Same trade as byre and bourse
+made on the barnyard diet, one tier up. The suppression half of the
+objective remains, as recorded earlier today, not a separate lever.
