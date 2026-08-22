@@ -2799,3 +2799,40 @@ untested idea still on the board is ledger's mark-to-market production
 credit; after that, the honest next moves are structural (a real
 opponent model, or a search/planning layer at inference, or the CNN trunk
 the capacity roadmap has been holding).
+
+## ledger verdict, and the regularity behind four failures: a price-blind potential is a regulariser (2026-08-22, job 20269437)
+
+Mark-to-market production credit (future crop/animal output at
+min(market, base)) off anvil's trunk: **cleo -65,539** (second-best
+recorded, behind chisel's -59.8k), and then the same collapse the other
+repricing arms showed -- **main 36.5%** (anvil 72.9%, forge 75.0%),
+**grazier 37.5%** (anvil 72.9%), w49 -86.7k (the worst on record),
+**5/12**, median 48.8k.
+
+That completes a set of four, and the pattern is now unmistakable:
+
+| arm | change | trained-pool effect | held-out effect (main / grazier) |
+|---|---|---|---|
+| bourse | inventory at execution revenue | barnyard margin +31k | main 15.6%, grazier 0% |
+| harvest | production at base x 1.0 credit | income fell 39.6k -> 32.6k | killed at iter 50 |
+| vise | margin term unsaturated | **best cleo -66.3k** | main 44.8%, grazier 55.2% |
+| ledger | production at min(market, base) | **cleo -65.5k** | main 36.5%, grazier 37.5% |
+
+**Every attempt to make the potential more truthful about prices has cost
+generality**, and always in the same place: the opponents we never train
+against.
+
+The explanation that fits all four: **the base-price valuation is a
+regulariser.** It is a fixed yardstick that does not move when an
+opponent dumps, so the economy the policy learns is invariant to who is
+across the table. Feeding market prices into the potential injects the
+opponent's behaviour into our own reward signal, and the policy duly
+learns opponent-specific responses -- better against the pool it trains
+on, worse against anything held out. Kilo's "deliberate simplification"
+turns out to be load-bearing.
+
+Practical rule, recorded: **price-dependent terms belong in the
+OBSERVATION (where they already are -- g[8:17] prices, g[17:26] inventory)
+and not in the potential.** The reward should describe what we want built;
+the observation should describe what the market is doing. Four arms and
+about twenty GPU-hours bought that sentence.
