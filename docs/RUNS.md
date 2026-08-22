@@ -2911,3 +2911,36 @@ granger.yaml has run this at 1.0 in every arm since gen-4. grange runs
 at triple weight does not move the build numbers, then the shaping term
 is not what is holding production back and the remaining explanations are
 structural (capacity, or search at inference).
+
+## sweeper closes the three-point ladder: price sophistication is monotonically negative (2026-08-22, job 20284158)
+
+The three-point ladder, same trunk (anvil), same five-wall pool, one
+decode rule apart at each step:
+
+| arm | selling rule | BEATEN | main | grazier | barnyard | median | floor |
+|---|---|---|---|---|---|---|---|
+| anvil | dump the holding | **7/12** | **72.9%** | 72.9% | 92.7% | **53.0k** | **2%** |
+| reaper | meter to floor 0.85 | 6/12 | 40.6% | **81.2%** | 96.9% | 51.9k | 5% |
+| sweeper | meter + sweep all lines | **5/12** | **27.1%** | 47.9% | 76.0% | 46.3k | 10% |
+
+**Monotone, in the wrong direction, on every axis that involves a
+reacting opponent.** Each increment of price sophistication cost roughly
+13 points of main and 2-5 points of floor; sweeper even lost barnyard
+down to 76%. Against the non-reacting opponents it is the reverse (ghost
+margins peak at reaper/sweeper), which is exactly the signature of the
+regularity now established six times over:
+
+**price-aware machinery pays against opponents who do not adapt and costs
+against opponents who do -- in the reward (bourse, harvest, vise, ledger)
+and in the action space (reaper, sweeper) alike.**
+
+The mechanism for the action side is concrete: metering means holding
+stock for a better price, and a competitor sells the same product before
+that price arrives. Holding is only free when nobody else is selling.
+
+Practical consequence, recorded: **stop building price machinery.** The
+remaining candidates are production (grange, running: count-based build
+credit at 3x) and compute (longhaul, running: the same recipe at 1200
+iterations). If both come back flat, the honest conclusion is that this
+architecture tops out here and the next step is structural -- capacity or
+inference-time search -- not another knob.
