@@ -3024,3 +3024,41 @@ consistent: **grange** (count-based build credit tripled to 3.0) sits at
 not what caps production; and **longhaul** (the same recipe at 1200
 iterations) reads 49.6k at iter 312, so compute is not it either.
 Neither shaping nor patience is the bottleneck -- **the trajectory is.**
+
+## A calibrated answer to "what level is it": the spar field as an instrument (2026-08-22, job 20292544)
+
+The 12-opponent roster cannot place an agent between 763 and 1287 because
+our field has no rung there. The 30-agent `agents/spar/` field can, because
+**we submitted nine members of that generator ourselves** and know their
+ladder scores: 647, 700, 721, 729, 742, 749, 751, 759, 763 (mean 729).
+
+Running two products across all 30, 24 seeds each (1,440 episodes each):
+
+| | anvil-samp | hybrid-cleo12 |
+|---|---|---|
+| overall win rate | **33.0%** | **86.8%** |
+| opponents beaten (CI > 50) | 10/30 | **28/30** |
+| income median | 39,376 | **61,390** |
+| p05 income | 24,137 | **44,471** |
+| worst matchup | **0%** (three marketgarden lines) | **60%** |
+
+**The instrument validates itself.** Elo from the field mean:
+729 + 400·log10(0.330/0.670) = **606** for anvil, whose actual ladder read
+is **572-627**. The same arithmetic gives hybrid-cleo12
+729 + 400·log10(0.868/0.132) = **1056**.
+
+So the estimate is **~1050 +- 150**, and the +-150 is not hand-waving:
+the same submitted file scored 1363.7 and 1218.6 on two different runs.
+Placed against everything this project has measured:
+
+    2302 / 2035   full tape replays of other teams' plans
+    1364 / 1287   closer_cleo (third-party) and our one-line change to it
+    ~1050         hybrid-cleo12  <- scripted opening + our network
+    763 ... 647   the best of our own generated agents (nine submissions)
+    623 / 621     enhanced / barnyard
+    627 ... 555   this RL line's three submissions
+
+Caveats, all real: the spar field is our own reconstruction (though it
+just predicted anvil's ladder score to within noise); the Elo step assumes
+transitivity in a game this repo has documented as non-transitive; and the
+first twelve days of the product are cleo's plan, not ours.
