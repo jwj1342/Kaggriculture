@@ -2733,3 +2733,30 @@ buys production and pressure against the tapes it trains on, and pays for
 it in the matchups that need adaptation. Same trade as byre and bourse
 made on the barnyard diet, one tier up. The suppression half of the
 objective remains, as recorded earlier today, not a separate lever.
+
+## forge verdict: the best main number yet, and the seven-tape pool plateaus (2026-08-22, job 20258767)
+
+Every tape-able wall in one pool (cleo, lena, bea, w03, k06, w10, w49),
+376 iterations: **enhanced/main 75.0% [65.5, 82.6] +9,826 -- the best
+reactive-matchup number this project has recorded** (anvil 72.9%,
+threshing 68.8%, harrow 64.6%), grazier 84.4% (ties harrow's best),
+barnyard 99.0% +23,456, ghosts 100/100. **7/12**, income median 51.0k,
+floor 5%.
+
+But the walls did not move further: cleo -70.6k (anvil -68.1k),
+lena -77.2k (anvil -67.7k), bea -80.7k (anvil -69.3k), w49 -69.7k
+(anvil -74.5k, threshing -66.3k). **Seven tapes is not better than five
+on the walls -- it is better on the held-out reactive opponents.** With
+pfsp spreading the sampling mass across seven 100-186k economies, each
+individual wall gets less attention than it did in anvil's five-tape pool
+(and anvil's own gap already showed the mechanism: the pool member gets
+the gain).
+
+So the tape-diet family has converged to a plateau: **five arms
+(harrow, sheaf, threshing, anvil, forge) all land at 7/12 with medians
+47-53k and floors 2-5%**, differing only in which axis they favour. The
+calibration says 2000 needs 12/12 and 118k. More tapes, more pfsp and
+more iterations at this scale are not going to close a 2.2x income gap --
+the next generation needs a different lever, and the two candidates on
+the board are the mark-to-market production credit (ledger, running) and
+whatever chisel's single-wall attack reveals.
