@@ -5552,3 +5552,55 @@ CPU 这条替代路径刚被量掉。**能在无 GPU 下做的都做了**——�
 
 **结论:今晚拿不到训练结果这件事是资源约束,不是还有没试的办法。** 队列里的十条臂
 已就绪、门全过;巡检会在读数出现时接手。
+
+## 2026-08-22 · `--kickstart tape:` 接好了:**用 150k 的磁带当老师,而不是 40k 的 barnyard**(已过门,**未提交**)
+
+档案里今天早些时候自己点出过:"五代以来我们只把 150k 的磁带当**对手**打,从没模仿过
+它们;而我们唯一的 kickstart 教师是 `barnyard`(约 40k)——**对 2000 分的目标来说是
+错的教师**",并且列了 AlphaStar / VPT / OpenAI Five 的共同起点。标签工具
+(`tape_labels.py`)也是今天写的。**缺的只是接线。**
+
+`kickstart_labels(ep, player, teacher)` 现在接受 `"barnyard"` 或 `"tape:<agent.py>"`。
+`TapeOpponent` 本来就在设备上按**同一套 unit-op 词表**输出 ops,而 `_ks_luts` 就是按
+unit-op 索引的,所以 `_tape_ops_as_task` 是**换形状而不是翻译**。
+
+### 弱点先说清楚,因为它决定阴性怎么读
+
+**磁带是开环的**:它第 t 步的动作是为**它自己**的状态选的,不是学习者的。这一点能忍
+只因为 `_kickstart_ce` **本来就跳过在学习者掩码下非法的标签**。门里量出来:
+
+| 头 | 标签存活率 |
+|---|---|
+| farmer | **100%** |
+| market | **约 50%** |
+
+**所以市场头只拿到一半的监督——而市场头恰好是我们最需要被教的那个**(买种子归它管:
+一局 47 颗对 k06 的 207)。`barnyard_t` 是个闭环、条件更好,它只是瞄着 40k。
+
+### 门 `test_tutor.py` T1–T5(TUTOR-PASS)
+
+T1 钉住 `teacher="barnyard"` 与出厂调用**逐位相同**;T2 三条磁带 × 三个天检查标签在
+学习者自己的状态上合法且非空;**T3 钉住它与 barnyard 在 100% 的 lane 上不一致**
+(两个一致的老师会让这条臂变成空操作);T4 钉住 `hands_n` 之后的槽是 −1、宽度是
+`MAX_HANDS`;**T5 改成报告存活比例而不是要求全合法**——那是开环老师永远做不到的,
+我这个门的第一版就错在这里。
+
+### 未提交,以及提交时必须带的那个界
+
+GPU 今晚被 fairshare 卡住(`EffectvUsage 0.899`,0 running / 41 pending),而队列已经
+**刻意收窄到六条臂**,好让漏出来的算力落到 croftr / seedsman / bulkhead / backplay d0。
+**第十一条臂只会稀释它们**,所以这条只备好、不提交。命令:
+
+    RUN=rl/runs/tutor
+    python rl/train.py --device cuda --max-minutes 25 \
+      --config rl/configs/granger.yaml --init-from "$RUN/init.pt" \
+      --opponents "tape:agents/bench3/closer_cleo.py,tape:agents/champ/k06.py" \
+      --kickstart tape:agents/champ/k06.py --ks-coef 0.05 --ks-every 4 \
+      --potential future-mkt --shape-gamma 0.999 \
+      --hidden 1024 512 --v-hidden 512 --iters 425 \
+      --save "$RUN/latest.pt" --resume "$RUN/latest.pt"
+
+**`--ks-coef 0.05` 不是可调项,是 sower-v1 用三个迭代换来的界**:在**成熟**主干上重新
+退火 kickstart 是一记铁锤——CE ≈1.2 对策略梯度 ≈0.03,**四十比一**,三个迭代就把一个
+连贯的 42k 策略搅成半个 barnyard(胜率 0.436 → 0.000)。chisel 是成熟主干,**只能给
+耳语级的 ≤0.05,绝不能给冷启动的 0.5**。
