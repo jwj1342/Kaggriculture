@@ -3082,3 +3082,29 @@ from the spar-field instrument that predicted anvil's 572-627 as 606. If it
 lands there it is the best result this project has produced outside of
 whole-tape replays, and the first time the line clears 1000 -- with the
 caveat, permanently attached, that the opening is not ours.
+
+## grange verdict: tripling the count-based build credit changes nothing (2026-08-22, job 20289928)
+
+`--build-bonus 3.0` (against granger.yaml's 1.0), single variable off
+anvil's trunk, 309 iterations: **6/12**, barnyard 94.8%, grazier 82.3%,
+main 46.9%, berrybaron 1.0%, walls cleo -68.2k / lena -68.6k / bea -68.8k
+/ w49 -77.6k, income median 46.3k, floor 7%. Against its control (anvil:
+7/12, main 72.9%, cleo -68.1k, median 53.0k, floor 2%) it is **slightly
+worse on every axis**, and its training income never left the 44-46k band
+that anvil occupied.
+
+This was the last price-free production lever on the board -- the one
+mechanism the "price machinery does not pay" regularity could not
+forbid, aimed at a gap that is exactly count-shaped (8 animals vs 13,
+2 quadrants vs 3, 42 crops vs ~60). Tripling its weight moved neither
+the build numbers nor the roster.
+
+Read together with longhaul (the same recipe at 1200 iterations, flat at
+48-50k) and the opening sweep (monotone: every day of a recorded plan
+substituted for our policy improves every axis), the conclusion is
+narrow and well-supported: **the shaping term is not what caps our
+production, and neither is compute. The policy's own trajectory is.**
+The one arm still showing a slope is endgame, which works because the
+problem was reframed rather than reweighted: given the tier's own day-20
+farm, close their last ten days -- -23,784 at iteration 1, **-9,676 at
+iteration 161, 59% of it gone.**
