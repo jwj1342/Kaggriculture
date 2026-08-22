@@ -3062,3 +3062,23 @@ Caveats, all real: the spar field is our own reconstruction (though it
 just predicted anvil's ladder score to within noise); the Elo step assumes
 transitivity in a game this repo has documented as non-transitive; and the
 first twelve days of the product are cleo's plan, not ours.
+
+## SUBMITTED: hybrid-cleo12 (2026-08-22, user-authorised)
+
+Uploaded 19.8 MB; **3 submissions remaining today** (the count includes a
+collaborator's `Pure Python Agent v1`, 385.6, at 07:30 -- not ours and not
+from this line). Active pair is now hybrid-cleo12 + that collaborator
+submission, so anvil (592.3) rotates out.
+
+What was submitted, stated plainly in the submission message itself: the
+first twelve days (288 steps, 40% of the episode) replay closer_cleo's own
+`_TRACE`; the remaining 60% is our trained multi-head policy at sampling
+temperature 1.0. Pre-flight: mirror +0 [-764, +754], stress 28/28 with a
+55.4ms worst turn, package unpacked and played $91,970 with
+`get_last_callable` resolving to `agent`.
+
+Calibrated expectation on record before the read arrives: **~1050 +- 150**,
+from the spar-field instrument that predicted anvil's 572-627 as 606. If it
+lands there it is the best result this project has produced outside of
+whole-tape replays, and the first time the line clears 1000 -- with the
+caveat, permanently attached, that the opening is not ours.
