@@ -2760,3 +2760,42 @@ more iterations at this scale are not going to close a 2.2x income gap --
 the next generation needs a different lever, and the two candidates on
 the board are the mark-to-market production credit (ledger, running) and
 whatever chisel's single-wall attack reveals.
+
+## chisel's answer: the deficit is proportional, not a missing behaviour (2026-08-22, job 20264848)
+
+313 iterations against nothing but closer_cleo, with the unsaturated
+margin term, and the diagnostic question -- can this line take a single
+game off the 1364 tier? -- has an answer: **no. 0/96, still.** But the
+numbers around that zero are the informative part:
+
+    closer_cleo margin  -59,762   (best of any arm: anvil -68.1k, vise -66.3k)
+    our income vs cleo  median 45,236, MAX 100,478
+    cleo's income       median 111,791, MIN 51,107
+    the closest game    we 18,211 vs cleo 51,107  (-32,896)
+
+Three readings:
+
+1. **The gap is proportional, not situational.** We earn ~40% of cleo's
+   money on rich boards (100k against its ~140k) and ~35% on poor ones
+   (18k against 51k). The closest game is not a near-miss on a board that
+   suited us -- it is a poor board where both farms earned little and we
+   still lost by 33k. There is no board type where we are close.
+2. **Concentrating all training on one wall bought 8k of margin (-68k ->
+   -60k) in 313 iterations and no wins.** The same recipe against five
+   walls bought the same 7/12. So the ceiling is the recipe, not the
+   attention allocation.
+3. **And chisel is nonetheless the best all-round product we have**:
+   7/12, main 71.9%, grazier 82.3%, income median **53,997**, floor
+   **2%** -- the best median and floor of any arm, from a pool of exactly
+   one opponent. Overfitting to one tape cost almost nothing measurable,
+   which says the tapes are teaching a general economy rather than an
+   exploit.
+
+Taken with forge's plateau and the 2035-agent calibration (12/12, 118k
+median), the conclusion is unavoidable and worth stating plainly: **this
+generation's recipe tops out around 7/12 and a 50k median. Closing a
+2.2x income gap needs a different idea, not more of this one.** The one
+untested idea still on the board is ledger's mark-to-market production
+credit; after that, the honest next moves are structural (a real
+opponent model, or a search/planning layer at inference, or the CNN trunk
+the capacity roadmap has been holding).
