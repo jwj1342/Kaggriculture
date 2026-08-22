@@ -2988,3 +2988,39 @@ Three things follow.
    tape-replay submission from a new angle -- following a proven
    trajectory beats discovering one, and the correct use of RL here is to
    improve what happens AFTER the script, not to rediscover the script.
+
+## The opening-length sweep, and what it says about our policy's value (2026-08-22)
+
+Splicing cleo's first D days in front of anvil's network, D swept, four
+opponents (one trained-against wall, two held-out reactive agents, and
+the tier):
+
+| D | barnyard | main (held out) | berrybaron (held out) | cleo | income median |
+|---|---|---|---|---|---|
+| 6 | 100% | 87.5% | 75.0% | -62,010 | 60.0k |
+| 8 | 99.0% | 97.9% | 89.6% | -58,002 | 57.2k |
+| 12 | 100% | 99.0% | 99.0% | -42,248 | 64.3k |
+| 16 | 100% | 100% | 100% | -38,549 | 68.0k |
+| **20** | **100%** | **100%** | **100%** | **-22,648** | **78.0k** |
+
+**Monotone in D on every axis.** Every extra day of the recorded plan
+replacing our policy makes us better. There is no phase of the game where
+our trained policy is worth more than a replay of a human plan -- and the
+sweep is, read literally, an interpolation between our agent and the tape
+whose full replay scored 2035.9.
+
+The useful reading is a decomposition. At D=20 the remaining deficit
+against cleo is **-22,648 over the last ten days from cleo's own day-20
+position** (banked: both seats at 35.7k, 3 quadrants, 14 animals). The
+endgame arm trains exactly that and reproduced the number at iteration 1
+(we earn 67.4k, they earn 91.1k). So:
+
+    beat the 1364 tier over a season   = a 68k problem, 0/96 after five generations
+    beat their last ten days from their own farm = a 23k problem, now being trained
+
+Two supporting readings from the same day, both negative and both
+consistent: **grange** (count-based build credit tripled to 3.0) sits at
+44.5k at iter 132, no better than anvil's ~45k, so the shaping weight is
+not what caps production; and **longhaul** (the same recipe at 1200
+iterations) reads 49.6k at iter 312, so compute is not it either.
+Neither shaping nor patience is the bottleneck -- **the trajectory is.**
