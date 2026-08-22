@@ -2836,3 +2836,26 @@ OBSERVATION (where they already are -- g[8:17] prices, g[17:26] inventory)
 and not in the potential.** The reward should describe what we want built;
 the observation should describe what the market is doing. Four arms and
 about twenty GPU-hours bought that sentence.
+
+## longhaul: the control the plateau claim needs (2026-08-22, 12 links to ~1200 iterations)
+
+Every "the tape-diet family plateaus at 7/12" verdict rests on chains of
+300-400 iterations -- and chisel's own income slope had **not** flattened
+when its chain ended at 313 (42k -> 51k, still climbing). So the claim is
+underdetermined: it might be the recipe's ceiling, or it might be where we
+happened to stop.
+
+**longhaul** is that control: chisel's trunk, anvil's five-wall pool,
+nothing else changed, **twelve links to ~1200 iterations** (roster
+20284697). Two clean outcomes:
+
+* still 7/12 and ~54k median at 3x the compute -> the plateau is a
+  property of the recipe, and the remaining ideas (inference-time search,
+  CNN trunk) are the only way forward;
+* it moves -> every verdict in the last two days was measured too early,
+  and the cheapest lever available was patience.
+
+Running alongside the two action-layer arms (reaper: metered selling;
+sweeper: metered selling plus the sell sweep), which share anvil's trunk
+and pool and differ from it by one decode rule each. Three-point ladder
+in flight: anvil (dump) -> reaper (meter) -> sweeper (meter + sweep).
