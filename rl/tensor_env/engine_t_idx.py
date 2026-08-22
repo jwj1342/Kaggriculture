@@ -1261,28 +1261,36 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
         # tensor across slots (and FEED slots carry real arg/qty now).
         # A list of (seat, ops) grafts several seats (bank generation
         # plays barnyard on both); the single-tuple form is unchanged.
-        f_op[:, seat] = ops["f_op"]
-        f_arg[:, seat] = ops["f_arg"]
-        f_qty[:, seat] = ops["f_qty"]
-        h_op, h_arg, h_qty = ops["h_op"], ops["h_arg"], ops["h_qty"]
-        while len(hand_ops) < len(h_op):
-            hand_ops.append(zero.clone())
-            hand_args.append(zero)
-            hand_qtys.append(zero)
-        for u in range(len(hand_ops)):
-            if u < len(h_op):
-                hand_ops[u] = hand_ops[u].clone()
-                hand_ops[u][:, seat] = h_op[u]
-                hand_args[u] = hand_args[u].clone()
-                hand_args[u][:, seat] = h_arg[u]
-                hand_qtys[u] = hand_qtys[u].clone()
-                hand_qtys[u][:, seat] = h_qty[u]
-            else:
-                hand_ops[u] = hand_ops[u].clone()
-                hand_ops[u][:, seat] = U_PASS
-        m_op[:, seat] = ops["m_op"]
-        m_item[:, seat] = ops["m_item"]
-        m_rem[:, seat] = ops["m_rem"]
+        # A key that is absent leaves that slot's macro decode in place, so
+        # an ops dict carrying only m_* grafts the market and nothing else
+        # (used by tape_labels.py to ask which half of the action space is
+        # the ceiling). Every pre-existing caller supplies all nine keys, so
+        # the full-graft path is untouched -- gate test_barn.py G0.
+        if "f_op" in ops:
+            f_op[:, seat] = ops["f_op"]
+            f_arg[:, seat] = ops["f_arg"]
+            f_qty[:, seat] = ops["f_qty"]
+        if "h_op" in ops:
+            h_op, h_arg, h_qty = ops["h_op"], ops["h_arg"], ops["h_qty"]
+            while len(hand_ops) < len(h_op):
+                hand_ops.append(zero.clone())
+                hand_args.append(zero)
+                hand_qtys.append(zero)
+            for u in range(len(hand_ops)):
+                if u < len(h_op):
+                    hand_ops[u] = hand_ops[u].clone()
+                    hand_ops[u][:, seat] = h_op[u]
+                    hand_args[u] = hand_args[u].clone()
+                    hand_args[u][:, seat] = h_arg[u]
+                    hand_qtys[u] = hand_qtys[u].clone()
+                    hand_qtys[u][:, seat] = h_qty[u]
+                else:
+                    hand_ops[u] = hand_ops[u].clone()
+                    hand_ops[u][:, seat] = U_PASS
+        if "m_op" in ops:
+            m_op[:, seat] = ops["m_op"]
+            m_item[:, seat] = ops["m_item"]
+            m_rem[:, seat] = ops["m_rem"]
 
     # ---- atomic PLANT validation (the reference's, verbatim): if the
     # turn's total PLANT requests for a crop exceed the farm's seeds, ALL
