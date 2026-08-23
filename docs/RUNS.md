@@ -8363,3 +8363,59 @@ CPU 4 线程都能跑到 22k sps 而 GPU 只有 18k),**SM 大部分时间是空�
 它同时是显存的主项(14.33 of 14.55 GB)**和** CPU 侧策略前向的主项
 (B=512、4 线程下 16.59 ms/step)。**把它砍小会同时放大显存与吞吐两边**,
 但改观测维度会让所有现有检查点失效,**所以那是下一代的事,不是一个旋钮。**
+
+## 2026-08-23 · 读了第一道门的源码:**`closer_cleo`(1287.2)的农场行为根本不是算法,是 104 个队共享的 712 回合录音**
+
+整晚我在量 `closer_cleo` 的产出(畜群 13、首块地第 7 天、草莓 41 块地卖 270、HARVEST 342),
+**却一次没读它的代码。读了之后,"第一道门"的性质变了。**
+
+它自己的文档写得非常明确:
+
+> "**This agent does not use an original field plan. It executes the shared public
+> meta line**:`scripts/cross_team_identity.py` over 530 downloaded replays finds
+> **identical 712-turn farmer/hand sequences played by large groups of unrelated
+> teams — one group of 29, another of 15, another of 8, with 104 distinct teams**
+> appearing in at least one shared plan."
+>
+> "What is the author's own … is **the market layer**:which product takes the
+> earliest slot in the order queue, when to hold, and when to liquidate."
+
+代码结构佐证:`_TRACE` 是 base85+zlib 压的 **712 回合 farmer/hand 序列**;
+上面套一层手写的 SELL 重排(带 `_FRONT_RUN_HORIZON` 前瞻)、清算分支、
+以及一个把雇工补到 **8** 的 HIRE 顶栏(`max(0, 8 - already)`)。
+
+### 这把"用 RL 达到 2000"的题面改了
+
+**天梯 1287–2302 那一带,坐的全是"开环回放一份共享计划"的 agent:**
+
+| 分数 | 农场行为的来源 |
+|---|---|
+| 2302.2 / 2035.9 | 别人的顶端对局录音,明写 NOT OUR PLAN |
+| **1287.2(第一道门)** | **104 个队共享的 712 回合 meta 录音 + 手写市场层** |
+| 555–692(RL 线) | **学出来的策略** |
+
+**所以我们的 RL 线不是在跟"更好的算法"比,是在跟一份 104 个队收敛到的记忆序列比。**
+而今晚测出"网接上 cleo 的开局后每天贡献 −801、天梯上掉 595 分",
+说明**我们的策略在接手一份专家序列之后会把它弄坏。**
+
+### 由此,唯一被这条事实指向的方法是模仿 —— 而我今天把它砍掉的理由是预算,不是判断
+
+`tutor2`(gen38,`--kickstart tape:closer_cleo --ks-coef 0.05`,从成熟主干起)
+拿到 **+133**,并且带着逆频率偏置(`BUY_LAND` 均值 1.44% → 0.08%)。
+**但它的系数被档案的"成熟主干上界 ≤0.05"锁住了** —— 那条上界是为了不砸坏一个已有的 42k 策略,
+**而如果目标本来就是"复制一份录音",从随机初始化起、用高系数、跑够 link 数才是正确顺序**
+(AlphaStar / VPT 都是这个顺序)。**我今天取消那条(`tutor`/`tutorctl`)的理由是
+"2 个 link 从随机初始化说明不了任何事",那是预算判断,不是方法判断 —— 现在方法这一侧
+有了新的支撑:模仿的对象不是一个近似算法,是一份确定的 712 回合序列,
+而它就在我们仓库里(`closer_cleo._TRACE`)。**
+
+**代价要写清楚**:从随机初始化训到可比 chisel 的 324 迭代需要 **8–10 个 link/臂**,
+两臂(有老师 / 无老师对照)就是 16–20 个 link。**今晚的 GPU 供给是每 link 约 40 分钟实效
+(25 分钟训练 + 15 分钟排队中位),所以那是 11–13 小时。**
+**这是一笔要用户点头的预算,不是我该自己花掉的。**
+
+### 一个顺带的细节,与今天的 `foreman` 阴性对上
+
+cleo 手写层的 HIRE 顶栏是补到 **8**,而不是 12。而 `foreman` 把我们的网顶到 12 是 **−10,299**。
+**第一道门自己都不雇满** —— 它测出来的 `hands@20 = 11` 里,大部分来自录音本身的 HIRE 动作,
+而不是那个顶栏。**这是"帮手数是标记不是杠杆"的又一个独立佐证。**
