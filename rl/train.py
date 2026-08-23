@@ -76,6 +76,23 @@ def build_parser():
     ap.add_argument("--clip", type=float, default=0.2)
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--minibatches", type=int, default=8)
+    # 2026-08-23 profiling: at B=1024 ONE process measures 39.6 GiB of the
+    # card's 79.18, so two will not co-locate and B=4096 OOMs trying to
+    # allocate a further 53.40 GiB (docs/RUNS.md). Three copies of the
+    # observation are live at the peak: the collector's td (obs AND
+    # next.observation), the select(*keep) copy `flat`, and the replay
+    # buffer's LazyTensorStorage -- which rb.empty()/rb.extend() refills
+    # every epoch. The buffer's only contribution is SamplerWithoutReplacement,
+    # i.e. a shuffled partition of `flat`, which is a randperm: 5.9 MB of
+    # int64 instead of ~15 GB of float32. --rb-free takes that third copy out.
+    ap.add_argument("--rb-free", action="store_true",
+                    help="index minibatches with a randperm over the flat batch "
+                         "instead of round-tripping through a ReplayBuffer "
+                         "(same without-replacement partition, one less full "
+                         "copy of the observation resident)")
+    ap.add_argument("--mem-report", action="store_true",
+                    help="print peak CUDA memory at each stage of iteration 0 "
+                         "and the per-key byte breakdown of the collected batch")
     ap.add_argument("--ent-coef", type=float, default=0.003)
     ap.add_argument("--vf-coef", type=float, default=0.5)
     ap.add_argument("--win-bonus", type=float, default=3.0)
@@ -393,9 +410,11 @@ def train(args, log_fn=None):
         # buffer copies the keys it keeps -- before the next collect overwrites it
         col_kw["return_same_td"] = True
     collector = SyncDataCollector(env, actor, **col_kw)
-    rb = ReplayBuffer(storage=LazyTensorStorage(frames, device=dev),
-                      sampler=SamplerWithoutReplacement(),
-                      batch_size=frames // args.minibatches)
+    rb = None
+    if not args.rb_free:
+        rb = ReplayBuffer(storage=LazyTensorStorage(frames, device=dev),
+                          sampler=SamplerWithoutReplacement(),
+                          batch_size=frames // args.minibatches)
 
     records = list(prev_records)
     writer = fh = None
@@ -413,8 +432,29 @@ def train(args, log_fn=None):
         t0 = time.time()
         t_col = t0 - (records[-1].get("_t_end", t_start) if records else t_start)
         frozen = total_steps < args.freeze_policy_until
+
+        def _mem(stage):
+            """Peak CUDA bytes so far, for --mem-report. See --rb-free."""
+            if not (args.mem_report and dev.type == "cuda"):
+                return
+            print(f"MEM {stage:<18} peak {torch.cuda.max_memory_allocated()/2**30:7.2f} GiB"
+                  f"  live {torch.cuda.memory_allocated()/2**30:7.2f} GiB", flush=True)
+
+        if args.mem_report and i == 0:
+            tot = 0
+            for key in sorted(td.keys(include_nested=True, leaves_only=True)):
+                nb = td.get(key).element_size() * td.get(key).numel()
+                tot += nb
+                if nb > 2**26:  # only the keys that matter (>64 MiB)
+                    print(f"MEM key {'.'.join(key) if isinstance(key, tuple) else key:<28}"
+                          f" {nb/2**30:7.2f} GiB {str(tuple(td.get(key).shape)):>22}"
+                          f" {td.get(key).dtype}", flush=True)
+            print(f"MEM key {'TOTAL collected td':<28} {tot/2**30:7.2f} GiB", flush=True)
+        _mem("after collect")
+
         with torch.no_grad():
             adv_mod(td)
+        _mem("after GAE")
         adv = td["advantage"]
         td["advantage"] = (adv - adv.mean()) / (adv.std() + 1e-8)
 
@@ -427,6 +467,7 @@ def train(args, log_fn=None):
         if args.kickstart:
             keep += ["teacher_f", "teacher_m", "teacher_h"]
         flat = td.reshape(-1).select(*keep)
+        _mem("after select")
         ks_coef = 0.0
         if args.kickstart and not frozen:
             ks_coef = args.ks_coef * (
@@ -434,11 +475,25 @@ def train(args, log_fn=None):
                 if args.ks_anneal > 0 else 1.0)
         stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0, "ks": 0.0}
         n_mb = 0
+        # SamplerWithoutReplacement over `minibatches` draws of
+        # frames // minibatches is exactly a random partition of `flat`, and
+        # frames is divisible (B * ep_len / 8), so randperm + contiguous
+        # slices is the same estimator on the same data -- it only draws from
+        # a different RNG stream, so runs are not bit-comparable across the
+        # flag (the algorithm is unchanged; nothing about the loss moves).
+        mb_size = flat.shape[0] // args.minibatches
         for _ in range(args.epochs):
-            rb.empty()
-            rb.extend(flat)
-            for _ in range(args.minibatches):
-                mb = rb.sample()
+            perm = None
+            if rb is None:
+                perm = torch.randperm(flat.shape[0], device=flat.device)
+            else:
+                rb.empty()
+                rb.extend(flat)
+            for i_mb in range(args.minibatches):
+                if rb is None:
+                    mb = flat[perm[i_mb * mb_size:(i_mb + 1) * mb_size]]
+                else:
+                    mb = rb.sample()
                 loss_td = loss_mod(mb)
                 if frozen:  # value warm-up: the policy must not move
                     loss = loss_td["loss_critic"]
@@ -459,6 +514,9 @@ def train(args, log_fn=None):
                     stats["ent"] += -loss_td.get(
                         "loss_entropy", torch.zeros(())).item() / max(args.ent_coef, 1e-12)
                 n_mb += 1
+                if n_mb == 1:
+                    _mem("after 1st update")
+        _mem("after epochs")
         for k in stats:
             stats[k] /= max(1, n_mb)
 
