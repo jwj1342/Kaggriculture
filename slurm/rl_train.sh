@@ -42,6 +42,23 @@ export OMP_NUM_THREADS=1
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 
 echo "host=$(hostname) job=${SLURM_JOB_ID}"
-# 25, so the link exits on its own inside a 30-minute walltime rather
-# than being killed mid-iteration.
-python rl/train.py --device cuda --max-minutes 25 "$@"
+# --rb-free: measured 2026-08-23 with --mem-report at B=1024 (docs/RUNS.md).
+# The PPO update round-tripped the batch through a ReplayBuffer whose
+# LazyTensorStorage is a third full copy of the observation, refilled once per
+# epoch. Peak fell 60.97 -> 47.34 GiB and live-across-the-collect-boundary
+# 43.37 -> 29.74, at identical throughput (10,593 vs 10,592 sps) -- the
+# without-replacement partition is reproduced by a randperm.
+#
+# B stays at the config's 1024 and that is a MEASURED ceiling, not a default:
+# B=1536 raises throughput to 15,166 sps (1.43x for 1.5x the lanes, iteration
+# wall 69.5 -> 72 s, so collection is launch-latency bound and B is the real
+# throughput lever) but peaks at 68.17 GiB and OOMs; 2048 and 3072 die outright.
+# The blocker is ("next", "observation") at 13.35 GiB of the 27.68 GiB batch.
+# It contributes nothing to the loss -- trl_env.py sets terminated = done and
+# never sets truncated, so the bootstrap is multiplied by zero -- but it cannot
+# simply be dropped, because in TorchRL it IS the next state (step_mdp promotes
+# it to `observation`). The route to B=2048 is therefore float16 observation
+# storage, as rl/tensor_env/train_t.py --obs-half already does; every feature is
+# normalised into about [-1, 1], so the range is safe. That changes what the
+# update sees and needs an A/B before it goes in.
+python rl/train.py --device cuda --max-minutes 25 --rb-free "$@"

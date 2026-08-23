@@ -60,8 +60,10 @@ for arm in $ARMS; do
         ;;
     trl)
         echo "=== arm B: TorchRL trainer (rl/train.py) ==="
+        # --rb-free: peak 60.97 -> 47.34 GiB at B=1024, same throughput
+        # (docs/RUNS.md 2026-08-23; see slurm/rl_train.sh for the full reading).
         python rl/train.py --device cuda --B "$B" --iters "$ITERS" \
-            --seed "$SEED" \
+            --seed "$SEED" --rb-free \
             --log "$OUT/trl.csv" --save "$OUT/trl.pt"
         ;;
     esac
