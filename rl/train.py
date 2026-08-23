@@ -442,11 +442,17 @@ def train(args, log_fn=None):
 
         if args.mem_report and i == 0:
             tot = 0
-            for key in sorted(td.keys(include_nested=True, leaves_only=True)):
+            # nested keys come back as tuples and flat ones as str, so sorting
+            # the raw keys raises TypeError: sort on the joined name instead
+            def _kname(k):
+                return ".".join(k) if isinstance(k, tuple) else str(k)
+
+            for key in sorted(td.keys(include_nested=True, leaves_only=True),
+                              key=_kname):
                 nb = td.get(key).element_size() * td.get(key).numel()
                 tot += nb
                 if nb > 2**26:  # only the keys that matter (>64 MiB)
-                    print(f"MEM key {'.'.join(key) if isinstance(key, tuple) else key:<28}"
+                    print(f"MEM key {_kname(key):<28}"
                           f" {nb/2**30:7.2f} GiB {str(tuple(td.get(key).shape)):>22}"
                           f" {td.get(key).dtype}", flush=True)
             print(f"MEM key {'TOTAL collected td':<28} {tot/2**30:7.2f} GiB", flush=True)
