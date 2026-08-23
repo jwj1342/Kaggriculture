@@ -15,10 +15,17 @@
 #
 #SBATCH --account=def-zhouyang
 #SBATCH --job-name=kg-rl-ab
+# TODO (2026-08-23): 2.5 hours is a bad shape on this cluster -- 30-minute jobs
+# started immediately where a 3-hour request queued 78 minutes. This script runs its
+# two arms SEQUENTIALLY in one job; the measured alternative is to run them in
+# PARALLEL on one card (the retained batch is 14.55 GB peaking ~22-29 GB, so two fit
+# in 80 GB, and collection is launch-latency bound so the SMs have room). Left
+# unrestructured because it is not the script currently in use -- see the resource
+# sweep in logs/profsweep-* before changing it.
 #SBATCH --time=02:30:00
 #SBATCH --gpus-per-node=h100:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16G
 #SBATCH --output=/scratch/jwj/Kaggriculture/logs/rl-ab-%j.out
 #SBATCH --error=/scratch/jwj/Kaggriculture/logs/rl-ab-%j.err
 
@@ -26,7 +33,11 @@ set -euo pipefail
 PROJECT=/scratch/jwj/Kaggriculture
 cd "$PROJECT"
 source "$PROJECT/setup_env.sh"
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
+# 1, not $SLURM_CPUS_PER_TASK: this script runs rl/train.py on the GPU, where
+# collection is one python thread issuing CUDA launches. Measured 2026-08-23:
+# TotalCPU ~= Elapsed on every training link, i.e. 0.99 of 8 cores used, and
+# fairshare bills the reservation (see slurm/rl_train.sh for the full note).
+export OMP_NUM_THREADS=1
 
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 
