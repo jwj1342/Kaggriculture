@@ -102,6 +102,8 @@ def probe(d, opp, seed, every):
     env.run([os.path.join(d, "main.py"), opp])
 
     fam_p = {k: [] for k, _ in FAMILIES}
+    fam_legal = {k: 0 for k, _ in FAMILIES}
+    n_states = 0
     ent_f, ent_m, ent_h = [], [], []
     plant_p = []
     n_legal = []
@@ -119,10 +121,12 @@ def probe(d, opp, seed, every):
             ent_f.append(_entropy(pf))
             ent_m.append(_entropy(pm))
             n_legal.append(int(mm.sum()))
+            n_states += 1
             for key, pred in FAMILIES:
                 idx = [i for i, n in enumerate(names) if pred(n) and mm[i]]
                 if idx:                       # conditioned on being LEGAL
                     fam_p[key].append(float(pm[idx].sum()))
+                    fam_legal[key] += 1
             if hl is not None and HT:
                 hmk = np.asarray(act_mod.hand_task_mask(o), dtype=bool)
                 if hmk.size and hmk.ndim == 2 and hmk.shape[0] > 0:
@@ -143,7 +147,7 @@ def probe(d, opp, seed, every):
         except Exception:
             continue
     sys.path.pop(0)
-    return fam_p, ent_f, ent_m, ent_h, plant_p, n_legal
+    return fam_p, ent_f, ent_m, ent_h, plant_p, n_legal, fam_legal, n_states
 
 
 def _med(v):
@@ -167,15 +171,15 @@ def main():
     # turns. "Dead" means both are ~0; "spiky but functional" means median ~0
     # with a real mean.
     hdr = (f"  {'agent':<20}{'H(mkt)':>7}{'ceil':>6}{'n_leg':>6}"
-           + "".join(f"{k[:11]:>15}" for k, _ in FAMILIES) + f"{'PLANT':>14}")
+           + "".join(f"{k[:11]:>21}" for k, _ in FAMILIES) + f"{'PLANT':>14}")
     print(hdr)
     print(f"  {'':<20}{'':>7}{'':>6}{'':>6}"
-          + "".join(f"{'med / mean':>15}" for _ in FAMILIES)
+          + "".join(f"{'med/mean/legal%':>21}" for _ in FAMILIES)
           + f"{'med / mean':>14}")
     for d in a.dirs:
         name = os.path.basename(d.rstrip("/"))
         try:
-            fam, ef, em, eh, pp, nl = probe(d, a.opp, a.seed, a.every)
+            fam, ef, em, eh, pp, nl, flg, ns = probe(d, a.opp, a.seed, a.every)
         except Exception as e:
             print(f"  {name:<22}  ERROR {e}")
             continue
@@ -185,7 +189,8 @@ def main():
         for k, _ in FAMILIES:
             v = fam[k]
             mn = float(np.mean(v)) if v else float("nan")
-            row += f"{_med(v)*100:>6.2f}/{mn*100:>7.2f}%"
+            lg = flg[k] / max(ns, 1)
+            row += f"{_med(v)*100:>6.2f}/{mn*100:>6.2f}/{lg*100:>5.0f}%"
         mnp = float(np.mean(pp)) if pp else float("nan")
         row += f"{_med(pp)*100:>5.1f}/{mnp*100:>6.1f}%"
         print(row)
