@@ -18,5 +18,6 @@ export MKL_NUM_THREADS="$OMP_NUM_THREADS"
 echo "TEST-META job=${SLURM_JOB_ID:-local} host=$(hostname) commit=$(git rev-parse HEAD)"
 python tests/test_infra.py
 python tests/test_stats.py
+python tests/test_macro_audit.py
 python rl/tensor_env/test_trl.py
 echo "RL-TESTS-PASS"
