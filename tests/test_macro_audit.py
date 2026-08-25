@@ -51,6 +51,9 @@ def test_options():
     assert herd["kind"] == "scale_herd"
     assert herd["animal"] == "SHEEP"
     assert herd["cost"] == 500
+    cash = M._parse_option("preserve_cash:3000")
+    assert cash["kind"] == "preserve_cash"
+    assert cash["cash_target"] == 3000
     try:
         M._parse_option("establish_crop:NOT_A_CROP")
     except ValueError:

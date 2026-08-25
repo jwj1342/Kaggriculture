@@ -58,6 +58,8 @@ _BUY_SEED = tuple(i for i, n in enumerate(A.MARKET_ACTIONS)
 _BUY_ANIMAL = tuple(i for i, n in enumerate(A.MARKET_ACTIONS)
                     if n.startswith("BUY_")
                     and n[len("BUY_"):] in A.ANIMAL_LIST)
+_PURCHASE_MARKET = tuple(i for i, n in enumerate(A.MARKET_ACTIONS)
+                         if n.startswith("BUY_") or n == "HIRE")
 
 
 def _sha256(path):
@@ -494,6 +496,12 @@ def _parse_option(text):
             "build_index": A.FARMER_ACTIONS.index(f"BUILD_{structure}"),
             "cost": engine_t.E.ANIMALS[animal]["cost"],
         }
+    if text.startswith("preserve_cash:"):
+        target = int(text.split(":", 1)[1])
+        if target <= 0:
+            raise ValueError("preserve_cash target must be positive")
+        return {"name": text, "kind": "preserve_cash",
+                "cash_target": target}
     raise ValueError(f"unknown option {text!r}")
 
 
@@ -575,10 +583,12 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     eligible = (bool(td["market_mask"][odd, option["market_index"]])
                                 and _affords_with_reserve(
                                     ep.money[odd, seat], seed_cost, cash_reserve))
-                else:
+                elif option["kind"] == "scale_herd":
                     eligible = (bool(td["market_mask"][odd, option["market_index"]])
                                 and _affords_with_reserve(
                                     ep.money[odd, seat], option["cost"], cash_reserve))
+                else:
+                    eligible = float(ep.money[odd, seat]) < option["cash_target"]
                 if eligible:
                     diff = _pair_snapshot_equal(ep, pair)
                     if diff:
@@ -600,11 +610,15 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             if elapsed >= timeout:
                 finished[pair] = True
                 completion_elapsed[pair] = timeout
-                target_key = ("land" if option["kind"] == "expand_land" else
-                              "herd" if option["kind"] == "scale_herd" else
-                              "crops")
-                completion_target_delta[pair] = (
-                    int(state[target_key][odd]) - start_value[pair][target_key])
+                if option["kind"] == "preserve_cash":
+                    completion_target_delta[pair] = (
+                        float(ep.money[odd, seat]) - start_value[pair]["money"])
+                else:
+                    target_key = ("land" if option["kind"] == "expand_land" else
+                                  "herd" if option["kind"] == "scale_herd" else
+                                  "crops")
+                    completion_target_delta[pair] = (
+                        int(state[target_key][odd]) - start_value[pair][target_key])
                 continue
             land_complete = int(state["land"][odd]) > start_value[pair]["land"]
             if option["kind"] in {"expand_land", "expand_crop"} and not land_complete:
@@ -640,6 +654,9 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         action[odd, 0] = option["place_index"]
                     elif bool(td["farmer_mask"][odd, option["build_index"]]):
                         action[odd, 0] = option["build_index"]
+            elif option["kind"] == "preserve_cash":
+                if int(action[odd, 1]) in _PURCHASE_MARKET:
+                    action[odd, 1] = 0
 
         td["action"] = action
         stepped = env.step(td)
@@ -662,18 +679,26 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 elif option["kind"] == "scale_herd":
                     success[pair] = (int(state["herd"][odd])
                                      - start_value[pair]["herd"] >= herd_target)
+                elif option["kind"] == "preserve_cash":
+                    success[pair] = (float(ep.money[odd, seat])
+                                     >= option["cash_target"])
                 else:
                     success[pair] = (int(state["crops"][odd])
                                      - start_value[pair]["crops"] >= crop_target)
                 finished[pair] = success[pair] or elapsed >= timeout
                 if finished[pair]:
                     completion_elapsed[pair] = min(timeout, elapsed)
-                    target_key = ("land" if option["kind"] == "expand_land" else
-                                  "herd" if option["kind"] == "scale_herd" else
-                                  "crops")
-                    completion_target_delta[pair] = (
-                        int(state[target_key][odd])
-                        - start_value[pair][target_key])
+                    if option["kind"] == "preserve_cash":
+                        completion_target_delta[pair] = (
+                            float(ep.money[odd, seat]) - start_value[pair]["money"])
+                    else:
+                        target_key = (
+                            "land" if option["kind"] == "expand_land" else
+                            "herd" if option["kind"] == "scale_herd" else
+                            "crops")
+                        completion_target_delta[pair] = (
+                            int(state[target_key][odd])
+                            - start_value[pair][target_key])
             for horizon in horizons:
                 key = str(horizon)
                 if observations[pair][key] is None and elapsed >= horizon:
