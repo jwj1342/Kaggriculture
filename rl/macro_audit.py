@@ -531,6 +531,33 @@ def _parse_option(text):
             "build_index": A.FARMER_ACTIONS.index(f"BUILD_{structure}"),
             "cost": engine_t.E.ANIMALS[animal]["cost"],
         }
+    if text.startswith("build_phase:"):
+        parts = text.split(":")
+        if len(parts) != 3:
+            raise ValueError(
+                "build_phase must be build_phase:<crop>:<animal>")
+        crop, animal = parts[1].upper(), parts[2].upper()
+        if crop not in A.CROP_LIST:
+            raise ValueError(f"unknown crop in option {text!r}")
+        if animal not in A.ANIMAL_LIST:
+            raise ValueError(f"unknown animal in option {text!r}")
+        structure = engine_t.E.ANIMALS[animal]["structure"]
+        return {
+            "name": text,
+            "kind": "build_phase",
+            "crop": crop,
+            "crop_index": A.CROP_LIST.index(crop),
+            "seed_market_index": A.MARKET_ACTIONS.index(f"BUY_SEED_{crop}"),
+            "plant_index": A.FARMER_ACTIONS.index(f"PLANT_{crop}"),
+            "animal": animal,
+            "animal_index": engine_t.ITEM_IDX[animal],
+            "animal_board_index": engine_t.ANIMAL_IDX[animal],
+            "animal_market_index": A.MARKET_ACTIONS.index(f"BUY_{animal}"),
+            "place_index": A.FARMER_ACTIONS.index(f"PLACE_{animal}"),
+            "build_index": A.FARMER_ACTIONS.index(f"BUILD_{structure}"),
+            "structure_code": engine_t.STRUCT_CODE[structure],
+            "animal_cost": engine_t.E.ANIMALS[animal]["cost"],
+        }
     if text.startswith("preserve_cash:"):
         target = int(text.split(":", 1)[1])
         if target <= 0:
@@ -564,6 +591,126 @@ def _paired_delta_record(base, intervention):
 
 def _affords_with_reserve(money, cost, cash_reserve):
     return float(money) >= float(cost) + float(cash_reserve)
+
+
+def _build_phase_state(ep, lane, seat, option):
+    """Observable execution state for an absolute construction milestone."""
+    animal_i = option["animal_index"]
+    return {
+        "land": 1 + int(ep.quad_unlocked[lane, seat].sum()),
+        "crops": int((ep.kind[lane, seat] == engine_t.K_PLANT).sum()),
+        "herd": int((ep.animal[lane, seat] >= 0).sum()),
+        "seeds": int(ep.seeds_t[lane, seat, option["crop_index"]]),
+        "unplaced": (
+            int(ep.shed[lane, seat, animal_i])
+            + int(ep.unit_inv[lane, seat, :, animal_i].sum())),
+        "open_structure": int((
+            (ep.kind[lane, seat] == option["structure_code"])
+            & (ep.animal[lane, seat] < 0)).sum()),
+        "wheat": (
+            int(ep.shed[lane, seat, engine_t.WHEAT_I])
+            + int(ep.unit_inv[lane, seat, :, engine_t.WHEAT_I].sum())),
+        "unfed": int(((ep.animal[lane, seat] >= 0)
+                      & ~ep.fed[lane, seat]).sum()),
+    }
+
+
+def _build_phase_complete(progress, land_target, crop_target, herd_target):
+    return (progress["land"] >= land_target
+            and progress["crops"] >= crop_target
+            and progress["herd"] >= herd_target)
+
+
+def _build_phase_delta(progress, start):
+    return {key: progress[key] - start[key]
+            for key in ("land", "crops", "herd")}
+
+
+def _apply_build_phase(action, td, ep, lane, seat, option, counters,
+                       land_target, crop_target, herd_target, cash_reserve):
+    """Advance one coupled land/crop/herd milestone with minimal overrides."""
+    p = _build_phase_state(ep, lane, seat, option)
+    money = float(ep.money[lane, seat])
+
+    # The farmer only handles construction. Repeated PLANT intent monopolises
+    # it for long walks and starves the existing farm; planting is delegated to
+    # a bounded number of hands below.
+    if p["herd"] < herd_target and p["unplaced"] > 0 and bool(
+            td["farmer_mask"][lane, option["place_index"]]):
+        if int(action[lane, 0]) != option["place_index"]:
+            counters["place_animal"] += 1
+        action[lane, 0] = option["place_index"]
+    elif (p["herd"] + p["unplaced"] < herd_target
+          and p["open_structure"] <= p["unplaced"]
+          and bool(td["farmer_mask"][lane, option["build_index"]])):
+        if int(action[lane, 0]) != option["build_index"]:
+            counters["build_structure"] += 1
+        action[lane, 0] = option["build_index"]
+
+    # Two feed and two plant workers are enough to advance the build without
+    # taking the whole crew away from AUTO's harvest/water/care dispatcher.
+    if action.shape[-1] > 2:
+        live_hands = min(int(ep.hands_n[lane, seat]), A.MAX_HANDS)
+        desired = []
+        if p["unfed"] > 0 and p["wheat"] > 0:
+            desired.extend([A.HAND_TASKS.index("FEED")] * min(2, p["unfed"]))
+        if p["crops"] < crop_target and p["seeds"] > 0:
+            desired.extend([A.HAND_TASKS.index("PLANT")] * min(2, p["seeds"]))
+        desired = desired[:live_hands]
+        desired.extend([A.HAND_TASKS.index("AUTO")]
+                       * (live_hands - len(desired)))
+        for slot, task_i in enumerate(desired):
+            if int(action[lane, 2 + slot]) != task_i:
+                counters[f"hand_{A.HAND_TASKS[task_i].lower()}"] += 1
+            action[lane, 2 + slot] = task_i
+
+    # Preserve the policy's morning hiring burst before spending on assets.
+    hour = int(ep._step % ep.turns_per_day)
+    if hour <= 3 and int(action[lane, 1]) == _HIRE:
+        return
+
+    # Capacity, daily feed, livestock, then seed. If no required purchase is
+    # affordable, preserve the frozen policy action, including income sales.
+    if p["land"] < land_target:
+        extra_land = int(ep.quad_unlocked[lane, seat].sum())
+        land_cost = engine_t.E.LAND_PRICES[
+            min(extra_land, len(engine_t.E.LAND_PRICES) - 1)]
+        if (bool(td["market_mask"][lane, _BUY_LAND])
+                and _affords_with_reserve(money, land_cost, cash_reserve)):
+            if int(action[lane, 1]) != _BUY_LAND:
+                counters["buy_land"] += 1
+            action[lane, 1] = _BUY_LAND
+            return
+
+    owned_herd = p["herd"] + p["unplaced"]
+    if owned_herd < herd_target:
+        feed_target = min(28, 3 * min(herd_target, p["herd"] + 1))
+        wheat_qty = max(5, 2 * p["herd"])
+        wheat_cost = wheat_qty * float(ep.mkt_price[lane, engine_t.WHEAT_I])
+        if (p["wheat"] < feed_target
+                and bool(td["market_mask"][lane, _BUY_WHEAT])
+                and _affords_with_reserve(money, wheat_cost, cash_reserve)):
+            if int(action[lane, 1]) != _BUY_WHEAT:
+                counters["buy_wheat"] += 1
+            action[lane, 1] = _BUY_WHEAT
+            return
+        if (p["unplaced"] == 0
+                and bool(td["market_mask"][lane, option["animal_market_index"]])
+                and _affords_with_reserve(
+                    money, option["animal_cost"], cash_reserve)):
+            if int(action[lane, 1]) != option["animal_market_index"]:
+                counters["buy_animal"] += 1
+            action[lane, 1] = option["animal_market_index"]
+            return
+
+    crop_committed = p["crops"] + p["seeds"]
+    seed_cost = engine_t.CROP_SEED_COST[option["crop_index"]]
+    if (crop_committed < crop_target
+            and bool(td["market_mask"][lane, option["seed_market_index"]])
+            and _affords_with_reserve(money, seed_cost, cash_reserve)):
+        if int(action[lane, 1]) != option["seed_market_index"]:
+            counters["buy_seed"] += 1
+        action[lane, 1] = option["seed_market_index"]
 
 
 def _operate_herd(action, td, ep, lane, seat, counters, cash_reserve):
@@ -611,7 +758,8 @@ def _operate_herd(action, td, ep, lane, seat, counters, cash_reserve):
 def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         option_text, min_day, timeout, crop_target,
                         cash_reserve=0, herd_target=2, max_trigger_money=0,
-                        max_trigger_demand_milk=-1, steps_override=0):
+                        max_trigger_demand_milk=-1, land_target=2,
+                        steps_override=0):
     _, saved, actor_net, _, multi = _load_checkpoint(checkpoint, device)
     option = _parse_option(option_text)
     kwargs = _env_kwargs(saved)
@@ -650,7 +798,9 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
         for pair in range(lanes):
             odd = 2 * pair + 1
             if not triggered[pair] and ep._step >= min_day * 24:
-                if option["kind"] in {"expand_land", "expand_crop"}:
+                if option["kind"] == "build_phase":
+                    eligible = True
+                elif option["kind"] in {"expand_land", "expand_crop"}:
                     extra_land = int(ep.quad_unlocked[odd, seat].sum())
                     land_cost = engine_t.E.LAND_PRICES[
                         min(extra_land, len(engine_t.E.LAND_PRICES) - 1)]
@@ -704,6 +854,10 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 if option["kind"] == "preserve_cash":
                     completion_target_delta[pair] = (
                         float(ep.money[odd, seat]) - start_value[pair]["money"])
+                elif option["kind"] == "build_phase":
+                    completion_target_delta[pair] = _build_phase_delta(
+                        _build_phase_state(ep, odd, seat, option),
+                        start_value[pair])
                 else:
                     target_key = ("land" if option["kind"] == "expand_land" else
                                   option["species_key"] if option["kind"] in {
@@ -715,7 +869,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         success[pair] = completion_target_delta[pair] >= herd_target
                 continue
             land_complete = int(state["land"][odd]) > start_value[pair]["land"]
-            if option["kind"] in {"expand_land", "expand_crop"} and not land_complete:
+            if option["kind"] == "build_phase":
+                _apply_build_phase(
+                    action, td, ep, odd, seat, option, forced_actions[pair],
+                    land_target, crop_target, herd_target, cash_reserve)
+            elif option["kind"] in {"expand_land", "expand_crop"} and not land_complete:
                 if bool(td["market_mask"][odd, _BUY_LAND]):
                     action[odd, 1] = _BUY_LAND
             elif option["kind"] in {"establish_crop", "expand_crop"}:
@@ -776,6 +934,10 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             if not finished[pair]:
                 if option["kind"] == "expand_land":
                     success[pair] = int(state["land"][odd]) > start_value[pair]["land"]
+                elif option["kind"] == "build_phase":
+                    success[pair] = _build_phase_complete(
+                        _build_phase_state(ep, odd, seat, option),
+                        land_target, crop_target, herd_target)
                 elif option["kind"] == "expand_crop":
                     success[pair] = (
                         int(state["land"][odd]) > start_value[pair]["land"]
@@ -800,6 +962,10 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     if option["kind"] == "preserve_cash":
                         completion_target_delta[pair] = (
                             float(ep.money[odd, seat]) - start_value[pair]["money"])
+                    elif option["kind"] == "build_phase":
+                        completion_target_delta[pair] = _build_phase_delta(
+                            _build_phase_state(ep, odd, seat, option),
+                            start_value[pair])
                     else:
                         target_key = (
                             "land" if option["kind"] == "expand_land" else
@@ -889,7 +1055,7 @@ def run_counterfactual(args):
                     args.device, option, args.min_day, args.timeout,
                     args.crop_target, args.cash_reserve, args.herd_target,
                     args.max_trigger_money, args.max_trigger_demand_milk,
-                    args.steps))
+                    args.land_target, args.steps))
 
     option_summary = {}
     for option in args.option:
@@ -935,6 +1101,7 @@ def run_counterfactual(args):
         "timeout": args.timeout,
         "crop_target": args.crop_target,
         "herd_target": args.herd_target,
+        "land_target": args.land_target,
         "cash_reserve": args.cash_reserve,
         "max_trigger_money": args.max_trigger_money or None,
         "max_trigger_demand_milk": (
@@ -981,6 +1148,8 @@ def parse_args(argv=None):
     cf.add_argument("--timeout", type=int, default=48)
     cf.add_argument("--crop-target", type=int, default=4)
     cf.add_argument("--herd-target", type=int, default=2)
+    cf.add_argument("--land-target", type=int, default=2,
+                    help="absolute land milestone for build_phase")
     cf.add_argument("--max-trigger-money", type=int, default=0,
                     help="select_herd takes the option only at or below this cash")
     cf.add_argument("--max-trigger-demand-milk", type=int, default=-1,
@@ -997,6 +1166,11 @@ def parse_args(argv=None):
         args.option = list(DEFAULT_OPTIONS)
     if args.lanes < 1:
         parser.error("--lanes must be positive")
+    if (args.command == "counterfactual"
+            and any(option.startswith("build_phase:") for option in args.option)
+            and (args.land_target < 1 or args.crop_target < 0
+                 or args.herd_target < 0)):
+        parser.error("build_phase targets must be non-negative and land >= 1")
     if (args.command == "counterfactual"
             and any(option.startswith("select_herd:") for option in args.option)
             and args.max_trigger_money <= 0

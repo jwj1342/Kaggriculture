@@ -58,6 +58,11 @@ def test_options():
     selected = M._parse_option("select_herd:sheep")
     assert selected["kind"] == "select_herd"
     assert selected["species_key"] == "sheep"
+    build = M._parse_option("build_phase:strawberry:sheep")
+    assert build["kind"] == "build_phase"
+    assert build["crop"] == "STRAWBERRY"
+    assert build["animal"] == "SHEEP"
+    assert build["structure_code"] == M.engine_t.K_PASTURE
     cash = M._parse_option("preserve_cash:3000")
     assert cash["kind"] == "preserve_cash"
     assert cash["cash_target"] == 3000
@@ -100,6 +105,16 @@ def test_cash_reserve():
     assert not M._affords_with_reserve(1999, 1000, 1000)
 
 
+def test_build_phase_milestone():
+    start = {"land": 1, "crops": 9, "herd": 4}
+    partial = {"land": 2, "crops": 32, "herd": 9}
+    done = {"land": 2, "crops": 32, "herd": 10}
+    assert not M._build_phase_complete(partial, 2, 32, 10)
+    assert M._build_phase_complete(done, 2, 32, 10)
+    assert M._build_phase_delta(done, start) == {
+        "land": 1, "crops": 23, "herd": 6}
+
+
 def test_strategic_context():
     episode = M.engine_t.EpisodeT([123], episode_steps=48, device="cpu")
     context = M._strategic_context(episode, 0, 0)
@@ -127,6 +142,7 @@ if __name__ == "__main__":
     test_options()
     test_legacy_hand_head_adaptation()
     test_cash_reserve()
+    test_build_phase_milestone()
     test_strategic_context()
     test_select_herd_context()
     print("macro audit tests passed")
