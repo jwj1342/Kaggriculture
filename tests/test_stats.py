@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
 from stats import bradley_terry, wilson, resolved, elo    # noqa: E402
-from eval import _interval_winner                           # noqa: E402
+from eval import _interval_winner, _paired_pool_summary     # noqa: E402
 
 FAILS = []
 
@@ -90,6 +90,20 @@ check("an exact coin flip never resolves", not ok and n is None)
 check("eval resolves 10/96 for B", _interval_winner(*wilson(10, 96)) == "B")
 check("eval resolves 64/96 for A", _interval_winner(*wilson(64, 96)) == "A")
 check("eval leaves 50/100 unresolved", _interval_winner(*wilson(50, 100)) is None)
+
+paired = _paired_pool_summary([
+    {"tag": "0|wall|0", "seed": 1, "money": [10, 5]},
+    {"tag": "1|wall|0", "seed": 1, "money": [8, 6]},
+    {"tag": "0|wall|1", "seed": 2, "money": [6, 4]},
+    {"tag": "1|wall|1", "seed": 2, "money": [7, 3]},
+])
+check("pool comparison pairs candidate, seed, opponent, and seat",
+      approx(paired["all"]["margin"]["mean"], 2.5))
+check("pool comparison reports own and opponent money effects",
+      approx(paired["all"]["money"]["mean"], 1.5)
+      and approx(paired["all"]["opponent_money"]["mean"], -1.0))
+check("pool comparison clusters intervals by seed",
+      paired["all"]["seed_clusters"] == 2)
 
 # --- elo -------------------------------------------------------------------
 e = elo({"a": 4.0, "b": 1.0, "c": 0.25})

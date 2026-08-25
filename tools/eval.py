@@ -141,6 +141,65 @@ def _summarise(name, records, label=""):
             "median_money": statistics.median(mine)}
 
 
+def _paired_pool_summary(results):
+    """Compare pool candidates on matched opponent/seed/seat cells.
+
+    The four observations from one seed are correlated, so confidence
+    intervals bootstrap seed-level means rather than pretending every seat
+    and opponent is an independent draw.
+    """
+    cells = defaultdict(dict)
+    for record in results:
+        candidate, opponent, seat_text = record["tag"].split("|")
+        seat = int(seat_text)
+        mine, theirs = ((record["money"][0], record["money"][1]) if seat == 0
+                        else (record["money"][1], record["money"][0]))
+        cells[(int(record["seed"]), opponent, seat)][candidate] = (mine, theirs)
+
+    rows = []
+    for (seed, opponent, seat), cell in cells.items():
+        if set(cell) != {"0", "1"}:
+            raise ValueError(
+                f"incomplete candidate pair for seed={seed} opponent={opponent} "
+                f"seat={seat}: {sorted(cell)}")
+        am, ao = cell["0"]
+        bm, bo = cell["1"]
+        aw = float(am > ao) + 0.5 * float(am == ao)
+        bw = float(bm > bo) + 0.5 * float(bm == bo)
+        rows.append({
+            "seed": seed,
+            "opponent": opponent,
+            "seat": seat,
+            "margin": (am - ao) - (bm - bo),
+            "money": am - bm,
+            "opponent_money": ao - bo,
+            "win": aw - bw,
+        })
+
+    def summarise(subset):
+        by_seed = defaultdict(lambda: defaultdict(list))
+        for row in subset:
+            for metric in ("margin", "money", "opponent_money", "win"):
+                by_seed[row["seed"]][metric].append(row[metric])
+        out = {"n": len(subset), "seed_clusters": len(by_seed)}
+        for metric in ("margin", "money", "opponent_money", "win"):
+            cluster_means = [statistics.mean(values[metric])
+                             for values in by_seed.values()]
+            mean, lo, hi = bootstrap_mean(cluster_means)
+            out[metric] = {"mean": mean, "ci95": [lo, hi]}
+        return out
+
+    opponents = sorted({row["opponent"] for row in rows})
+    return {
+        "all": summarise(rows),
+        "by_opponent": {
+            opponent: summarise([row for row in rows
+                                 if row["opponent"] == opponent])
+            for opponent in opponents
+        },
+    }
+
+
 # --------------------------------------------------------------------------
 # modes
 # --------------------------------------------------------------------------
@@ -236,6 +295,28 @@ def mode_pool(args):
         print("  VERDICT: B is better.")
     else:
         print("  VERDICT: intervals overlap -- not resolved.")
+
+    paired = _paired_pool_summary(res)
+    summaries["paired"] = paired
+    overall = paired["all"]
+    margin = overall["margin"]
+    money = overall["money"]
+    opponent_money = overall["opponent_money"]
+    win = overall["win"]
+    print(f"\n  Paired A - B over {overall['seed_clusters']} seed clusters:")
+    print(f"    margin       {margin['mean']:+12,.0f}   "
+          f"95% CI [{margin['ci95'][0]:+,.0f}, {margin['ci95'][1]:+,.0f}]")
+    print(f"    own money    {money['mean']:+12,.0f}   "
+          f"95% CI [{money['ci95'][0]:+,.0f}, {money['ci95'][1]:+,.0f}]")
+    print(f"    opponent     {opponent_money['mean']:+12,.0f}   "
+          f"95% CI [{opponent_money['ci95'][0]:+,.0f}, "
+          f"{opponent_money['ci95'][1]:+,.0f}]")
+    print(f"    win delta    {win['mean']:+12.1%}   "
+          f"95% CI [{win['ci95'][0]:+.1%}, {win['ci95'][1]:+.1%}]")
+    for opponent, row in paired["by_opponent"].items():
+        effect = row["margin"]
+        print(f"       vs {opponent:32s} {effect['mean']:+,.0f} "
+              f"[{effect['ci95'][0]:+,.0f}, {effect['ci95'][1]:+,.0f}]")
 
     if args.out:
         _dump(args.out, {"mode": "pool", "a": args.a, "b": args.b, "pool": pool,
