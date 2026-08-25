@@ -4,11 +4,14 @@ Provenance for every experiment that produced a number cited anywhere in this
 repo. Append a row when you run something; the point is that a claim can always
 be traced back to the episodes behind it.
 
-## 当前 RL 总览（截至 2026-08-24）
+## 当前 RL 总览（截至 2026-08-25）
 
 这一节是下面八千多行逐次记录的索引，不替代原始证据。结论只比较同一对手场、同一
-评估路径上的数字；本地数字不再换算成天梯分。当前没有 Slurm 作业在跑或排队，最后的
-`bzt` / `bothheads` 两条链已于 08-23 22:03 全部收口（详见文末）。
+评估路径上的数字；本地数字不再换算成天梯分。当前没有 Slurm 作业在跑或排队。08-25
+落地了统一基线/critic/行为审计、配对反事实 rollout 和受 manifest 约束的审计提交器；
+完整 Phase 0 作业 `20464277` 按用户要求在运行 2:29 后取消，没有结果、没有新判词，
+也没有据此选择 checkpoint。最后有完整训练结论的仍是 08-23 收口的 `bzt` /
+`bothheads` 两条链（详见文末）。
 
 | 阶段 | 代表 run | 真正取得的进展 | 停下来的位置 |
 |---|---|---|---|

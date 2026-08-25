@@ -1,4 +1,4 @@
-# RL TODO - 当前执行路线（2026-08-24）
+# RL TODO - 当前执行路线（2026-08-25）
 
 本文件只维护当前执行队列，不再兼作实验日记。已完成、已证伪和被取代的工作归档在
 [docs/RUNS.md](../docs/RUNS.md)，架构历史保留在 [rl/README.md](README.md)。没有新证据时，
@@ -38,6 +38,11 @@
 
 本阶段不训练新模型。
 
+进度（2026-08-25）：批量基线/critic/行为审计与配对反事实工具已在 `f6ff76a` 落地，
+受 manifest 约束的 Slurm 提交入口在 `64a99ee` 落地并通过本地及集群回归门。统一基线
+作业 `20464277` 按用户要求在运行 2:29 后取消，未形成完整结果，因此尚未选择 checkpoint，
+以下结果型项目保持未完成。
+
 - [ ] 从主树仍存在的产物中选择一个低层 checkpoint。候选包括 `chisel`、
   `longcredit`、`cropper` 和 `anvil`；必须在新的同场评估中选择，不能混用历史上不同
   panel 的数字。记录 checkpoint SHA-256、源码 commit、参数和对手场。
@@ -69,7 +74,7 @@
 
 ### 测量
 
-- [ ] 基于 `EpisodeT` 与 `bank_t.fork/restore` 实现批量审计工具。
+- [x] 基于 `EpisodeT` 与 `bank_t.fork/restore` 实现批量审计工具（`rl/macro_audit.py`）。
 - [ ] 测量 24、72、168 回合后及终局的配对差值。中间的 `future_worth` 只作诊断；
   终局 money、margin、wins 是主指标，因为 potential 本身已有代理失真记录。
 - [ ] 按 trigger、day、Option、opponent、seat 分层报告。不能把一次稀有且有价值的开局
