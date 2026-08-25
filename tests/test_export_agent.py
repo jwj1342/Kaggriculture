@@ -87,6 +87,47 @@ def test_sheep_option_threshold_skip_is_final():
         assert ns["_sheep_option"](obs, action) is action
 
 
+def test_sheep_option_can_reconsider_after_success():
+    action = {"farmer": ["PASS"], "hands": [], "market": []}
+    with tempfile.TemporaryDirectory() as tmp:
+        path = export_agent.write_agent_dir(
+            _DummyPolicy(), os.path.join(tmp, "repeat"),
+            sheep_cash_max=1900, sheep_min_day=4, sheep_timeout=96,
+            sheep_max_additions=2)
+        ns = _namespace(path)
+        obs = _eligible_obs()
+        assert ns["_sheep_option"](obs, action)["market"] == [
+            ["BUY_ANIMAL", "SHEEP", 1]]
+
+        first_done = copy.deepcopy(obs)
+        first_done["step"] += 1
+        first_done["farms"][0]["tiles"][0][0] = {
+            "kind": "PASTURE", "animal": "SHEEP", "yield_units": 0,
+            "fed_today": True, "cared_today": True,
+            "fertilizer_available": False,
+        }
+        assert ns["_sheep_option"](first_done, action) is action
+
+        second = copy.deepcopy(first_done)
+        second["step"] += 1
+        second["farms"][0]["money"] = 1800.0
+        assert ns["_sheep_option"](second, action)["market"] == [
+            ["BUY_ANIMAL", "SHEEP", 1]]
+
+        second_done = copy.deepcopy(second)
+        second_done["step"] += 1
+        second_done["farms"][0]["tiles"][0][1] = {
+            "kind": "PASTURE", "animal": "SHEEP", "yield_units": 0,
+            "fed_today": True, "cared_today": True,
+            "fertilizer_available": False,
+        }
+        assert ns["_sheep_option"](second_done, action) is action
+
+        # The configured addition budget is exhausted.
+        later = copy.deepcopy(second_done)
+        later["step"] += 1
+        assert ns["_sheep_option"](later, action) is action
+
 def test_sheep_option_parameter_validation():
     with tempfile.TemporaryDirectory() as tmp:
         try:
@@ -101,5 +142,6 @@ def test_sheep_option_parameter_validation():
 if __name__ == "__main__":
     test_sheep_option_lifecycle()
     test_sheep_option_threshold_skip_is_final()
+    test_sheep_option_can_reconsider_after_success()
     test_sheep_option_parameter_validation()
     print("export agent tests passed")

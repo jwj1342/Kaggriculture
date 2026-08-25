@@ -68,11 +68,13 @@ _RNG = np.random.default_rng(20260820)
 _SHEEP_CASH_MAX = {sheep_cash_max}
 _SHEEP_MIN_DAY = {sheep_min_day}
 _SHEEP_TIMEOUT = {sheep_timeout}
+_SHEEP_MAX_ADDITIONS = {sheep_max_additions}
 _SHEEP_LAST_STEP = -1
 _SHEEP_DECIDED = False
 _SHEEP_ACTIVE = False
 _SHEEP_TRIGGER_STEP = -1
 _SHEEP_START = 0
+_SHEEP_COMPLETED = 0
 
 
 def _pick(logits):
@@ -92,9 +94,9 @@ def _count_sheep(farm):
 
 
 def _sheep_option(obs, action):
-    """One-shot FOLLOW_POLICY/BUY_ONE_SHEEP controller; disabled at cash 0."""
+    """Bounded FOLLOW_POLICY/BUY_ONE_SHEEP controller; disabled at cash 0."""
     global _SHEEP_LAST_STEP, _SHEEP_DECIDED, _SHEEP_ACTIVE
-    global _SHEEP_TRIGGER_STEP, _SHEEP_START
+    global _SHEEP_TRIGGER_STEP, _SHEEP_START, _SHEEP_COMPLETED
     if _SHEEP_CASH_MAX <= 0:
         return action
     try:
@@ -104,6 +106,7 @@ def _sheep_option(obs, action):
             _SHEEP_ACTIVE = False
             _SHEEP_TRIGGER_STEP = -1
             _SHEEP_START = 0
+            _SHEEP_COMPLETED = 0
         _SHEEP_LAST_STEP = step
 
         player = int(obs.get("player", 0) or 0)
@@ -114,7 +117,8 @@ def _sheep_option(obs, action):
         sheep = _count_sheep(farm)
         room = sum(int(v or 0) for v in shed.values()) < 100
 
-        if (not _SHEEP_DECIDED and step // 24 >= _SHEEP_MIN_DAY
+        if (not _SHEEP_DECIDED and _SHEEP_COMPLETED < _SHEEP_MAX_ADDITIONS
+                and step // 24 >= _SHEEP_MIN_DAY
                 and money >= 1500 and room):
             _SHEEP_DECIDED = True
             _SHEEP_ACTIVE = money <= _SHEEP_CASH_MAX
@@ -123,7 +127,12 @@ def _sheep_option(obs, action):
 
         if not _SHEEP_ACTIVE:
             return action
-        if sheep > _SHEEP_START or step - _SHEEP_TRIGGER_STEP >= _SHEEP_TIMEOUT:
+        if sheep > _SHEEP_START:
+            _SHEEP_COMPLETED += sheep - _SHEEP_START
+            _SHEEP_DECIDED = _SHEEP_COMPLETED >= _SHEEP_MAX_ADDITIONS
+            _SHEEP_ACTIVE = False
+            return action
+        if step - _SHEEP_TRIGGER_STEP >= _SHEEP_TIMEOUT:
             _SHEEP_ACTIVE = False
             return action
 
@@ -188,7 +197,8 @@ def get_last_callable(path):
 
 
 def write_agent_dir(policy, out_dir, temperature=0.0, sheep_cash_max=0,
-                    sheep_min_day=4, sheep_timeout=96):
+                    sheep_min_day=4, sheep_timeout=96,
+                    sheep_max_additions=1):
     """Write a ready-to-run numpy agent directory for `policy` and verify the
     loader contract statically. Shared by the CLI export and league promotion.
 
@@ -203,6 +213,8 @@ def write_agent_dir(policy, out_dir, temperature=0.0, sheep_cash_max=0,
         raise ValueError("sheep_min_day must be non-negative")
     if sheep_timeout <= 0:
         raise ValueError("sheep_timeout must be positive")
+    if sheep_max_additions <= 0:
+        raise ValueError("sheep_max_additions must be positive")
     os.makedirs(out_dir, exist_ok=True)
     sfx = re.sub(r"\W", "_", os.path.basename(os.path.normpath(out_dir)))
     policy.export_npz(os.path.join(out_dir, "weights.npz"))
@@ -216,7 +228,9 @@ def write_agent_dir(policy, out_dir, temperature=0.0, sheep_cash_max=0,
                 .replace("{temp}", repr(float(temperature)))
                 .replace("{sheep_cash_max}", repr(int(sheep_cash_max)))
                 .replace("{sheep_min_day}", repr(int(sheep_min_day)))
-                .replace("{sheep_timeout}", repr(int(sheep_timeout))))
+                .replace("{sheep_timeout}", repr(int(sheep_timeout)))
+                .replace("{sheep_max_additions}",
+                         repr(int(sheep_max_additions))))
     fn = get_last_callable(main_path)
     assert fn is not None and fn.__name__ == "agent", \
         f"last callable is {fn}, expected the agent"
@@ -235,6 +249,7 @@ def main():
                     help="enable the one-sheep option at or below this cash")
     ap.add_argument("--sheep-min-day", type=int, default=4)
     ap.add_argument("--sheep-timeout", type=int, default=96)
+    ap.add_argument("--sheep-max-additions", type=int, default=1)
     args = ap.parse_args()
 
     import torch
@@ -272,7 +287,8 @@ def main():
     main_path = write_agent_dir(
         policy, out_dir, temperature=args.sample,
         sheep_cash_max=args.sheep_cash_max,
-        sheep_min_day=args.sheep_min_day, sheep_timeout=args.sheep_timeout)
+        sheep_min_day=args.sheep_min_day, sheep_timeout=args.sheep_timeout,
+        sheep_max_additions=args.sheep_max_additions)
     fn = get_last_callable(main_path)
     from kg_env import KGEnv
     raw = KGEnv(opponent="starter").reset(seed=123)
