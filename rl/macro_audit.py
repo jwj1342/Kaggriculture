@@ -136,17 +136,33 @@ def critic_stats(targets, values):
     }
 
 
-def paired_summary(values, bootstrap=2000, seed=240825):
-    """Summary and deterministic bootstrap CI for paired deltas."""
+def paired_summary(values, bootstrap=2000, seed=240825, clusters=None):
+    """Summary and deterministic bootstrap CI for paired deltas.
+
+    When clusters are supplied, resample cluster means so repeated opponents
+    and seats sharing one simulator seed do not masquerade as independent
+    evidence.
+    """
     x = np.asarray(values, dtype=np.float64)
     out = _describe(x)
     if x.size < 2:
         out.update({"ci95_low": None, "ci95_high": None,
                     "positive_fraction": _finite(np.mean(x > 0)) if x.size else None})
         return out
+    sample = x
+    if clusters is not None:
+        if len(clusters) != x.size:
+            raise ValueError("clusters must match paired values")
+        grouped = defaultdict(list)
+        for cluster, value in zip(clusters, x):
+            grouped[cluster].append(float(value))
+        sample = np.asarray(
+            [np.mean(grouped[key]) for key in sorted(grouped)],
+            dtype=np.float64)
+        out["clusters"] = int(sample.size)
     rng = np.random.default_rng(seed)
-    idx = rng.integers(0, x.size, size=(bootstrap, x.size))
-    means = x[idx].mean(1)
+    idx = rng.integers(0, sample.size, size=(bootstrap, sample.size))
+    means = sample[idx].mean(1)
     out.update({
         "ci95_low": _finite(np.percentile(means, 2.5)),
         "ci95_high": _finite(np.percentile(means, 97.5)),
@@ -578,6 +594,7 @@ def _branch_metrics(env, max_state, lane):
     current = _state_metrics(ep, seat)
     return {
         "money": float(ep.money[lane, seat]),
+        "opp_money": float(ep.money[lane, opp]),
         "margin": float(ep.money[lane, seat] - ep.money[lane, opp]),
         "future_worth": float(env._pot(ep, seat)[lane]),
         **{f"final_{key}": float(value[lane]) for key, value in current.items()},
@@ -1075,7 +1092,8 @@ def run_counterfactual(args):
             "selected": sum(bool(row.get("option_selected")) for row in rows),
             "successes": sum(bool(row.get("option_success")) for row in rows),
             "metrics": {key: paired_summary(
-                [row["delta"][key] for row in rows], seed=args.seed + i)
+                [row["delta"][key] for row in rows], seed=args.seed + i,
+                clusters=[row["seed"] for row in rows])
                 for i, key in enumerate(metrics)},
             "forced_actions": {
                 key: _describe([row["forced_actions"].get(key, 0) for row in rows])

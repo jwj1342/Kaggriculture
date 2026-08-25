@@ -37,6 +37,10 @@ def test_paired_summary():
     assert pos["positive_fraction"] == 1.0
     singleton = M.paired_summary([2])
     assert singleton["ci95_low"] is None
+    clustered = M.paired_summary(
+        [10, 10, -2, -2], clusters=[1, 1, 2, 2], bootstrap=500)
+    assert clustered["clusters"] == 2
+    assert clustered["mean"] == 4
 
 
 def test_options():
