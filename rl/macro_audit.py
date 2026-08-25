@@ -647,8 +647,9 @@ def _apply_build_phase(action, td, ep, lane, seat, option, counters,
             counters["build_structure"] += 1
         action[lane, 0] = option["build_index"]
 
-    # Two feed and two plant workers are enough to advance the build without
-    # taking the whole crew away from AUTO's harvest/water/care dispatcher.
+    # Reserve at most two hands per missing task family. Prefer slots the
+    # policy already left IDLE/AUTO and leave every other hand decision intact;
+    # rewriting the entire crew to AUTO was itself a large intervention.
     if action.shape[-1] > 2:
         live_hands = min(int(ep.hands_n[lane, seat]), A.MAX_HANDS)
         desired = []
@@ -656,10 +657,15 @@ def _apply_build_phase(action, td, ep, lane, seat, option, counters,
             desired.extend([A.HAND_TASKS.index("FEED")] * min(2, p["unfed"]))
         if p["crops"] < crop_target and p["seeds"] > 0:
             desired.extend([A.HAND_TASKS.index("PLANT")] * min(2, p["seeds"]))
-        desired = desired[:live_hands]
-        desired.extend([A.HAND_TASKS.index("AUTO")]
-                       * (live_hands - len(desired)))
-        for slot, task_i in enumerate(desired):
+        idle_i = A.HAND_TASKS.index("IDLE")
+        auto_i = A.HAND_TASKS.index("AUTO")
+        slots = sorted(
+            range(live_hands),
+            key=lambda slot: (
+                int(action[lane, 2 + slot]) not in (idle_i, auto_i), slot))
+        for slot, task_i in zip(slots, desired):
+            if not bool(td["hand_mask"][lane, slot, task_i]):
+                continue
             if int(action[lane, 2 + slot]) != task_i:
                 counters[f"hand_{A.HAND_TASKS[task_i].lower()}"] += 1
             action[lane, 2 + slot] = task_i
