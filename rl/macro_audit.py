@@ -549,16 +549,17 @@ def _parse_option(text):
         }
     if text.startswith("build_phase:"):
         parts = text.split(":")
-        if len(parts) != 3:
+        if len(parts) not in (3, 6):
             raise ValueError(
-                "build_phase must be build_phase:<crop>:<animal>")
+                "build_phase must be build_phase:<crop>:<animal> or "
+                "build_phase:<crop>:<animal>:<land>:<crops>:<herd>")
         crop, animal = parts[1].upper(), parts[2].upper()
         if crop not in A.CROP_LIST:
             raise ValueError(f"unknown crop in option {text!r}")
         if animal not in A.ANIMAL_LIST:
             raise ValueError(f"unknown animal in option {text!r}")
         structure = engine_t.E.ANIMALS[animal]["structure"]
-        return {
+        parsed = {
             "name": text,
             "kind": "build_phase",
             "crop": crop,
@@ -574,6 +575,18 @@ def _parse_option(text):
             "structure_code": engine_t.STRUCT_CODE[structure],
             "animal_cost": engine_t.E.ANIMALS[animal]["cost"],
         }
+        if len(parts) == 6:
+            try:
+                land, crops, herd = (int(value) for value in parts[3:])
+            except ValueError as exc:
+                raise ValueError(
+                    f"non-integer build_phase target in {text!r}") from exc
+            if land < 1 or crops < 0 or herd < 0:
+                raise ValueError(
+                    "build_phase targets must be non-negative and land >= 1")
+            parsed["targets"] = {
+                "land": land, "crops": crops, "herd": herd}
+        return parsed
     if text.startswith("preserve_cash:"):
         target = int(text.split(":", 1)[1])
         if target <= 0:
@@ -608,6 +621,11 @@ def _paired_delta_record(base, intervention):
 
 def _affords_with_reserve(money, cost, cash_reserve):
     return float(money) >= float(cost) + float(cash_reserve)
+
+
+def _option_targets(option, land, crops, herd):
+    return option.get("targets", {
+        "land": int(land), "crops": int(crops), "herd": int(herd)})
 
 
 def _build_phase_state(ep, lane, seat, option):
@@ -785,6 +803,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         steps_override=0):
     _, saved, actor_net, _, multi = _load_checkpoint(checkpoint, device)
     option = _parse_option(option_text)
+    targets = _option_targets(
+        option, land_target, crop_target, herd_target)
+    land_target = targets["land"]
+    crop_target = targets["crops"]
+    herd_target = targets["herd"]
     kwargs = _env_kwargs(saved)
     if steps_override:
         kwargs["episode_steps"] = int(steps_override)
@@ -1051,11 +1074,111 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
         "opponent": opponent,
         "seat": seat,
         "option": option_text,
+        "targets": targets if option["kind"] == "build_phase" else None,
         "lanes": lanes,
         "triggered": len(used),
         "successes": sum(bool(row.get("option_success")) for row in used),
         "summary": summary,
         "records": records,
+    }
+
+
+def _win_from_margin(margin):
+    return float(margin > 0) + 0.5 * float(margin == 0)
+
+
+def option_oracle_summary(cells, options, seed, successful_only=False):
+    """Optimistic state-wise upper bound over independently rolled options."""
+    grouped = defaultdict(dict)
+    for cell in cells:
+        option = cell["option"]
+        for row in cell["records"]:
+            if not row.get("triggered"):
+                continue
+            key = (cell["opponent"], int(cell["seat"]), int(row["seed"]))
+            grouped[key][option] = row
+
+    oracle_rows = []
+    incomplete_states = 0
+    for (opponent, seat, state_seed), by_option in sorted(grouped.items()):
+        if any(option not in by_option for option in options):
+            incomplete_states += 1
+            continue
+        first = by_option[options[0]]["baseline"]
+        for option in options[1:]:
+            other = by_option[option]["baseline"]
+            if first != other:
+                raise AssertionError(
+                    f"baseline mismatch for oracle state "
+                    f"{opponent}@seat{seat}/seed{state_seed}")
+
+        chosen_name = "FOLLOW_POLICY"
+        chosen = first
+        for option in options:
+            row = by_option[option]
+            if successful_only and not row.get("option_success"):
+                continue
+            candidate = row["intervention"]
+            if candidate["margin"] > chosen["margin"]:
+                chosen_name, chosen = option, candidate
+        delta = _paired_delta_record(first, chosen)
+        delta["win"] = (_win_from_margin(chosen["margin"])
+                        - _win_from_margin(first["margin"]))
+        oracle_rows.append({
+            "opponent": opponent,
+            "seat": seat,
+            "seed": state_seed,
+            "choice": chosen_name,
+            "baseline": first,
+            "oracle": chosen,
+            "delta": delta,
+        })
+
+    clusters = [row["seed"] for row in oracle_rows]
+    metrics = sorted({key for row in oracle_rows for key in row["delta"]})
+    by_cell = {}
+    for opponent, seat in sorted({
+            (row["opponent"], row["seat"]) for row in oracle_rows}):
+        rows = [row for row in oracle_rows
+                if row["opponent"] == opponent and row["seat"] == seat]
+        by_cell[f"{opponent}@seat{seat}"] = {
+            "n": len(rows),
+            "baseline_wins": sum(
+                _win_from_margin(row["baseline"]["margin"]) for row in rows),
+            "oracle_wins": sum(
+                _win_from_margin(row["oracle"]["margin"]) for row in rows),
+            "baseline_margin": _describe(
+                [row["baseline"]["margin"] for row in rows]),
+            "oracle_margin": _describe(
+                [row["oracle"]["margin"] for row in rows]),
+            "margin_delta": paired_summary(
+                [row["delta"]["margin"] for row in rows],
+                seed=seed, clusters=[row["seed"] for row in rows]),
+        }
+    choices = defaultdict(int)
+    for row in oracle_rows:
+        choices[row["choice"]] += 1
+    return {
+        "label": ("completed options only" if successful_only
+                  else "all rolled option branches"),
+        "optimistic_upper_bound": True,
+        "states": len(oracle_rows),
+        "states_missing_an_option": incomplete_states,
+        "choice_counts": dict(sorted(choices.items())),
+        "baseline_wins": sum(
+            _win_from_margin(row["baseline"]["margin"])
+            for row in oracle_rows),
+        "oracle_wins": sum(
+            _win_from_margin(row["oracle"]["margin"])
+            for row in oracle_rows),
+        "metrics": {
+            key: paired_summary(
+                [row["delta"][key] for row in oracle_rows],
+                seed=seed + i, clusters=clusters)
+            for i, key in enumerate(metrics)
+        },
+        "by_cell": by_cell,
+        "records": oracle_rows,
     }
 
 
@@ -1109,6 +1232,20 @@ def run_counterfactual(args):
               f"success={option_summary[option]['successes']} "
               f"margin={margin.get('mean')}", flush=True)
 
+    oracle = None
+    if len(args.option) > 1:
+        oracle = {
+            "all_branches": option_oracle_summary(
+                cells, args.option, args.seed, successful_only=False),
+            "completed_only": option_oracle_summary(
+                cells, args.option, args.seed, successful_only=True),
+        }
+        for name, result in oracle.items():
+            margin = result["metrics"].get("margin", {})
+            print(f"ORACLE kind={name} states={result['states']} "
+                  f"wins={result['baseline_wins']}->{result['oracle_wins']} "
+                  f"margin_delta={margin.get('mean')}", flush=True)
+
     out = {
         "schema": 1,
         "mode": "counterfactual",
@@ -1137,6 +1274,7 @@ def run_counterfactual(args):
             "cells keep the same sign; option must complete and move the "
             "target behavior"),
         "summary": option_summary,
+        "oracle": oracle,
         "cells": cells,
     }
     _atomic_json(out, args.output)

@@ -67,6 +67,11 @@ def test_options():
     assert build["crop"] == "STRAWBERRY"
     assert build["animal"] == "SHEEP"
     assert build["structure_code"] == M.engine_t.K_PASTURE
+    targeted = M._parse_option("build_phase:strawberry:sheep:2:28:7")
+    assert targeted["targets"] == {"land": 2, "crops": 28, "herd": 7}
+    assert M._option_targets(targeted, 3, 9, 4) == targeted["targets"]
+    assert M._option_targets(build, 3, 9, 4) == {
+        "land": 3, "crops": 9, "herd": 4}
     cash = M._parse_option("preserve_cash:3000")
     assert cash["kind"] == "preserve_cash"
     assert cash["cash_target"] == 3000
@@ -139,6 +144,38 @@ def test_select_herd_context():
         context, max_money=1900, max_demand_milk=1)
 
 
+def test_option_oracle_summary():
+    def cell(option, interventions, successes=(True, True)):
+        records = []
+        for seed, margin, success in zip((10, 11), interventions, successes):
+            base = {"money": 100.0, "opp_money": 120.0, "margin": -20.0}
+            changed = {
+                "money": 100.0 + margin + 20.0,
+                "opp_money": 120.0,
+                "margin": float(margin),
+            }
+            records.append({
+                "seed": seed, "triggered": True,
+                "option_success": success,
+                "baseline": base, "intervention": changed,
+            })
+        return {"opponent": "wall", "seat": 0, "option": option,
+                "records": records}
+
+    cells = [cell("small", (-10, -30)),
+             cell("large", (5, 10), successes=(False, True))]
+    all_branches = M.option_oracle_summary(
+        cells, ["small", "large"], 1, successful_only=False)
+    assert all_branches["states"] == 2
+    assert all_branches["baseline_wins"] == 0
+    assert all_branches["oracle_wins"] == 2
+    assert all_branches["choice_counts"] == {"large": 2}
+    completed = M.option_oracle_summary(
+        cells, ["small", "large"], 1, successful_only=True)
+    assert completed["oracle_wins"] == 1
+    assert completed["choice_counts"] == {"large": 1, "small": 1}
+
+
 if __name__ == "__main__":
     test_discounted_returns()
     test_critic_stats()
@@ -149,4 +186,5 @@ if __name__ == "__main__":
     test_build_phase_milestone()
     test_strategic_context()
     test_select_herd_context()
+    test_option_oracle_summary()
     print("macro audit tests passed")
