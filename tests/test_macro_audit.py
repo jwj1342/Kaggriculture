@@ -44,6 +44,9 @@ def test_options():
     crop = M._parse_option("establish_crop:strawberry")
     assert crop["crop"] == "STRAWBERRY"
     assert crop["farmer_index"] >= 0 and crop["market_index"] >= 0
+    expanded = M._parse_option("expand_crop:strawberry")
+    assert expanded["kind"] == "expand_crop"
+    assert expanded["crop"] == "STRAWBERRY"
     try:
         M._parse_option("establish_crop:NOT_A_CROP")
     except ValueError:

@@ -472,11 +472,12 @@ def _repeat_forked_initial_state(env, seeds):
 def _parse_option(text):
     if text == "expand_land":
         return {"name": text, "kind": text}
-    if text.startswith("establish_crop:"):
+    if text.startswith(("establish_crop:", "expand_crop:")):
         crop = text.split(":", 1)[1].upper()
         if crop not in A.CROP_LIST:
             raise ValueError(f"unknown crop in option {text!r}")
-        return {"name": text, "kind": "establish_crop", "crop": crop,
+        kind = text.split(":", 1)[0]
+        return {"name": text, "kind": kind, "crop": crop,
                 "crop_index": A.CROP_LIST.index(crop),
                 "farmer_index": A.FARMER_ACTIONS.index(f"PLANT_{crop}"),
                 "market_index": A.MARKET_ACTIONS.index(f"BUY_SEED_{crop}")}
@@ -549,7 +550,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
         for pair in range(lanes):
             odd = 2 * pair + 1
             if not triggered[pair] and ep._step >= min_day * 24:
-                if option["kind"] == "expand_land":
+                if option["kind"] in {"expand_land", "expand_crop"}:
                     extra_land = int(ep.quad_unlocked[odd, seat].sum())
                     land_cost = engine_t.E.LAND_PRICES[
                         min(extra_land, len(engine_t.E.LAND_PRICES) - 1)]
@@ -587,10 +588,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 completion_target_delta[pair] = (
                     int(state[target_key][odd]) - start_value[pair][target_key])
                 continue
-            if option["kind"] == "expand_land":
+            land_complete = int(state["land"][odd]) > start_value[pair]["land"]
+            if option["kind"] in {"expand_land", "expand_crop"} and not land_complete:
                 if bool(td["market_mask"][odd, _BUY_LAND]):
                     action[odd, 1] = _BUY_LAND
-            else:
+            elif option["kind"] in {"establish_crop", "expand_crop"}:
                 planted = int(state["crops"][odd]) - start_value[pair]["crops"]
                 remaining = max(0, crop_target - planted)
                 crop_i = option["crop_index"]
@@ -618,6 +620,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             if not finished[pair]:
                 if option["kind"] == "expand_land":
                     success[pair] = int(state["land"][odd]) > start_value[pair]["land"]
+                elif option["kind"] == "expand_crop":
+                    success[pair] = (
+                        int(state["land"][odd]) > start_value[pair]["land"]
+                        and int(state["crops"][odd]) - start_value[pair]["crops"]
+                        >= crop_target)
                 else:
                     success[pair] = (int(state["crops"][odd])
                                      - start_value[pair]["crops"] >= crop_target)
