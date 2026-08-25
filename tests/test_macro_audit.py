@@ -100,6 +100,16 @@ def test_cash_reserve():
     assert not M._affords_with_reserve(1999, 1000, 1000)
 
 
+def test_strategic_context():
+    episode = M.engine_t.EpisodeT([123], episode_steps=48, device="cpu")
+    context = M._strategic_context(episode, 0, 0)
+    assert context["day"] == 0 and context["hour"] == 0
+    assert context["shops"] == 0
+    assert context["price_wool"] == M.engine_t.E.MARKET_PARAMS["WOOL"]["base"]
+    assert context["market_wool"] == M.engine_t.E.MARKET_I0
+    assert context["demand_wool"] == 0
+
+
 if __name__ == "__main__":
     test_discounted_returns()
     test_critic_stats()
@@ -107,4 +117,5 @@ if __name__ == "__main__":
     test_options()
     test_legacy_hand_head_adaptation()
     test_cash_reserve()
+    test_strategic_context()
     print("macro audit tests passed")

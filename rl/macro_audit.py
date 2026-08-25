@@ -262,6 +262,28 @@ def _state_metrics(ep, seat, max_state=None):
     return values
 
 
+def _strategic_context(ep, lane, seat):
+    """Small observable macro state saved at an option decision point."""
+    active = ep.shops_seq[lane] >= 0
+    if bool(active.any()):
+        demand = ep._shop_cons_t[
+            ep.shops_seq[lane, active].to(torch.int64)].sum(0)
+    else:
+        demand = torch.zeros(
+            len(engine_t.PRODUCTS), dtype=torch.int32, device=ep.device)
+    out = {
+        "day": int(ep._step // ep.turns_per_day),
+        "hour": int(ep._step % ep.turns_per_day),
+        "shops": int(active.sum()),
+    }
+    for index, item in enumerate(engine_t.PRODUCTS):
+        name = item.lower()
+        out[f"price_{name}"] = int(ep.mkt_price[lane, index])
+        out[f"market_{name}"] = int(ep.mkt_inv[lane, index])
+        out[f"demand_{name}"] = int(demand[index])
+    return out
+
+
 def _new_max_state(ep, seat):
     values = _state_metrics(ep, seat)
     return {key: value.clone() for key, value in values.items()}
@@ -657,6 +679,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         "opp_money": float(ep.money[odd, 1 - seat]),
                         "future_worth": float(env._pot(ep, seat)[odd]),
                     })
+                    start_value[pair].update(
+                        _strategic_context(ep, odd, seat))
                     if not selected[pair]:
                         finished[pair] = True
                         completion_elapsed[pair] = 0
