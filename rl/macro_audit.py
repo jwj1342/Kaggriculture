@@ -152,6 +152,42 @@ def paired_summary(values, bootstrap=2000, seed=240825):
     return out
 
 
+def adapt_legacy_hand_head(model):
+    """Pad an append-only legacy hand vocabulary without enabling new tasks."""
+    if "hands.weight" not in model:
+        return model, {"checkpoint_hand_tasks": None,
+                       "runtime_hand_tasks": A.N_HAND_TASK,
+                       "adapted": False}
+    rows, hidden = model["hands.weight"].shape
+    if rows % A.MAX_HANDS:
+        raise ValueError(
+            f"hand head has {rows} rows, not divisible by {A.MAX_HANDS} hands")
+    old_tasks = rows // A.MAX_HANDS
+    info = {"checkpoint_hand_tasks": old_tasks,
+            "runtime_hand_tasks": A.N_HAND_TASK,
+            "adapted": old_tasks != A.N_HAND_TASK}
+    if old_tasks == A.N_HAND_TASK:
+        return model, info
+    if old_tasks > A.N_HAND_TASK:
+        raise ValueError(
+            f"checkpoint has {old_tasks} hand tasks but runtime has "
+            f"{A.N_HAND_TASK}; shrinking is not safe")
+
+    out = dict(model)
+    weight, bias = model["hands.weight"], model["hands.bias"]
+    new_weight = weight.new_zeros((A.MAX_HANDS * A.N_HAND_TASK, hidden))
+    new_bias = bias.new_full((A.MAX_HANDS * A.N_HAND_TASK,), -1e9)
+    for hand in range(A.MAX_HANDS):
+        old = slice(hand * old_tasks, (hand + 1) * old_tasks)
+        new = slice(hand * A.N_HAND_TASK,
+                    hand * A.N_HAND_TASK + old_tasks)
+        new_weight[new] = weight[old]
+        new_bias[new] = bias[old]
+    out["hands.weight"], out["hands.bias"] = new_weight, new_bias
+    info["new_task_logits"] = "disabled at -1e9; legacy task rows copied exactly"
+    return out, info
+
+
 def _load_checkpoint(path, device):
     ck = torch.load(path, map_location="cpu", weights_only=False)
     saved = dict(ck.get("args", {}))
@@ -163,7 +199,10 @@ def _load_checkpoint(path, device):
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=hidden[0], hidden2=hidden[1], v_hidden=v_hidden,
         device=device, residual_base=residual, multi=multi)
-    load_merged_state_dict(actor_net, critic_net, ck["model"])
+    model, compatibility = adapt_legacy_hand_head(ck["model"])
+    load_merged_state_dict(actor_net, critic_net, model)
+    ck = dict(ck)
+    ck["audit_compatibility"] = compatibility
     actor_net.eval()
     critic_net.eval()
     return ck, saved, actor_net, critic_net, multi
@@ -326,6 +365,7 @@ def run_baseline(args):
     for checkpoint in args.checkpoint:
         checkpoint = str(Path(checkpoint))
         ck = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        _, compatibility = adapt_legacy_hand_head(ck["model"])
         manifests[checkpoint] = {
             "sha256": _sha256(checkpoint),
             "iter": int(ck.get("iter", -1)),
@@ -335,6 +375,7 @@ def run_baseline(args):
                 "training commit is not embedded, so reproducibility is "
                 "anchored by this hash and the audit source commit"),
             "checkpoint_args": ck.get("args", {}),
+            "compatibility": compatibility,
         }
         for opponent in args.opponent:
             for seat in (0, 1):
@@ -627,9 +668,12 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
 
 
 def run_counterfactual(args):
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    _, compatibility = adapt_legacy_hand_head(checkpoint["model"])
     manifest = {
         "path": args.checkpoint,
         "sha256": _sha256(args.checkpoint),
+        "compatibility": compatibility,
     }
     cells = []
     for option in args.option:

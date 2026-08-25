@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -51,9 +52,36 @@ def test_options():
         raise AssertionError("unknown crop should fail")
 
 
+def test_legacy_hand_head_adaptation():
+    old_tasks = 8
+    hidden = 3
+    rows = M.A.MAX_HANDS * old_tasks
+    weight = torch.arange(rows * hidden, dtype=torch.float32).view(rows, hidden)
+    bias = torch.arange(rows, dtype=torch.float32)
+    adapted, info = M.adapt_legacy_hand_head(
+        {"hands.weight": weight, "hands.bias": bias, "other": torch.ones(1)})
+    assert info["checkpoint_hand_tasks"] == old_tasks
+    assert info["runtime_hand_tasks"] == M.A.N_HAND_TASK
+    assert info["adapted"]
+    got_w = adapted["hands.weight"].view(M.A.MAX_HANDS, M.A.N_HAND_TASK, hidden)
+    got_b = adapted["hands.bias"].view(M.A.MAX_HANDS, M.A.N_HAND_TASK)
+    old_w = weight.view(M.A.MAX_HANDS, old_tasks, hidden)
+    old_b = bias.view(M.A.MAX_HANDS, old_tasks)
+    assert torch.equal(got_w[:, :old_tasks], old_w)
+    assert torch.equal(got_b[:, :old_tasks], old_b)
+    assert torch.equal(got_w[:, old_tasks:], torch.zeros_like(got_w[:, old_tasks:]))
+    assert torch.equal(got_b[:, old_tasks:],
+                       torch.full_like(got_b[:, old_tasks:], -1e9))
+
+    current, current_info = M.adapt_legacy_hand_head(adapted)
+    assert current is adapted
+    assert not current_info["adapted"]
+
+
 if __name__ == "__main__":
     test_discounted_returns()
     test_critic_stats()
     test_paired_summary()
     test_options()
+    test_legacy_hand_head_adaptation()
     print("macro audit tests passed")
