@@ -78,10 +78,16 @@ def test_legacy_hand_head_adaptation():
     assert not current_info["adapted"]
 
 
+def test_cash_reserve():
+    assert M._affords_with_reserve(2000, 1000, 1000)
+    assert not M._affords_with_reserve(1999, 1000, 1000)
+
+
 if __name__ == "__main__":
     test_discounted_returns()
     test_critic_stats()
     test_paired_summary()
     test_options()
     test_legacy_hand_head_adaptation()
+    test_cash_reserve()
     print("macro audit tests passed")
