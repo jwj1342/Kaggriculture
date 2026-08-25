@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 import slurm_audit as audit  # noqa: E402
 import submit_rl             # noqa: E402
+import submit_macro_audit    # noqa: E402
 import run_preflight         # noqa: E402
 
 
@@ -103,10 +104,33 @@ def test_input_hash():
             raise AssertionError("changed input artifact was accepted")
 
 
+def test_macro_audit_submit():
+    args = SimpleNamespace(run="phase0", cpus=4, mem_gb=12, minutes=20)
+    run_dir = submit_macro_audit.ROOT / "rl" / "runs" / "phase0"
+    manifest = run_dir / "submission.json"
+    command = submit_macro_audit.build_command(
+        args, ["baseline", "--checkpoint", "model.pt"], run_dir, manifest)
+    assert "--cpus-per-task=4" in command
+    assert "--mem=12G" in command
+    assert "--time=00:20:00" in command
+    assert any(value == f"--export=ALL,KG_RUN_MANIFEST={manifest}"
+               for value in command)
+    assert command[-2:] == ["--output", str(run_dir / "result.json")]
+    assert submit_macro_audit._validate_audit_args(
+        ["--", "counterfactual", "--checkpoint", "model.pt"])[0] == "counterfactual"
+    try:
+        submit_macro_audit._validate_audit_args(["baseline", "--output=x.json"])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("managed output flag was accepted")
+
+
 if __name__ == "__main__":
     test_duration()
     test_gpu_csv()
     test_timing_csv()
     test_submit_chain()
     test_input_hash()
+    test_macro_audit_submit()
     print("infra tests passed")

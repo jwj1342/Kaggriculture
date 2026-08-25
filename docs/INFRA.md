@@ -22,7 +22,7 @@ occupancy；因此它能否定“整段空转”，不能证明 kernel 已经高
 工作仍是缩短 rollout 内的 719 次环境/策略小算子循环，或在通过行为 A/B 后压缩
 observation，而不是增加 PPO epochs、CPU 核数或同卡进程。
 
-## 唯一正式提交入口
+## 正式提交入口
 
 ```bash
 source setup_env.sh
@@ -55,6 +55,19 @@ python tools/submit_rl.py --run option-cf-gpu-v1 --backend gpu --links 2 \
 故障诊断，不用于可比较实验。配置、初始化 checkpoint、residual prior、bank 与 tape
 等文件也记录 SHA-256。计算节点启动时会复核源码和这些输入；排队期间若内容变化，job
 会在训练前以退出码 42 停止，避免 manifest 与实际执行内容错位。
+
+不训练模型的 Phase 0/1 宏观审计使用独立但同样受控的入口：
+
+```bash
+python tools/submit_macro_audit.py --run macro-phase0 \
+  --hypothesis "frozen candidates differ on one fixed field" \
+  --acceptance "select by registered full-field terminal margin" -- \
+  baseline --checkpoint rl/runs/chisel/latest.pt --opponent starter
+```
+
+它固定 CPU 资源、管理输出路径，并把 checkpoint、tape 对手、完整审计参数、假设、
+阈值和 job ID 写入 `submission.json`。`slurm/rl_macro_audit.sh` 拒绝没有 manifest 的
+手工提交，避免评测作业绕过训练线已经执行的源码与输入哈希门。
 
 ## 每个 job 自动留下什么
 
