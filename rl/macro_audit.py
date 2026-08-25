@@ -601,12 +601,16 @@ def _parse_option(text):
             raise ValueError("policy_npz requires a path and temperature >= 0")
         return {"name": text, "kind": "policy_npz", "path": path,
                 "temperature": temperature}
-    if text.startswith(("build_phase:", "farm_phase:")):
+    if text.startswith(("build_phase:", "farm_phase:",
+                        "build_then_policy:")):
         parts = text.split(":")
-        if len(parts) not in (3, 6):
+        composite = parts[0] == "build_then_policy"
+        valid_lengths = (8,) if composite else (3, 6)
+        if len(parts) not in valid_lengths:
             raise ValueError(
                 "build/farm phase must be <kind>:<crop>:<animal> or "
-                "<kind>:<crop>:<animal>:<land>:<crops>:<herd>")
+                "<kind>:<crop>:<animal>:<land>:<crops>:<herd>; "
+                "build_then_policy additionally needs :<npz_path>:<temperature>")
         crop, animal = parts[1].upper(), parts[2].upper()
         if crop not in A.CROP_LIST:
             raise ValueError(f"unknown crop in option {text!r}")
@@ -629,9 +633,9 @@ def _parse_option(text):
             "structure_code": engine_t.STRUCT_CODE[structure],
             "animal_cost": engine_t.E.ANIMALS[animal]["cost"],
         }
-        if len(parts) == 6:
+        if len(parts) >= 6:
             try:
-                land, crops, herd = (int(value) for value in parts[3:])
+                land, crops, herd = (int(value) for value in parts[3:6])
             except ValueError as exc:
                 raise ValueError(
                     f"non-integer build_phase target in {text!r}") from exc
@@ -640,6 +644,17 @@ def _parse_option(text):
                     "build_phase targets must be non-negative and land >= 1")
             parsed["targets"] = {
                 "land": land, "crops": crops, "herd": herd}
+        if composite:
+            try:
+                temperature = float(parts[7])
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid policy temperature in {text!r}") from exc
+            if not parts[6] or temperature < 0:
+                raise ValueError(
+                    "build_then_policy needs an npz path and temperature >= 0")
+            parsed["path"] = parts[6]
+            parsed["temperature"] = temperature
         return parsed
     if text.startswith("preserve_cash:"):
         target = int(text.split(":", 1)[1])
@@ -877,7 +892,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
     crop_target = targets["crops"]
     herd_target = targets["herd"]
     option_actor = option_multi = option_generator = None
-    if option["kind"] == "policy_npz":
+    if option["kind"] in {"policy_npz", "build_then_policy"}:
         option_actor, option_multi = _load_export_actor(option["path"], device)
         if option_multi != multi:
             raise ValueError(
@@ -910,7 +925,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
     while True:
         action, _ = _policy(actor_net, td, multi)
         alternate_action = None
-        if option["kind"] == "policy_npz":
+        if option_actor is not None:
             alternate_action = _policy_at_temperature(
                 option_actor, td, option_multi, option["temperature"],
                 option_generator)
@@ -927,7 +942,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             if not triggered[pair] and ep._step >= min_day * 24:
                 if option["kind"] in {
                         "build_phase", "farm_phase", "hands_auto",
-                        "policy_npz"}:
+                        "policy_npz", "build_then_policy"}:
                     eligible = True
                 elif option["kind"] in {"expand_land", "expand_crop"}:
                     extra_land = int(ep.quad_unlocked[odd, seat].sum())
@@ -983,7 +998,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 if option["kind"] == "preserve_cash":
                     completion_target_delta[pair] = (
                         float(ep.money[odd, seat]) - start_value[pair]["money"])
-                elif option["kind"] in {"build_phase", "farm_phase"}:
+                elif option["kind"] in {
+                        "build_phase", "farm_phase", "build_then_policy"}:
                     completion_target_delta[pair] = _build_phase_delta(
                         _build_phase_state(ep, odd, seat, option),
                         start_value[pair])
@@ -1005,13 +1021,18 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         success[pair] = completion_target_delta[pair] >= herd_target
                 continue
             land_complete = int(state["land"][odd]) > start_value[pair]["land"]
-            if option["kind"] in {"build_phase", "farm_phase"}:
+            if option["kind"] in {
+                    "build_phase", "farm_phase", "build_then_policy"}:
                 milestone_met = _build_phase_complete(
                     _build_phase_state(ep, odd, seat, option),
                     land_target, crop_target, herd_target)
                 if option["kind"] == "farm_phase" and milestone_met:
                     _apply_auto_hands(
                         action, td, ep, odd, seat, forced_actions[pair])
+                elif option["kind"] == "build_then_policy" and milestone_met:
+                    if not torch.equal(action[odd], alternate_action[odd]):
+                        forced_actions[pair]["policy_steps"] += 1
+                    action[odd] = alternate_action[odd]
                 else:
                     _apply_build_phase(
                         action, td, ep, odd, seat, option, forced_actions[pair],
@@ -1084,7 +1105,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             if not finished[pair]:
                 if option["kind"] == "expand_land":
                     success[pair] = int(state["land"][odd]) > start_value[pair]["land"]
-                elif option["kind"] in {"build_phase", "farm_phase"}:
+                elif option["kind"] in {
+                        "build_phase", "farm_phase", "build_then_policy"}:
                     milestone_met = _build_phase_complete(
                         _build_phase_state(ep, odd, seat, option),
                         land_target, crop_target, herd_target)
@@ -1111,7 +1133,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                                      - start_value[pair]["crops"] >= crop_target)
                 persistent = option["kind"] in {
                     "operate_herd", "farm_phase", "hands_auto",
-                    "policy_npz"}
+                    "policy_npz", "build_then_policy"}
                 finished[pair] = ((success[pair] and not persistent)
                                   or elapsed >= timeout or (persistent and ep.done))
                 if finished[pair]:
@@ -1119,7 +1141,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     if option["kind"] == "preserve_cash":
                         completion_target_delta[pair] = (
                             float(ep.money[odd, seat]) - start_value[pair]["money"])
-                    elif option["kind"] in {"build_phase", "farm_phase"}:
+                    elif option["kind"] in {
+                            "build_phase", "farm_phase", "build_then_policy"}:
                         completion_target_delta[pair] = _build_phase_delta(
                             _build_phase_state(ep, odd, seat, option),
                             start_value[pair])
@@ -1191,7 +1214,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
         "seat": seat,
         "option": option_text,
         "targets": (targets if option["kind"] in {
-            "build_phase", "farm_phase"} else None),
+            "build_phase", "farm_phase", "build_then_policy"} else None),
         "lanes": lanes,
         "triggered": len(used),
         "successes": sum(bool(row.get("option_success")) for row in used),
@@ -1446,7 +1469,8 @@ def parse_args(argv=None):
     if args.lanes < 1:
         parser.error("--lanes must be positive")
     if (args.command == "counterfactual"
-            and any(option.startswith(("build_phase:", "farm_phase:"))
+            and any(option.startswith(("build_phase:", "farm_phase:",
+                                       "build_then_policy:"))
                     for option in args.option)
             and (args.land_target < 1 or args.crop_target < 0
                  or args.herd_target < 0)):

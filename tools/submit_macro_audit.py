@@ -31,6 +31,10 @@ def _audit_inputs(argv):
                 candidates.append(payload.rsplit(":", 1)[0])
             except ValueError:
                 pass
+        elif value.startswith("build_then_policy:"):
+            parts = value.split(":")
+            if len(parts) == 8:
+                candidates.append(parts[6])
 
     result = {}
     for value in candidates:

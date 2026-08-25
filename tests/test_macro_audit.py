@@ -80,6 +80,12 @@ def test_options():
     assert policy["kind"] == "policy_npz"
     assert policy["path"] == "rl/out/model/weights.npz"
     assert policy["temperature"] == 1.0
+    combo = M._parse_option(
+        "build_then_policy:strawberry:sheep:2:32:8:weights.npz:0.7")
+    assert combo["kind"] == "build_then_policy"
+    assert combo["targets"] == {"land": 2, "crops": 32, "herd": 8}
+    assert combo["path"] == "weights.npz"
+    assert combo["temperature"] == 0.7
     cash = M._parse_option("preserve_cash:3000")
     assert cash["kind"] == "preserve_cash"
     assert cash["cash_target"] == 3000
