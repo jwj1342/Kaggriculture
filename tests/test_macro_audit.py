@@ -55,6 +55,9 @@ def test_options():
     assert operated["kind"] == "operate_herd"
     assert operated["species_key"] == "sheep"
     assert operated["animal_board_index"] == M.engine_t.ANIMAL_IDX["SHEEP"]
+    selected = M._parse_option("select_herd:sheep")
+    assert selected["kind"] == "select_herd"
+    assert selected["species_key"] == "sheep"
     cash = M._parse_option("preserve_cash:3000")
     assert cash["kind"] == "preserve_cash"
     assert cash["cash_target"] == 3000

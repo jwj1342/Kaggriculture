@@ -487,7 +487,7 @@ def _parse_option(text):
                 "crop_index": A.CROP_LIST.index(crop),
                 "farmer_index": A.FARMER_ACTIONS.index(f"PLANT_{crop}"),
                 "market_index": A.MARKET_ACTIONS.index(f"BUY_SEED_{crop}")}
-    if text.startswith(("scale_herd:", "operate_herd:")):
+    if text.startswith(("scale_herd:", "operate_herd:", "select_herd:")):
         animal = text.split(":", 1)[1].upper()
         if animal not in A.ANIMAL_LIST:
             raise ValueError(f"unknown animal in option {text!r}")
@@ -581,7 +581,8 @@ def _operate_herd(action, td, ep, lane, seat, counters, cash_reserve):
 @torch.no_grad()
 def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         option_text, min_day, timeout, crop_target,
-                        cash_reserve=0, herd_target=2, steps_override=0):
+                        cash_reserve=0, herd_target=2, max_trigger_money=0,
+                        steps_override=0):
     _, saved, actor_net, _, multi = _load_checkpoint(checkpoint, device)
     option = _parse_option(option_text)
     kwargs = _env_kwargs(saved)
@@ -596,6 +597,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
     max_state = _new_max_state(ep, seat)
 
     triggered = [False] * lanes
+    selected = [False] * lanes
     trigger_step = [-1] * lanes
     finished = [False] * lanes
     success = [False] * lanes
@@ -631,7 +633,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     eligible = (bool(td["market_mask"][odd, option["market_index"]])
                                 and _affords_with_reserve(
                                     ep.money[odd, seat], seed_cost, cash_reserve))
-                elif option["kind"] in {"scale_herd", "operate_herd"}:
+                elif option["kind"] in {
+                        "scale_herd", "operate_herd", "select_herd"}:
                     eligible = (bool(td["market_mask"][odd, option["market_index"]])
                                 and _affords_with_reserve(
                                     ep.money[odd, seat], option["cost"], cash_reserve))
@@ -643,6 +646,9 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         raise AssertionError(
                             f"state diverged before trigger in pair {pair}: {diff}")
                     triggered[pair] = True
+                    selected[pair] = (
+                        option["kind"] != "select_herd"
+                        or float(ep.money[odd, seat]) <= max_trigger_money)
                     trigger_step[pair] = ep._step
                     start_value[pair] = {
                         key: int(value[odd]) for key, value in state.items()}
@@ -651,6 +657,10 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         "opp_money": float(ep.money[odd, 1 - seat]),
                         "future_worth": float(env._pot(ep, seat)[odd]),
                     })
+                    if not selected[pair]:
+                        finished[pair] = True
+                        completion_elapsed[pair] = 0
+                        completion_target_delta[pair] = 0
 
             if not triggered[pair] or finished[pair]:
                 continue
@@ -664,7 +674,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 else:
                     target_key = ("land" if option["kind"] == "expand_land" else
                                   option["species_key"] if option["kind"] in {
-                                      "scale_herd", "operate_herd"} else
+                                      "scale_herd", "operate_herd", "select_herd"} else
                                   "crops")
                     completion_target_delta[pair] = (
                         int(state[target_key][odd]) - start_value[pair][target_key])
@@ -689,7 +699,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 if remaining > 0 and bool(
                         td["farmer_mask"][odd, option["farmer_index"]]):
                     action[odd, 0] = option["farmer_index"]
-            elif option["kind"] in {"scale_herd", "operate_herd"}:
+            elif option["kind"] in {
+                    "scale_herd", "operate_herd", "select_herd"}:
                 remaining = max(0, herd_target - (
                     int(state[option["species_key"]][odd])
                     - start_value[pair][option["species_key"]]))
@@ -737,7 +748,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         int(state["land"][odd]) > start_value[pair]["land"]
                         and int(state["crops"][odd]) - start_value[pair]["crops"]
                         >= crop_target)
-                elif option["kind"] in {"scale_herd", "operate_herd"}:
+                elif option["kind"] in {
+                        "scale_herd", "operate_herd", "select_herd"}:
                     success[pair] = (
                         int(state[option["species_key"]][odd])
                         - start_value[pair][option["species_key"]] >= herd_target)
@@ -759,7 +771,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         target_key = (
                             "land" if option["kind"] == "expand_land" else
                             option["species_key"] if option["kind"] in {
-                                "scale_herd", "operate_herd"} else
+                                "scale_herd", "operate_herd", "select_herd"} else
                             "crops")
                         completion_target_delta[pair] = (
                             int(state[target_key][odd])
@@ -795,6 +807,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             "trigger_step": trigger_step[pair],
             "trigger_day": trigger_step[pair] // 24,
             "trigger_state": start_value[pair],
+            "option_selected": selected[pair],
             "option_success": success[pair],
             "option_elapsed": (completion_elapsed[pair]
                                if completion_elapsed[pair] is not None
@@ -842,7 +855,7 @@ def run_counterfactual(args):
                     args.checkpoint, opponent, seat, args.lanes, args.seed,
                     args.device, option, args.min_day, args.timeout,
                     args.crop_target, args.cash_reserve, args.herd_target,
-                    args.steps))
+                    args.max_trigger_money, args.steps))
 
     option_summary = {}
     for option in args.option:
@@ -853,6 +866,7 @@ def run_counterfactual(args):
         forced = sorted({key for row in rows for key in row["forced_actions"]})
         option_summary[option] = {
             "triggered": len(rows),
+            "selected": sum(bool(row.get("option_selected")) for row in rows),
             "successes": sum(bool(row.get("option_success")) for row in rows),
             "metrics": {key: paired_summary(
                 [row["delta"][key] for row in rows], seed=args.seed + i)
@@ -888,6 +902,7 @@ def run_counterfactual(args):
         "crop_target": args.crop_target,
         "herd_target": args.herd_target,
         "cash_reserve": args.cash_reserve,
+        "max_trigger_money": args.max_trigger_money or None,
         "options": list(args.option),
         "gate": (
             "terminal paired margin bootstrap CI excludes zero and heldout "
@@ -929,6 +944,8 @@ def parse_args(argv=None):
     cf.add_argument("--timeout", type=int, default=48)
     cf.add_argument("--crop-target", type=int, default=4)
     cf.add_argument("--herd-target", type=int, default=2)
+    cf.add_argument("--max-trigger-money", type=int, default=0,
+                    help="select_herd takes the option only at or below this cash")
     cf.add_argument("--cash-reserve", type=int, default=0,
                     help="minimum money retained after forced purchases")
     cf.add_argument("--output", required=True)
@@ -940,6 +957,10 @@ def parse_args(argv=None):
         args.option = list(DEFAULT_OPTIONS)
     if args.lanes < 1:
         parser.error("--lanes must be positive")
+    if (args.command == "counterfactual"
+            and any(option.startswith("select_herd:") for option in args.option)
+            and args.max_trigger_money <= 0):
+        parser.error("select_herd requires a positive --max-trigger-money")
     return args
 
 
