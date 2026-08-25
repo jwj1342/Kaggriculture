@@ -39,7 +39,8 @@ import features_t  # noqa: E402
 import obs as O  # noqa: E402
 import verify  # noqa: E402
 from trl_env import KGTensorEnv  # noqa: E402
-from trl_policy import build_actor_critic, load_merged_state_dict  # noqa: E402
+from trl_policy import (arrays_to_sd, build_actor_critic,
+                        load_merged_state_dict)  # noqa: E402
 
 
 PHASES = ((0, 4), (5, 11), (12, 19), (20, 29))
@@ -258,6 +259,45 @@ def _policy(actor_net, td, multi):
     else:
         action = torch.stack([fa, ma], -1)
     return action, ml.softmax(-1)
+
+
+@torch.no_grad()
+def _policy_at_temperature(actor_net, td, multi, temperature, generator):
+    if temperature <= 0:
+        return _policy(actor_net, td, multi)[0]
+    outs = actor_net(td["observation"])
+
+    def sample(logits, mask):
+        logits = logits.masked_fill(~mask, -1e9) / temperature
+        shape = logits.shape[:-1]
+        return torch.multinomial(
+            logits.softmax(-1).reshape(-1, logits.shape[-1]), 1,
+            generator=generator).squeeze(-1).reshape(shape)
+
+    fa = sample(outs[0], td["farmer_mask"])
+    ma = sample(outs[1], td["market_mask"])
+    if not multi:
+        return torch.stack([fa, ma], -1)
+    ha = sample(outs[2], td["hand_mask"])
+    return torch.cat([fa.unsqueeze(-1), ma.unsqueeze(-1), ha], -1)
+
+
+def _load_export_actor(path, device):
+    arrays = dict(np.load(path))
+    if any(key.startswith("d_") for key in arrays):
+        raise ValueError("policy_npz does not yet support residual exports")
+    hidden1, obs_dim = arrays["l1w"].shape
+    hidden2 = arrays["l2w"].shape[0]
+    if obs_dim != O.OBS_DIM:
+        raise ValueError(
+            f"policy_npz observation width {obs_dim} != runtime {O.OBS_DIM}")
+    multi = "hw" in arrays
+    _, _, actor_net, _ = build_actor_critic(
+        O.OBS_DIM, A.N_FARMER, A.N_MARKET,
+        hidden1=hidden1, hidden2=hidden2, device=device, multi=multi)
+    actor_net.load_state_dict(arrays_to_sd(arrays))
+    actor_net.eval()
+    return actor_net, multi
 
 
 def _state_metrics(ep, seat, max_state=None):
@@ -549,6 +589,18 @@ def _parse_option(text):
         }
     if text == "hands_auto":
         return {"name": text, "kind": text}
+    if text.startswith("policy_npz:"):
+        payload = text.split(":", 1)[1]
+        try:
+            path, temperature = payload.rsplit(":", 1)
+            temperature = float(temperature)
+        except ValueError as exc:
+            raise ValueError(
+                "policy_npz must be policy_npz:<path>:<temperature>") from exc
+        if not path or temperature < 0:
+            raise ValueError("policy_npz requires a path and temperature >= 0")
+        return {"name": text, "kind": "policy_npz", "path": path,
+                "temperature": temperature}
     if text.startswith(("build_phase:", "farm_phase:")):
         parts = text.split(":")
         if len(parts) not in (3, 6):
@@ -824,6 +876,14 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
     land_target = targets["land"]
     crop_target = targets["crops"]
     herd_target = targets["herd"]
+    option_actor = option_multi = option_generator = None
+    if option["kind"] == "policy_npz":
+        option_actor, option_multi = _load_export_actor(option["path"], device)
+        if option_multi != multi:
+            raise ValueError(
+                "policy_npz hand-head shape must match the baseline checkpoint")
+        option_generator = torch.Generator(device=device)
+        option_generator.manual_seed(seed + 0x5EED)
     kwargs = _env_kwargs(saved)
     if steps_override:
         kwargs["episode_steps"] = int(steps_override)
@@ -849,6 +909,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
 
     while True:
         action, _ = _policy(actor_net, td, multi)
+        alternate_action = None
+        if option["kind"] == "policy_npz":
+            alternate_action = _policy_at_temperature(
+                option_actor, td, option_multi, option["temperature"],
+                option_generator)
         # Before a pair is changed, both policy and full simulator state must
         # be identical.  This catches accidental unpaired RNG or seat drift.
         for pair in range(lanes):
@@ -861,7 +926,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             odd = 2 * pair + 1
             if not triggered[pair] and ep._step >= min_day * 24:
                 if option["kind"] in {
-                        "build_phase", "farm_phase", "hands_auto"}:
+                        "build_phase", "farm_phase", "hands_auto",
+                        "policy_npz"}:
                     eligible = True
                 elif option["kind"] in {"expand_land", "expand_crop"}:
                     extra_land = int(ep.quad_unlocked[odd, seat].sum())
@@ -925,6 +991,9 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     success[pair] = True
                     completion_target_delta[pair] = sum(
                         forced_actions[pair].values())
+                elif option["kind"] == "policy_npz":
+                    success[pair] = True
+                    completion_target_delta[pair] = timeout
                 else:
                     target_key = ("land" if option["kind"] == "expand_land" else
                                   option["species_key"] if option["kind"] in {
@@ -950,6 +1019,10 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             elif option["kind"] == "hands_auto":
                 _apply_auto_hands(
                     action, td, ep, odd, seat, forced_actions[pair])
+            elif option["kind"] == "policy_npz":
+                if not torch.equal(action[odd], alternate_action[odd]):
+                    forced_actions[pair]["policy_steps"] += 1
+                action[odd] = alternate_action[odd]
             elif option["kind"] in {"expand_land", "expand_crop"} and not land_complete:
                 if bool(td["market_mask"][odd, _BUY_LAND]):
                     action[odd, 1] = _BUY_LAND
@@ -1018,6 +1091,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     success[pair] = success[pair] or milestone_met
                 elif option["kind"] == "hands_auto":
                     success[pair] = elapsed >= timeout or bool(ep.done)
+                elif option["kind"] == "policy_npz":
+                    success[pair] = elapsed >= timeout or bool(ep.done)
                 elif option["kind"] == "expand_crop":
                     success[pair] = (
                         int(state["land"][odd]) > start_value[pair]["land"]
@@ -1035,7 +1110,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     success[pair] = (int(state["crops"][odd])
                                      - start_value[pair]["crops"] >= crop_target)
                 persistent = option["kind"] in {
-                    "operate_herd", "farm_phase", "hands_auto"}
+                    "operate_herd", "farm_phase", "hands_auto",
+                    "policy_npz"}
                 finished[pair] = ((success[pair] and not persistent)
                                   or elapsed >= timeout or (persistent and ep.done))
                 if finished[pair]:
@@ -1050,6 +1126,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     elif option["kind"] == "hands_auto":
                         completion_target_delta[pair] = sum(
                             forced_actions[pair].values())
+                    elif option["kind"] == "policy_npz":
+                        completion_target_delta[pair] = min(timeout, elapsed)
                     else:
                         target_key = (
                             "land" if option["kind"] == "expand_land" else

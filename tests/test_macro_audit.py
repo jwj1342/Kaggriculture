@@ -76,6 +76,10 @@ def test_options():
     assert farm["kind"] == "farm_phase"
     assert farm["targets"] == targeted["targets"]
     assert M._parse_option("hands_auto")["kind"] == "hands_auto"
+    policy = M._parse_option("policy_npz:rl/out/model/weights.npz:1.0")
+    assert policy["kind"] == "policy_npz"
+    assert policy["path"] == "rl/out/model/weights.npz"
+    assert policy["temperature"] == 1.0
     cash = M._parse_option("preserve_cash:3000")
     assert cash["kind"] == "preserve_cash"
     assert cash["cash_target"] == 3000
