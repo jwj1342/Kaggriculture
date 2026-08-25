@@ -80,6 +80,15 @@ def games_needed(delta_pp, z=1.96):
     return math.ceil((z * z * 0.25) / (d * d))
 
 
+def _interval_winner(lo, hi):
+    """Return the resolved side for a Wilson interval expressed in percent."""
+    if lo > 50.0:
+        return "A"
+    if hi < 50.0:
+        return "B"
+    return None
+
+
 # --------------------------------------------------------------------------
 # episode runner
 # --------------------------------------------------------------------------
@@ -117,7 +126,7 @@ def _summarise(name, records, label=""):
 
     print(f"  {name}{label}")
     print(f"    games      {n}   ({wins}W {n - wins - ties}L {ties}T)")
-    print(f"    win rate   {p:6.1%}   95% CI [{lo:.1%}, {hi:.1%}]")
+    print(f"    win rate   {p:6.1%}   95% CI [{lo:.1f}%, {hi:.1f}%]")
     print(f"    margin     {m:+12,.0f}   95% CI [{mlo:+,.0f}, {mhi:+,.0f}]")
     print(f"    own money  median {statistics.median(mine):,.0f}"
           f"   sd {statistics.pstdev(mine):,.0f}"
@@ -163,12 +172,13 @@ def mode_h2h(args):
 
     print()
     lo, hi = summary["ci"]
-    if lo > 0.5:
+    winner = _interval_winner(lo, hi)
+    if winner == "A":
         print("  VERDICT: A is better (interval entirely above 50%).")
-    elif hi < 0.5:
+    elif winner == "B":
         print("  VERDICT: B is better (interval entirely below 50%).")
     else:
-        width = (hi - lo) * 100
+        width = hi - lo
         print(f"  VERDICT: not resolved -- interval is {width:.0f} points wide and "
               f"contains 50%.")
         for d in (10, 5, 3):
@@ -218,8 +228,8 @@ def mode_pool(args):
 
     da = summaries["A"]["winrate"] - summaries["B"]["winrate"]
     print(f"  A - B win rate against the pool: {da:+.1%}")
-    print(f"  (CIs: A {summaries['A']['ci'][0]:.1%}-{summaries['A']['ci'][1]:.1%}, "
-          f"B {summaries['B']['ci'][0]:.1%}-{summaries['B']['ci'][1]:.1%})")
+    print(f"  (CIs: A {summaries['A']['ci'][0]:.1f}%-{summaries['A']['ci'][1]:.1f}%, "
+          f"B {summaries['B']['ci'][0]:.1f}%-{summaries['B']['ci'][1]:.1f}%)")
     if summaries["A"]["ci"][0] > summaries["B"]["ci"][1]:
         print("  VERDICT: A is better.")
     elif summaries["B"]["ci"][0] > summaries["A"]["ci"][1]:

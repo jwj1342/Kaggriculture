@@ -5,18 +5,17 @@
 # It does NOT cover the base85 `_TRACE` field plan below, which is the shared public meta
 # line reconstructed from public competition replays and is not the author's to license.
 # See NOTICE, and the "Provenance" section of the dataset description.
-"""The bar every candidate has to clear. Not a claim that it is "the best".
+"""A fixed historical regression anchor. Not a current ladder-strength claim.
 
 One recorded 720-turn plan wearing the shared adaptive layer from
 `agents/ref/closer_cleo.py` (see `tools/wrap.py`). It is here because two
-independent signals agree on it, which no other plan in the library manages:
+signals originally agreed on it:
 
-* **Local.** A **panel win rate** of 92.4% over 1,920 episodes -- the only
-  measure of a plan this repo trusts, defined at the top of
-  `docs/VALIDATING.md` -- against the ten strongest plans previously mined,
+* **Local.** A panel win rate of 92.4% over 1,920 episodes against the ten
+  strongest plans previously mined,
   where the best of those ten manages 79.9% on the same panel.
-* **External.** It was recorded from the team sitting at #1 on the ladder
-  (3,240). Of the 371 plans in the library, none has a higher-rated source.
+* **External (2026-08-13 snapshot).** It was recorded from the team then sitting
+  at #1 on the ladder (3,240).
 
 Read the second bullet as the real credential. `docs/ROADMAP.md` §10.5 measured
 local win% against the source team's actual ladder rating across all 100 wrapped
@@ -24,6 +23,11 @@ plans and found **no correlation at all** (pearson -0.04, spearman -0.05,
 n=100); within a single team's own episodes local win% spans 14% to 93%. So a
 local number here says a plan transplants onto an unfamiliar board -- useful,
 and necessary -- but it does not say the plan is good.
+
+The later prospective k06/topline test made the limitation decisive: the panel
+preferred k06 98.5% to this plan's 92.4%, but their converged ladder scores were
+2035.9 and 2302.2 respectively. Keep this file for regression continuity; do
+not use it to convert local results into ladder strength.
 
 The previous occupant of this file, `w39`, won 95.4% of a 477,225-episode round
 robin and was recorded from the team at **#358**. That is the whole problem in

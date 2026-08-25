@@ -1,5 +1,9 @@
 # 上手指南 —— 你的第一个小时
 
+> 本指南维护安装与第一次本地运行。项目当前结论和文档新旧关系先看
+> [`INDEX.md`](INDEX.md)；RL 实验不要从本文拼 Slurm 命令，统一按
+> [`INFRA.md`](INFRA.md) 与 [`../rl/TODO.md`](../rl/TODO.md) 执行。
+
 写给零基础加入这个仓库的人。从上到下照做，大约一小时，读完你会跑过一次真实的锦标赛，
 并读懂一个真实的结果。
 
@@ -194,19 +198,18 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 
 ## 5. 按这个顺序读知识（25 分钟）
 
-如果你离开超过几天，**先读 `docs/ROADMAP.md`** —— 它就是为这种情况写的，开头就讲
-哪些结论后来被推翻了。
+如果你离开超过几天，先读 `docs/INDEX.md` 判断哪些文件仍是当前合同，再看当前主线。
 
-1. `docs/ROADMAP.md` —— 剧本线走到哪、为什么，每条主张都附样本量（覆盖到 08-14）
-2. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。出任何数字之前读
-3. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么
-4. `docs/ROADMAP.md` §11 —— 停掉的路线：引擎改动的 A/B 记录（9 落地 / 7 被否）、
+1. `docs/INDEX.md` —— 当前合同、证据档案、历史快照和生成物怎么区分
+2. `rl/TODO.md` + `docs/RUNS.md` 顶部 —— 当前诊断、执行阶段和已有判词
+3. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。出任何数字之前读
+4. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么
+5. `docs/ROADMAP.md` §11 —— 停掉的路线：引擎改动的 A/B 记录（9 落地 / 7 被否）、
    为什么我们自己写的场地误导了我们一周
-5. `rl/README.md` —— **当前主线**：张量引擎、TorchRL 训练、第一代的复盘，
-   以及 `docs/RUNS.md` 末四条判词
-6. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读
+6. `rl/README.md` —— 张量引擎、TorchRL 训练与历代复盘
+7. `docs/INFRA.md` / `docs/SUBMISSION_POLICY.md` —— 跑集群或碰排行榜之前分别必读
 
-根目录 `README.md` 的《文档》一节按问题索引全部文档（docs/ 十份 + rl/ 四份）。
+根目录 `README.md` 的《文档》一节按问题索引，`docs/INDEX.md` 维护状态和时间边界。
 
 ## 6. 会咬你的五件事
 
@@ -237,9 +240,10 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 **这一节故意不写具体数字** —— 上一版（截至 08-12）在一周内全部过时。
 现状的单点真相只有三处，按需要查：
 
-- **天梯**：`docs/LADDER_STATE.md`（队伍分数、场上两个提交、为什么现在不提交）。
-- **主线进展**：`docs/RUNS.md` 末尾的最近几条 + `rl/TODO.md`（下一步）。
-- **两条线的分工与待办**：`docs/TODO.md` 开头。
+- **天梯历史**：`docs/LADDER_STATE.md`（08-14 快照与 08-23 更正）；实时读数跑
+  `python tools/ladder.py stats`。
+- **主线进展**：`docs/RUNS.md` 顶部总览 + `rl/TODO.md`（下一步）。
+- **两条线的分工与待办**：`docs/TODO.md` 开头；文档状态统一看 `docs/INDEX.md`。
 
 三条不随快照过时的事实：天梯顶端是「剧本 + 市场外包装」而我们的原子库是在线调度器
 （差 40 个百分点，不是调参能补的）；价值在外包装不在剧本（裸录音对带包装的 agent

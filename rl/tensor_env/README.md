@@ -137,10 +137,15 @@ snap = ep.snapshot(0)      # 与参考引擎 snapshot 同构的 dict
 3. 升级 `kaggle-environments` 后先跑 `verify.py`（链条第一环），红了先修
    `engine_np.py`，再一路向上重验。
 
-## 7. 剩余瓶颈与下一步（记录在 DESIGN.md B4b 行）
+## 7. 引擎优化余项（不是当前研究主线）
 
 每步 ~6.9k 小算子的发射开销已成地板（CPU 上每个 ~2µs，GPU 上 launch-bound
 同理）；每步残留的几处宿主同步（`hands_n.max()`、存在性表、市场循环终止
 测试）在 GPU 上是显式 sync。下一档是 CUDA graphs / 槽位融合、设备侧 MT19937
 （消掉每 lane-day ~8µs 的 `Random()` 构造），以及 B5：计划空间搜索原型
 （仓库路线 C）——本引擎每小时可评估的候选数已足够支撑。
+
+这些是引擎性能 backlog，不是 2026-08-24 的研究执行顺序。profiling 已确认 rollout
+占训练阶段约 98%，但 CPU/GPU 吞吐接近且 GPU 排队更久；当前优先做配对反事实 rollout
+和持久 Option，见 [`../TODO.md`](../TODO.md)，资源选择见
+[`../../docs/INFRA.md`](../../docs/INFRA.md)。

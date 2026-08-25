@@ -5,8 +5,7 @@
 # so iteration 0 plays exactly siege's scheduler and learns deviations.
 # The one number this run is about: does barnyard's -48k margin move.
 #
-#   sbatch slurm/rl_train.sh --config rl/configs/breach.yaml \
-#       --save rl/runs/breach/latest.pt --resume rl/runs/breach/latest.pt
+# Archived preset; submit any new derivative through tools/submit_rl.py.
 device: cuda
 B: 1024
 iters: 240

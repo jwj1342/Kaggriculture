@@ -1028,10 +1028,9 @@ Superseded by `registry.py`; kept because published results name them.
 ## Slurm wrappers
 
 Thin scripts that source the environment and call the corresponding tool.
-The tournament/eval path is CPU-only; the ONE exception to "never request a
-GPU" is `rl/` training — the batched tensor engine is real GPU work
-(rationale: `rl/tensor_env/DESIGN.md` §5). Evaluation always runs the CPU
-reference engine.
+Tournament/eval is CPU-only. RL training is device-independent; current queue
+and throughput measurements make CPU the default, with GPU reserved for a
+pre-justified exception. The full contract is `docs/INFRA.md`.
 
 | script | wraps | resources |
 |---|---|---|
@@ -1039,15 +1038,18 @@ reference engine.
 | `slurm/tournament_array.sh` | sharded tournaments (JSONL out, ingest after) | array x 32 cpus, 30 min |
 | `slurm/eval.sh` | `tools/eval.py` | 32 cpus, 32 G, 2 h |
 | `slurm/rl_setup.sh` | install `requirements/rl.txt` into the venv | 4 cpus, 15 min |
-| `slurm/rl_train.sh` | `rl/train.py` -- chainable ~50-min links via `--resume` | **GPU h100:1**, 8 cpus, 55 min |
-| `slurm/rl_ab.sh` | hand-written vs TorchRL A/B arms | **GPU h100:1**, 8 cpus |
+| `slurm/rl_test.sh` | RL trainer + infra regression gates | 2 cpus, 4 G, 10 min |
+| `slurm/rl_train_cpu.sh` | default chainable `rl/train.py` link | 16 cpus, 96 G, 30 min |
+| `slurm/rl_train.sh` | justified CUDA training link + GPU telemetry | **GPU h100:1**, 2 cpus, 16 G, 30 min |
+| `slurm/rl_ab.sh` | hand-written vs TorchRL A/B arms | **GPU h100:1**, 2 cpus |
 | `slurm/rl_bc.sh` | `rl/bc/` collect + clone + sanity | 32 cpus, CPU |
 | `slurm/rl_eval.sh` | export + ten-opponent roster + plots | 32 cpus, CPU |
 
 ```bash
 sbatch slurm/tournament.sh panel --lib agents/lib --seeds 8
-sbatch slurm/rl_train.sh --config rl/configs/<preset>.yaml \
-    --save rl/runs/<run>/latest.pt --resume rl/runs/<run>/latest.pt
+python tools/submit_rl.py --run <run> --links 2 \
+    --hypothesis "..." --acceptance "..." -- \
+    --config rl/configs/<preset>.yaml
 ```
 
 ---
@@ -1122,6 +1124,9 @@ Prefer `tournament.py` for anything new.
 
 - **main 是唯一的集成分支。** RL 线的两条实验分支（`rl-baseline`、`tensorize`）
   已于 2026-08-18 合并进 main 并继续在 main 上演进；不要基于它们开新工作。
+- **不要为每个实验永久建一个 worktree。** 2026-08-24 已清理 31 个 `gen*` 辅助树；
+  同时最多保留一个开发树和一个冻结实验树。形成判词或合并后先确认 run manifest 与需要
+  保留的产物，再移除 worktree；分支可以保留作轻量历史索引。
 - **想法要署名。** 采纳协作者的设计时，移植提交带
   `Co-authored-by: <名字> <邮箱>`（先例：Kilo 的前瞻记账势函数与逐单位多头，
   两者的移植提交都带署名进了 main）。
@@ -1130,6 +1135,9 @@ Prefer `tournament.py` for anything new.
   main 的 `rl/` 结构为准。
 - **提交信息讲"为什么"**，度量类改动附样本量；引擎/训练语义的改动必须先过
   对应的验收门（`rl/tensor_env/test_*.py`）再合。
+- **实验 commit 先于 Slurm 提交。** 正式 RL 作业统一由 `tools/submit_rl.py` 展开，
+  它会记录 commit、输入哈希、假设和验收阈值，并在计算节点复核；完整合同见
+  `docs/INFRA.md`。
 
 ---
 
@@ -1159,9 +1167,9 @@ Prefer `tournament.py` for anything new.
 ## 基本规则
 
 - **永远不要在登录节点跑重活。** 一局（约 2.7 秒）可以，锦标赛不行。
-- **锦标赛/评估负载是纯 CPU 的 —— 不要为它申请 GPU**：单线程 Python，42% 的时间
-  花在框架内部的 `deepcopy` 上。**唯一的例外是 `rl/` 训练**（批量张量引擎，
-  `slurm/rl_train.sh` / `rl_ab.sh`，h100:1）；评估永远跑 CPU 参考引擎。
+- **锦标赛/评估负载是纯 CPU 的，不要为它申请 GPU。** RL 训练也默认 CPU；H100
+  只用于有短 pilot 和吞吐证据的配置。训练必须经 `tools/submit_rl.py`，详见
+  `docs/INFRA.md`；评估永远跑 CPU 参考引擎。
 - **短任务立刻开跑，长任务排队。** 同样的工作量在 `--time=03:00:00` 加每任务 64 核下
   排了 78 分钟；在 `--time=00:30:00` 加 32 核下，十六个节点上立即开始。
 - **`$SCRATCH` 不备份**，60 天不活动会被清理（年龄取 `min(atime, ctime)`）。

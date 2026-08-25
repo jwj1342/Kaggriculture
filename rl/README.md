@@ -8,6 +8,10 @@
 （一套引擎、一套策略、可换算法），不是那面结构的墙。
 **这条线是研究性质的，一切最终验收仍走 `docs/VALIDATING.md` 的规矩。**
 
+> **阅读边界（2026-08-24）：** 当前执行队列只在 [`TODO.md`](TODO.md)，Slurm/资源规则
+> 只在 [`../docs/INFRA.md`](../docs/INFRA.md)。本文记录架构与历代复盘；“终局判词”以下
+> 是第一代历史语境，旧 TODO 编号和资源口径不再作为操作指令。
+
 ## TorchRL 统一层（2026-08-18 起）
 
 CPU 线与 GPU 线的二元性由 TorchRL 消掉：`EpisodeT` 本就是设备无关的批量
@@ -18,11 +22,15 @@ CPU 线与 GPU 线的二元性由 TorchRL 消掉：`EpisodeT` 本就是设备无
 
     pip install --no-index -r requirements/rl.txt  # 作业内装；torch 锁 ~=2.10.0（wheelhouse tensordict 的硬要求）
     python rl/tensor_env/test_trl.py               # 四道门：策略/环境/GAE 逐位对齐 + 双算法冒烟（CPU，分钟级）
-    python rl/train.py --device cuda --B 1024 --iters 60     # A/B 规模；--device cpu 同一份代码
-    sbatch slurm/rl_ab.sh                                    # 手写 vs TorchRL 同预算 A/B（本仓库唯一 GPU 作业）
+    python rl/train.py --device cpu --B 1024 --iters 2       # 登录节点只做极小 smoke
+    sbatch slurm/rl_ab.sh                                    # 手写 vs TorchRL 同预算 GPU A/B
     RUN=trl-ab CKPT=trl.pt NAME=<name> sbatch slurm/rl_eval.sh   # 导出 numpy agent + 十对手花名册 h2h
-    sbatch slurm/rl_train.sh --config rl/configs/league.yaml \
-        --save rl/runs/<run>/latest.pt --resume rl/runs/<run>/latest.pt   # 课程+league，链式短作业
+    python tools/submit_rl.py --run <run> --links 2 \
+        --hypothesis "..." --acceptance "..." -- \
+        --config rl/configs/league.yaml                      # CPU 默认，pilot + afterok 短链
+
+集群资源与记录格式以 `docs/INFRA.md` 为准。GPU 仅在 pilot 已证明需要时用
+`--backend gpu --gpu-justification "..."`；不要直接手写长 `sbatch` 链。
 
 组件对应：`tensor_env/trl_policy.py` 的 ActorNet/CriticNet 与 `policy_t.py`
 同名同序（checkpoint 键 `model` + `hidden`，`export_agent.py`、weights.npz
@@ -76,8 +84,8 @@ yaml 已够，slurm 脚本靠 `"$@"` 透传）；**不按算法开目录**（los
 | 课程（0.85 晋级、50/50 混合） | ✅ 已勾接 | `--opponents a,b,c --advance-at`（`tensor_env/trl_pool.py`） |
 | league 自博弈（mirror/history/anchor = .25/.25/.50） | ✅ 简化移植 | `--league --snapshot-every`；快照=定期+封顶，非门控晋级+指纹去重 |
 | best.pt 峰值棘轮 | ✅ 已勾接 | `--save` 时自动写同目录 `best.pt` |
-| 断点续训（链式短作业） | ✅ 已勾接 | `--resume`（model+optim+种子流+池状态）；`slurm/rl_train.sh` |
-| 脚本对手当**训练**对手 | ◐ barnyard ✅（`tensor_env/barnyard_t.py`，逐动作+全状态双门）；ghosts/spar ❌ 仍只在评估世界 | `TODO.md` #1 |
+| 断点续训（链式短作业） | ✅ 已勾接 | `--resume`（model+optim+种子流+池状态）；`tools/submit_rl.py` |
+| 脚本对手当**训练**对手 | barnyard 与 tape 对手已张量化；继续移植不再是当前路线前置条件 | `TODO.md` 旧事项收口表 |
 | kaggle-env league（PFSP、指纹去重、晋级门） | 保留参考 | `league.py`——trl_pool 是它的设备端简化移植 |
 | 评估花名册 / 计分卡 | ✅ 原样服务 | `slurm/rl_eval.sh` + `eval_summary.py` |
 
@@ -163,7 +171,8 @@ python rl/legacy/rollout.py --episodes 1 --opponent starter --seed 1000
 
 速度账：`KG_FAST_ENV` 打开后单局 ~2.6 s，即单核 ~275 步/s。框架开销
 （deepcopy 42%）动不了，所以吞吐靠进程并行：32 workers ≈ 8–9k 步/s，
-一千万步 ≈ 20 分钟。**训练是 CPU 任务，环境是瓶颈，永远不要申请 GPU。**
+一千万步 ≈ 20 分钟。**这条“CPU-only”结论只适用于本节的 legacy Python 环境。**
+当前张量训练 CPU 默认、GPU 按实测理由例外，统一以 `docs/INFRA.md` 为准。
 
 ## 3. 观测编码（`rl/obs.py`）
 
@@ -286,7 +295,7 @@ obs (4867)                          obs (4867)
 ### 6.5 尺寸与升级项
 
 - 默认 512/256 约 3M 参数（actor 侧 ~2.6M）：1 s/回合纯 CPU 约束下 numpy
-  前向 <1ms；容量实验的前置条件见 `TODO.md` #6。
+  前向 <1ms。后续容量实验已经完成并收口，见 `docs/RUNS.md` 的 `draught`/`longhaul` 判词。
 - v1 升级项（按需，不预支）：棋盘段小 CNN（编码已保留 (C,y,x) 结构）；
   需要记忆再加 GRU——先试帧堆叠（价格近 k 步差分进观测），大概率够。
 
@@ -295,8 +304,8 @@ obs (4867)                          obs (4867)
 - **PPO**，CleanRL 风格单文件自写（`rl/train_ppo.py`，M1）。不引 SB3/RLlib：
   因子化双头 + 动作掩码 + 自定义环境，自写比改框架短。两个头的 log-prob
   相加当联合动作；GAE(λ=0.95)，γ=0.999（720 步 horizon，γ 不能低）。
-- **并行**：SubprocVecEnv 式多进程 rollout worker（环境 2.6 s/局是瓶颈）。
-  调试在 salloc 交互节点，长跑 `sbatch`（CPU-only，32–64 核）。
+- **并行（legacy）**：SubprocVecEnv 式多进程 rollout worker（环境 2.6 s/局是瓶颈）。
+  这是第一代 32–64 核 CPU 方案；当前正式训练统一走 `tools/submit_rl.py`。
 - **课程**（`train_ppo.py` 里自动推进，滚动胜率 ≥0.85 进下一阶段，进阶后
   30% 的局仍抽早期对手防遗忘）：starter → barnyard → w49 → w100（后两个是
   101 录音循环赛里最弱的两条，14–15% 胜率、中位收入 ~50k——它们是「打败
@@ -410,7 +419,7 @@ barnyard 34–45k、enhanced/main 31–37k、lena/bea ~73–80k、最弱录音 ~
    势函数流动性溢价（前 $800 现金按 1.5×计）。修复后 starter/random 双
    100%（收入下限 20.9k，$0 局绝迹）。
 
-**当前交付物**（`deliverable-guarded.pt` / `rl/out/deliverable-guarded/`,
+**当时的交付物**（`deliverable-guarded.pt` / `rl/out/deliverable-guarded/`,
 1.03 亿步）：花名册 4/10 全部宽区间锁定——random 100% (+29.2k)、starter
 100% (+23.9k)、ghost-89825016 79.2% [70,86]、ghost-89830307（留出）63.5%
 [54,72]。中位收入 22–28k、下限 ~18k。ghost 全带 11.0%（后期录音健康剧本
@@ -420,12 +429,12 @@ barnyard 34–45k、enhanced/main 31–37k、lena/bea ~73–80k、最弱录音 ~
 
 1.196 亿步处四信号并发：win 平台（0.65±0.05，2,000 万步无提升）、熵单调降
 （0.68→0.51）而性能不涨、value loss 平坦、快照间各对手 ±10pp 盆地震荡
-（最新快照对 ghost-89825016 56.2% vs 冻结版同种子 79.2%）。**当前
-"容量×奖励×对手分布"配置已到边界；继续训练是围着局部最优打转。**
+（当时最新快照对 ghost-89825016 56.2% vs 冻结版同种子 79.2%）。**当时的
+“容量×奖励×对手分布”配置已到边界；继续训练是围着局部最优打转。**
 
 **终版交付物 = `deliverable-guarded.pt` / `rl/out/deliverable-guarded/`**
 （1.03 亿步快照，全花名册数字见上节：4/10 宽区间锁定）。goal 第三条
-（本地 50%）终态 4/10；第 5 分需要换配置（TODO #1/2/6 三条路线）。
+（本地 50%）终态 4/10；后续路线已实际展开并形成新判词，见 `docs/RUNS.md` 顶部总览。
 
 ## 12. 预先登记的风险
 
@@ -480,7 +489,10 @@ on-policy 梯度过不去。对照组：无 BC 的纯 PPO 五百九十万步没�
 （§11：9 个落地改动、17 次否决、几十万局 A/B）。RL 侧是 30 小时。同档
 结果说明管线健康，只是没有奇迹。
 
-### 出路（按置信度排序，前置条件见 TODO.md）
+### 当时提出的出路（已由 2026-08-24 路线表接续）
+
+> 以下四项是 2026-08-15 的原始判断。哪些已完成、证伪或降级见 `TODO.md` 的旧事项
+> 收口表；当前顺序是反事实 rollout、option-lite、离线宏观搜索、联合 HRL。
 
 1. **顺环境物理学：计划空间搜索（最高置信）**——用 43× 引擎直接进化/束搜
    720 步动作序列，跨种子跨对手评估，产出"剧本+外包装"= 仓库路线 C、
@@ -489,7 +501,7 @@ on-policy 梯度过不去。对照组：无 BC 的纯 PPO 五百九十万步没�
    难度上一个台阶。
 3. **推理期市场精确搜索**（kg_rules 价格模型逐单位精确评估 + value 网络,
    毫秒级）——给反应式策略装前瞻。
-4. 干净数据上的真容量实验（TODO #6 前置条件）。
+4. 干净数据上的真容量实验（后来由 `draught` 等完成；容量曾绑定，但不再是剩余主墙）。
 
 **一句话总结：这次收敛不是 RL 失败，而是它忠实找到了我们给它的问题的
 最优解——只是"反应式在线调度"这个问题的最优解，本来就只值这么多分。**

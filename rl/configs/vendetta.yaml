@@ -6,8 +6,7 @@
 # the objective was never the problem. Everything else is byte-identical
 # to breach.yaml.
 #
-#   sbatch slurm/rl_train.sh --config rl/configs/vendetta.yaml \
-#       --save rl/runs/vendetta/latest.pt --resume rl/runs/vendetta/latest.pt
+# Archived preset; submit any new derivative through tools/submit_rl.py.
 device: cuda
 B: 1024
 iters: 240

@@ -47,6 +47,9 @@ SEED=${SEED:-0}
 ARMS=${ARMS:-hand trl}          # ARMS=trl sbatch ... reruns one arm only
 OUT=rl/runs/trl-ab
 mkdir -p "$OUT"
+source "$PROJECT/slurm/gpu_telemetry.sh"
+start_gpu_telemetry "trl-ab"
+trap finish_gpu_telemetry EXIT
 
 echo "host=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) job=${SLURM_JOB_ID} B=$B iters=$ITERS seed=$SEED arms=$ARMS"
 

@@ -4,6 +4,10 @@ Kaggle simulation competition on the Vulcan cluster. `README.md` orients,
 `docs/ONBOARDING.md` is the full first hour. This file is the short list of
 things that are easy to get wrong.
 
+Document status is indexed in `docs/INDEX.md`. The live RL queue is only
+`rl/TODO.md`; experiment verdicts start at the top of `docs/RUNS.md`, and
+cluster execution rules live in `docs/INFRA.md`.
+
 ## Environment
 
 `source setup_env.sh` before anything — it resolves its own location, so it works
@@ -98,12 +102,18 @@ regenerate. Keep the axes orthogonal.
 ## Cluster
 
 Never run heavy work on the login node. One episode (~2.7 s) is fine; tournaments
-go through Slurm. CPU-only — **never request a GPU**; the workload is
-single-threaded Python and 42% of it is `deepcopy` inside the framework.
-The one exception is `rl/` training: the batched tensor engine is real GPU
-work (`slurm/rl_train.sh` for chained training links, `slurm/rl_ab.sh` for
-A/B arms; rationale in `rl/tensor_env/DESIGN.md` §5). Evaluation
-(`tools/eval.py`, `slurm/rl_eval.sh`) always runs the reference engine on CPU.
+go through Slurm. Evaluation is CPU-only: the workload is single-threaded Python
+and 42% of it is `deepcopy` inside the framework. RL training can use either
+device, but the current congested-cluster default is CPU (`slurm/rl_train_cpu.sh`):
+measured throughput is 6.3--10.9k sps versus H100 10.5k, while CPU starts much
+sooner. GPU training (`slurm/rl_train.sh`) requires a measured justification.
+Submit training through `tools/submit_rl.py`; profiling and resource rules are in
+`docs/INFRA.md`. Evaluation (`tools/eval.py`, `slurm/rl_eval.sh`) always runs the
+reference engine on CPU.
+
+Do not recreate the old one-worktree-per-hypothesis layout. Keep at most one
+development worktree and one frozen experiment worktree; remove them after the
+result is merged or recorded, after checking any run manifest and artifacts.
 
 Shard anything big: `sbatch --array=0-47 --cpus-per-task=32 --mem=40G
 --time=00:30:00 slurm/tournament_array.sh ...` then

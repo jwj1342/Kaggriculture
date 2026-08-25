@@ -29,6 +29,7 @@ export -> roster h2h -> eval_summary pipeline.
 import argparse
 import csv
 import inspect
+import math
 import os
 import sys
 import time
@@ -93,6 +94,11 @@ def build_parser():
     ap.add_argument("--mem-report", action="store_true",
                     help="print peak CUDA memory at each stage of iteration 0 "
                          "and the per-key byte breakdown of the collected batch")
+    ap.add_argument("--profile-timing", action="store_true",
+                    help="synchronise CUDA at phase boundaries for accurate "
+                         "collect/GAE/update timing (small profiling overhead)")
+    ap.add_argument("--timing-log", default="",
+                    help="append machine-readable per-phase timings to this CSV")
     ap.add_argument("--ent-coef", type=float, default=0.003)
     ap.add_argument("--vf-coef", type=float, default=0.5)
     ap.add_argument("--win-bonus", type=float, default=3.0)
@@ -215,6 +221,9 @@ def build_parser():
     ap.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = leave)")
     ap.add_argument("--max-minutes", type=float, default=0.0,
                     help="stop after this wall time (0 = only --iters)")
+    ap.add_argument("--min-sps", type=float, default=0.0,
+                    help="fail after an iteration below this training throughput; "
+                         "used by Slurm pilots (0 = disabled)")
     ap.add_argument("--log", default="", help="CSV of per-iteration records")
     ap.add_argument("--save", default="", help="checkpoint path after each iteration")
     ap.add_argument("--quiet", action="store_true")
@@ -306,6 +315,7 @@ def make_loss(algo, actor, critic, args):
 
 
 def train(args, log_fn=None):
+    process_started = time.perf_counter()
     if log_fn is None:
         log_fn = lambda s: print(s, flush=True)
     if args.threads > 0:
@@ -426,11 +436,39 @@ def train(args, log_fn=None):
         if not append:
             writer.writerow(["iter", "steps", "sps", "win", "money", "opp_money",
                              "pg", "vf", "ent", "sec"])
-    t_start = time.time()
+
+    timing_fields = [
+        "iter", "steps", "device", "n_steps", "startup_s", "collect_s",
+        "gae_s", "prepare_s", "update_s", "metrics_s", "probe_s",
+        "checkpoint_s", "total_s", "train_sps", "wall_sps", "cuda_peak_gib",
+    ]
+    timing_writer = timing_fh = None
+    timing_path = args.timing_log
+    if args.profile_timing and not timing_path and args.save:
+        timing_path = os.path.join(os.path.dirname(os.path.abspath(args.save)),
+                                   "timing.csv")
+    if timing_path:
+        os.makedirs(os.path.dirname(os.path.abspath(timing_path)), exist_ok=True)
+        timing_append = os.path.exists(timing_path) and os.path.getsize(timing_path) > 0
+        timing_fh = open(timing_path, "a" if timing_append else "w", newline="")
+        timing_writer = csv.DictWriter(timing_fh, fieldnames=timing_fields)
+        if not timing_append:
+            timing_writer.writeheader()
+
+    def _stamp():
+        # CUDA launches are asynchronous. Synchronisation is deliberately
+        # opt-in so normal runs retain their exact execution schedule.
+        if args.profile_timing and dev.type == "cuda":
+            torch.cuda.synchronize()
+        return time.perf_counter()
+
+    startup_s = _stamp() - process_started
+    run_started = time.perf_counter()
+    iter_ready = run_started
     for i, td in enumerate(collector):
         it = start_it + i
-        t0 = time.time()
-        t_col = t0 - (records[-1].get("_t_end", t_start) if records else t_start)
+        collect_done = _stamp()
+        t_col = collect_done - iter_ready
         frozen = total_steps < args.freeze_policy_until
 
         def _mem(stage):
@@ -460,6 +498,7 @@ def train(args, log_fn=None):
 
         with torch.no_grad():
             adv_mod(td)
+        gae_done = _stamp()
         _mem("after GAE")
         adv = td["advantage"]
         td["advantage"] = (adv - adv.mean()) / (adv.std() + 1e-8)
@@ -479,6 +518,7 @@ def train(args, log_fn=None):
             ks_coef = args.ks_coef * (
                 max(0.0, 1.0 - total_steps / args.ks_anneal)
                 if args.ks_anneal > 0 else 1.0)
+        prepare_done = _stamp()
         stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0, "ks": 0.0}
         n_mb = 0
         # SamplerWithoutReplacement over `minibatches` draws of
@@ -528,7 +568,7 @@ def train(args, log_fn=None):
 
         if dev.type == "cuda":
             torch.cuda.synchronize()
-        t_end = time.time()
+        update_done = time.perf_counter()
         # terminal money via the done mask: identical to [:, -1] while a
         # batch is whole fixed-length episodes, and still correct once
         # bank-started (variable-length) episodes land in a batch
@@ -545,18 +585,17 @@ def train(args, log_fn=None):
                + 0.5 * (money == omoney).float().mean()).item()
         n_steps = td.numel()
         total_steps += n_steps
-        sec = t_end - (records[-1].get("_t_end", t_start) if records else t_start)
+        train_sec = update_done - iter_ready
         rec = {"iter": it, "steps": total_steps, "n_steps": n_steps,
-               "sps": n_steps / sec, "win": win,
+               "sps": n_steps / train_sec, "win": win,
                "money": money.mean().item(), "opp_money": omoney.mean().item(),
                "stage": (pool.stage if pool is not None else None),
-               "sec": sec, "t_collect": t_col, "_t_end": t_end, **stats}
+               "sec": train_sec, "t_collect": t_col,
+               "t_gae": gae_done - collect_done,
+               "t_prepare": prepare_done - gae_done,
+               "t_update": update_done - prepare_done,
+               **stats}
         records.append(rec)
-        ks_s = f"ks {stats['ks']:.3f}@{ks_coef:.2f}  " if args.kickstart else ""
-        log_fn(f"it {it:3d}  steps {total_steps:>9,}  sps {rec['sps']:>8,.0f}  "
-               f"win {win:5.3f}  money {rec['money']:>9,.0f}  opp {rec['opp_money']:>8,.0f}  "
-               f"pg {stats['pg']:+.4f}  vf {stats['vf']:.4f}  ent {stats['ent']:.3f}  "
-               f"{ks_s}{sec:5.1f}s (collect {t_col:4.1f}s)")
         if pool is not None:
             ev = pool.record(win)
             env.handicap = pool.handicap  # ladder takes effect at next reset
@@ -567,6 +606,8 @@ def train(args, log_fn=None):
             if (args.league and args.snapshot_every > 0
                     and it % args.snapshot_every == 0):
                 pool.add_snapshot(actor_net, f"snap-{it:04d}")
+
+        metrics_done = _stamp()
 
         stop_reason = None
         if stopper is not None and (it + 1) % args.probe_every == 0:
@@ -579,12 +620,13 @@ def train(args, log_fn=None):
             log_fn(f"      probe: win {pw:.3f}  margin {pm:+,.0f}  "
                    f"vs stage {stage + 1} @handicap {hc}"
                    + (f"  -> STOP ({stop_reason})" if stop_reason else ""))
-        if writer:
-            writer.writerow([it, total_steps, round(rec["sps"]), round(win, 4),
-                             round(rec["money"]), round(rec["opp_money"]),
-                             round(stats["pg"], 5), round(stats["vf"], 5),
-                             round(stats["ent"], 4), round(sec, 2)])
-            fh.flush()
+        probe_done = _stamp()
+        rec["t_metrics"] = metrics_done - update_done
+        rec["t_probe"] = probe_done - metrics_done
+        finite_values = [win, rec["money"], rec["opp_money"],
+                         stats["pg"], stats["vf"], stats["ent"]]
+        if not all(math.isfinite(value) for value in finite_values):
+            raise FloatingPointError(f"non-finite training metric at iteration {it}: {rec}")
         if args.save:
             ckpt = {"model": merged_state_dict(actor_net, critic_net),
                     "optim": optim.state_dict(),
@@ -621,14 +663,65 @@ def train(args, log_fn=None):
                 best_win = win
                 ckpt["best_win"] = best_win
                 _atomic_save(ckpt, best_path)
+        checkpoint_done = _stamp()
+        rec["t_checkpoint"] = checkpoint_done - probe_done
+        rec["wall_sec"] = checkpoint_done - iter_ready
+        rec["wall_sps"] = n_steps / rec["wall_sec"]
+        rec["startup_s"] = startup_s if i == 0 else 0.0
+        if dev.type == "cuda":
+            rec["cuda_peak_gib"] = torch.cuda.max_memory_allocated() / 2**30
+
+        ks_s = f"ks {stats['ks']:.3f}@{ks_coef:.2f}  " if args.kickstart else ""
+        log_fn(f"it {it:3d}  steps {total_steps:>9,}  sps {rec['sps']:>8,.0f}  "
+               f"win {win:5.3f}  money {rec['money']:>9,.0f}  opp {rec['opp_money']:>8,.0f}  "
+               f"pg {stats['pg']:+.4f}  vf {stats['vf']:.4f}  ent {stats['ent']:.3f}  "
+               f"{ks_s}{train_sec:5.1f}s (collect {t_col:4.1f}s)")
+        log_fn("PROFILE " + " ".join([
+            f"iter={it}", f"startup_s={rec['startup_s']:.3f}",
+            f"collect_s={rec['t_collect']:.3f}", f"gae_s={rec['t_gae']:.3f}",
+            f"prepare_s={rec['t_prepare']:.3f}", f"update_s={rec['t_update']:.3f}",
+            f"metrics_s={rec['t_metrics']:.3f}", f"probe_s={rec['t_probe']:.3f}",
+            f"checkpoint_s={rec['t_checkpoint']:.3f}",
+            f"total_s={rec['wall_sec']:.3f}", f"wall_sps={rec['wall_sps']:.1f}",
+        ]))
+        if writer:
+            writer.writerow([it, total_steps, round(rec["sps"]), round(win, 4),
+                             round(rec["money"]), round(rec["opp_money"]),
+                             round(stats["pg"], 5), round(stats["vf"], 5),
+                             round(stats["ent"], 4), round(train_sec, 2)])
+            fh.flush()
+        if timing_writer:
+            timing_writer.writerow({
+                "iter": it, "steps": total_steps, "device": str(dev),
+                "n_steps": n_steps, "startup_s": f"{rec['startup_s']:.6f}",
+                "collect_s": f"{rec['t_collect']:.6f}",
+                "gae_s": f"{rec['t_gae']:.6f}",
+                "prepare_s": f"{rec['t_prepare']:.6f}",
+                "update_s": f"{rec['t_update']:.6f}",
+                "metrics_s": f"{rec['t_metrics']:.6f}",
+                "probe_s": f"{rec['t_probe']:.6f}",
+                "checkpoint_s": f"{rec['t_checkpoint']:.6f}",
+                "total_s": f"{rec['wall_sec']:.6f}",
+                "train_sps": f"{rec['sps']:.3f}",
+                "wall_sps": f"{rec['wall_sps']:.3f}",
+                "cuda_peak_gib": f"{rec.get('cuda_peak_gib', 0.0):.3f}",
+            })
+            timing_fh.flush()
+        if args.min_sps > 0 and rec["sps"] < args.min_sps:
+            raise RuntimeError(
+                f"throughput gate failed at iteration {it}: "
+                f"{rec['sps']:.0f} < {args.min_sps:.0f} lane-steps/s")
         if stop_reason:
             log_fn(f"early stop: {stop_reason} (iter {it})")
             break
-        if args.max_minutes > 0 and (t_end - t_start) / 60.0 >= args.max_minutes:
+        if args.max_minutes > 0 and (checkpoint_done - run_started) / 60.0 >= args.max_minutes:
             break
+        iter_ready = time.perf_counter()
     collector.shutdown()
     if fh:
         fh.close()
+    if timing_fh:
+        timing_fh.close()
     if args.save and records:
         try:  # charts must never fail a training run
             import plot_run

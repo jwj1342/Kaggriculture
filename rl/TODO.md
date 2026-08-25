@@ -1,203 +1,173 @@
-# rl/ TODO — 已议定但未动工的事项
+# RL TODO - 当前执行路线（2026-08-24）
 
-规则：这里的每一项都**不许**打断或修改当前正在跑的训练管线。动工时新开目录，
-旧管线保持原样直到新东西通过验证。
+本文件只维护当前执行队列，不再兼作实验日记。已完成、已证伪和被取代的工作归档在
+[docs/RUNS.md](../docs/RUNS.md)，架构历史保留在 [rl/README.md](README.md)。没有新证据时，
+不要把文末归档表里的旧项目重新排入队列。
 
-## 1. 张量化脚本对手（barnyard ✅ 2026-08-19；ghosts/spar 未动）
+## 当前诊断
 
-**barnyard 已张量化**：`tensor_env/barnyard_t.py`（决策直接产出引擎内部
-编码，经 `step_idx(..., override=)` 接缝上席位——它的全单位统一调度超出
-宏动作空间，所以走原始动作级而非宏投影）。门 `test_barn.py`：对真
-`agents/barnyard.py` **逐动作 + 逐步全状态**双重判等，5 lanes × 719 步
-全绿，终局金钱 63–85k（强度无损）。训练对手写法：`--opponents ...,barnyard`。
+剩余瓶颈是**稀有长期战略决策的信用分配**，不是吞吐、网络宽度、动作词表、对手强度，
+也不是同一 PPO 配方训练得还不够久。
 
-剩余：**ghosts/spar**（录音重放型）。两条路：录音的原始动作 → 内部编码的
-离线转换（一次性预计算 (T, ops) 表，override 逐步喂——比 barnyard 简单
-得多，但录音不还手、可被退化利用）；或维持它们只做评估对手。`enhanced`
-（另一个手写强 agent）如需张量化，走 barnyard_t 同样的样板。
+- 训练参数为 `gamma=0.999`、`lambda=0.95`。相隔 `k` 回合的 GAE 残差权重是
+  `(gamma * lambda)^k`：36 回合为 0.152，142 回合为 0.000596，200 回合为
+  0.0000287。单独的 `gamma^200` 仍为 0.819；问题来自 eligibility trace 与 critic
+  误差的组合，不能只归因于折扣。
+- BUY_SEED 到对应 PLANT 的实测延迟是中位 6 回合、均值 36、p90 142。因此长程信用是真
+  问题，但不是唯一问题：`P(BUY_SEED | legal)` 中位只有 0.02%，多数有用替代动作根本
+  没有被采样。
+- 把 lambda 提到 0.99 的 `longcredit` 在正确同场对照上只增加 689，而且建设行为没动；
+  打开市场通道的 `bzt` / `bothheads` 也没有超过免训练的 decode-only `bazaar`。
+- 现有 farmer 宏动作是无状态的单回合意图。它们缩短了走路序列，但不是持久 Option，
+  也没有把整季转换成战略层面的 Semi-MDP。
 
-## 2. 推理期市场精确优化器（讨论于 2026-08-14，ghost 里程碑后）
+## 执行纪律
 
-对 market 头做一步穷举精确评估（kg_rules.market_price 是引擎价格模型的
-镜像，卖单收益可逐单位精确算）+ value 网络评估后继状态。收敛于路线 C 的
-外包装机制。在 1 秒/回合预算内数毫秒可完成。
+1. 不再给未改变结构的 flat PPO 排新的标量奖励、词表、对手混合或单纯延长训练实验。
+2. 以下每阶段都有诊断门。门失败就停止后续阶段，不能自动退化成调小学习率或多跑几轮。
+3. 反事实比较必须使用配对 lane：相同 seed、席位、对手、RNG、checkpoint 和后续策略，
+   只改变被检验的干预。
+4. 同时最多保留一个开发 worktree 和一个冻结实验 worktree；合并或形成判词后移除，不能
+   重建“一条假说一个 gen 目录”的膨胀模式。清理前必须给 run 产物建立 manifest。
+5. 本地 money 只作诊断，不再外推天梯分。最终门看原始胜负、配对 margin、行为读数和
+   held-out 对手。
+6. 正式训练统一使用 `tools/submit_rl.py`（细则见 `docs/INFRA.md`）：已提交的干净代码、
+   预登记假设/阈值、短 pilot、`afterok` 链；默认 CPU，GPU 必须给出实测理由。
 
-## 3. 离线 N×N 联赛 Bradley-Terry 重排
+## Phase 0 - 冻结可复现基线与测量工具
 
-tools/stats.py 有现成 bradley_terry。注意：联赛成员全叫 main.py，
-**必须按目录键控读 shard JSONL**，绝不能走 ingest+ratings 表
-（basename 合并陷阱，run #22 实录）。
+本阶段不训练新模型。
 
-## 4. 榜单轨迹 BC（储备加速器）
+- [ ] 从主树仍存在的产物中选择一个低层 checkpoint。候选包括 `chisel`、
+  `longcredit`、`cropper` 和 `anvil`；必须在新的同场评估中选择，不能混用历史上不同
+  panel 的数字。记录 checkpoint SHA-256、源码 commit、参数和对手场。
+- [ ] 在 CPU 重跑 `bank_t.py` fork/restore 门，并在拿到 GPU 时补 CUDA 门。CPU 门已于
+  2026-08-24 通过：step 200 fork 后跨两个游戏日重放 64 回合，状态逐字节一致。
+- [ ] 增加分时段 critic 诊断：分别报告 day 0-4、5-11、12-19、20-29 的 explained
+  variance 或 return error。当前证据强烈指向信用坍塌，但日志只有 value loss，还没有
+  直接指出 `V(s)` 从哪个阶段开始失真。
+- [ ] 冻结一组 seed/opponent 审计场，至少包含被动对手、反应式中档对手、
+  `closer_cleo` 和一个 held-out wall。
+- [ ] 记录基线 BUY_LAND/BUY_SEED/BUY_ANIMAL/HIRE 概率，以及 land、seeds、herd、crop、
+  crew、money、margin 分布。
 
-dist/ 里 3MB、371 条真实榜首剧本。原始动作 → 宏意图需要一层反向映射，
-做之前先量映射覆盖率（README §8）。
+通过条件：checkpoint 能干净导出，配对模拟器确定性成立，并且加入任何干预前能复现基线。
 
-**op 级覆盖率已测（2026-08-20，全库 371 条 × 719 回合）**：hand 工作动作
-897,751 个，**88.8% 落在 FEED 落地后的词表内**；缺口 = 雇工 PLANT 6.1%、
-FERTILIZE 2.9%、PLACE/BUILD ~1.5%（→ 下两个便宜的词表扩展）。榜首 meta
-的雇工喂食 97k 次、取麦 40k 次——动物引擎在顶端同样是雇工劳动。市场：
-16.5% 的活跃回合发多单（含 17k 个 5+ 单爆发回合），单槽 market 头表达
-不了；单数是 HIRE 105k / SELL 83k / BUY_PRODUCT 66k。**状态级保真度**
-（贪心执行器是否选中同一目标格）需要重建状态：库里只有单席动作带，得按
-episode id 从 Kaggle 日数据集重拉 replay（管线在 tracelib.py pull，每局
-29MB；这次保留 replay 而非即拉即删）。
+## Phase 1 - 反事实 rollout 审计
 
-## 5. 容量实验（m5）前置条件 — 2026-08-15 负结果归档
+这是第一个实现任务，优先于 COMA 和任何 HRL 训练。
 
-1024/512 与 512/256 的新鲜 BC 克隆在当前代码下都出现种子双峰塌陷
-（部分种子 ~25k、部分 $0；旧的 512/256 检查点 bc_init.pt 无此病）。
-BC 数据（rl/runs/bc/data）采集于 PLANT_DEADLINE 掩码与复合市场指令之前,
-标签/掩码与部署语义已漂移。重试容量实验前必须：用当前语义重采教师数据
-（`rl/bc/collect_bc.py` 重跑即可），再训 BC，先过 8-seed 部署 sanity。
+### 干预形式
 
-## 6. 反事实信用分配（CCA，2026-08-19 议定）
+- 只在战略资格事件触发：每天开始、某项采购首次可负担、容量出现空位，或当前 Option
+  终止。
+- 初始最小集合比较 `FOLLOW_POLICY` 与 `EXPAND_LAND`、
+  `ESTABLISH_CROP(crop)`、`SCALE_HERD`、`PRESERVE_CASH` 等候选。
+- 干预必须持续到成功、变得不可行或达到预注册 timeout。只强制一个回合 BUY_LAND 不是
+  有效反事实，因为基线可能下一回合照样购买。
+- 两个分支均冻结低层策略。对手可以响应分支状态；仅通过共同随机数固定环境随机性。
 
-德扑式的问题："这一手如果不这么打，价值差多少"。720 步链条上普通 GAE 的
-信号被折扣与方差吃掉。两条可行落地，都靠张量引擎才变得便宜：
+### 测量
 
-- **因子化头的反事实基线**（COMA 式，先做这个）：我们的动作本来就是
-  farmer×market 双头因子化，对单头 a_f 的优势可以用"固定另一头、按策略
-  边际化本头"的基线替代全局 V——需要一个 Q(s, a_f, a_m) 头或对 23×22
-  联合枚举 value 网（4867→506 输出，一次前向）。改动集中在 GAE 之后的
-  优势替换，loss 不动。
-- **日尺度反事实 rollout**：在选定决策点 fork 批状态（EpisodeT 状态全是
-  张量，fork = clone），把某头动作换成策略次优解，冻结策略滚 24 步
-  （一个游戏日），两条线的势能差 = 该动作的日尺度反事实优势。B=1024 上
-  fork+24 步 ≈ 0.5 秒（228k lane-steps/s 实测推算），每迭代抽样几个
-  决策点完全可负担。
+- [ ] 基于 `EpisodeT` 与 `bank_t.fork/restore` 实现批量审计工具。
+- [ ] 测量 24、72、168 回合后及终局的配对差值。中间的 `future_worth` 只作诊断；
+  终局 money、margin、wins 是主指标，因为 potential 本身已有代理失真记录。
+- [ ] 按 trigger、day、Option、opponent、seat 分层报告。不能把一次稀有且有价值的开局
+  决策与数百个无关回合平均在一起。
+- [ ] 保存完整干预定义和原始配对结果；只有“build”标签而没有承诺窗口不可复现。
 
-## 7. RL 当序列生成：Decision Transformer（2026-08-19 议定，分三期）
+进入 Phase 2 的门：至少一个持久建设 Option 在预注册场上的终局配对收益区间排除 0，
+在 held-out 对手上保持同号，并且移动的是目标行为而非奖励代理。若没有 Option 通过，
+应先修改执行器或战略动作集合，不能直接训练高层 controller。
 
-720 帧当序列，self-attention 直连第 50 步与第 600 步。分期：
+## Phase 2 - option-lite 分层控制器
 
-- **(a) 离线 DT**：数据来自张量引擎自博弈（league 快照互打，多样性够）；
-  obs 4867 → 线性嵌入 256，每步 (RTG, s, a) 三 token，上下文 719×3 ≈
-  2157 token，H100 单卡毫无压力。RTG 用终局 money（或 margin）。
-- **(b) 部署路径**：导出契约是纯 numpy——小 transformer 的前向就是矩阵乘,
-  带 KV cache 的逐步推理在 1 秒/回合预算里绰绰有余（现 agent 用 0.25ms,
-  预算用了 0.02%）。main.py 模板需要新变体，仿 residual 的做法。
-- **(c) 在线微调**：DT 采样接入现有 collector（动作头复用 TwoHeadMasked）。
-  风险登记：DT 的上限受数据分布钳制（"轨迹引导搜索"的老问题），所以 (a)
-  的数据必须包含 league 的多样对局而非单一剧本；先用 (a) 复现 pitchfork
-  水平作为门，再谈超越。
+只训练高层 controller，冻结已验证的低层策略/执行器，避免一开始就同时学习两层造成
+非平稳性。
 
-（背景注记：势能奖励重塑**已是现行基线**——`potential_t.net_worth_t` 的
-势能差就是每步奖励；边际奖励做成了**终局有界 tanh** 而非逐步零和,
-因为 λ=1.0 逐步零和是已归档的负结果"同归于尽"。平滑三件套 margin/
-handicap/opp-noise 已实现，`rl/configs/foothold.yaml` 是首个组合 run。）
+- [ ] 高层动作使用显式、带掩码的 categorical 分布并保存 log-prob。不要使用连续意愿值
+  加硬 threshold；硬阈值会把真正的因果决策藏在 PPO 梯度之外。
+- [ ] 在环境中持久保存 `{option_id, start_state, elapsed, termination_reason}`。只在
+  Option 终止或战略 trigger 出现时重新决策，不再每回合重选。
+- [ ] 构造 Semi-MDP transition。Option 持续 `tau` 回合时，累计区间内回报，并用
+  `gamma^tau * V_macro(s')` bootstrap。
+- [ ] 初版只使用 Phase 1 通过的 Option，并由确定性执行器或冻结低层执行；
+  `FOLLOW_POLICY` 必须作为对照动作保留。
+- [ ] 增加可用性、持久性、timeout、终止与导出门。全程选择 `FOLLOW_POLICY` 时必须与
+  冻结基线行为一致。
+- [ ] 记录每季高层决策数、Option 完成率、持续时间、因果回报和逐 Option 熵；不能再只看
+  聚合熵。
 
----
+进入 Phase 3 的门：相对冻结低层基线，配对 margin 的置信区间排除 0，held-out 不崩，
+并且对 `closer_cleo` 96 局中至少出现 1 胜。只有本地中位数小涨、行为机制不动，不通过。
 
-## 已完成 / 已被取代（记录）
+## Phase 3 - 离线宏观搜索与蒸馏
 
-- **逐单位多头动作空间**（原 #0，复盘 §13 出路②，想法出自 Kilo
-  `new-branch b53739f`，机械用我们已验证的）：2026-08-19 完成。hand 任务
-  词表 {AUTO, IDLE, HARVEST, WATER, CARE, COLLECT_FERTILIZER, DIG}，AUTO =
-  经典级联且**全 AUTO 逐位等价于旧宏空间**；market 保留 22 动作（Kilo 的
-  4 模式内嵌 barnyard 经济表，未采）。落地五层各有门（`test_multi.py`
-  M1–M4）：`actions.decode_multi` → `step_idx(h_idx=)` 设备解码（mfk 最低
-  家族键换成指定家族键，认领机械复用）→ `MultiHeadMasked`/`MultiActorNet`
-  （hand 头 AUTO 偏置 +2.5 起步）→ env (B, 14) 动作 + 设备端
-  `hand_task_mask_t` → 导出模板/CLI/FrozenPolicyOpponent 全组合支持。
-  入口 `rl/train.py --multi-head`；首个 run 见 `rl/configs/breach.yaml`。
+只有 Phase 1 产出有效 Option 后才搜索。第一用途是离线生成教师数据，不是在提交 agent
+里实时跑 MCTS。
 
-- **分布式收集 + 中心学习器**（原 #1，目标单节点 800–1,300 步/秒的 ~4 倍）：
-  被张量路径整体取代——单卡 H100 上 TorchRL collector 46k 步/秒（35–57 倍于
-  原目标基线），单设备采集+更新同驻，分布式失去动机。原方案细节在 git 历史。
-- **张量化引擎**（原 #2）：完成即 `rl/tensor_env/`（tensorize 分支，
-  2026-08-18 并入 main），逐字节验证链、单卡 22.8 万 lane-steps/s；
-  其上是 TorchRL 统一层。当时登记的三处易错点（市场 lockstep、原子 PLANT、
-  每日 RNG）全部有独立门覆盖。
+- [ ] 在同一 Option 接口上比较 beam search、CEM/evolution 和 MCTS，以单位模拟步的
+  validation return 选型，而不是预先指定算法名称。
+- [ ] 搜索必须跨多个 seed、席位和对手；只优化一个确定赛季会重现旧 open-loop tape
+  的泛化失败。
+- [ ] 算力允许时精确 rollout 到 Option 终止或整局结束。Phase 0 的分时段校准通过前，
+  不能拿当前 turn-level critic 当 MCTS 叶子；可以改用 Phase 1 反事实目标训练 macro
+  critic。
+- [ ] 保存 `(macro_state, legal_options, selected_option, return-to-go)`，再用事件平衡
+  采样把搜索策略蒸馏进 Phase 2 controller。
+- [ ] BUY_LAND 等稀有门控动作必须单独分层；普通逐步 BC 的频率权重已经在 `tutor2` 中
+  把它们压掉过一次。
 
-## 8. market 头的分批卖出(2026-08-20 测量完毕,待 parrot v1 判词后实施)
+进入 Phase 4 的门：搜索教师在未见 seed 和 held-out 对手上击败 Phase 2 controller，
+蒸馏后的 controller 保留实质性收益。否则保留离线 planner，不增加联合训练复杂度。
 
-55 局当前平衡 replay、13,183 个榜首 SELL 单:47.3% 清仓卖(现 SELL_p 已
-覆盖),其余为小批量(众数 7 单位,多数 ≤ 深度 T 的 5–10%);按品类
-WHEAT 6,627 / FERTILIZER 2,649 / MILK 1,375——顶端在用小麦+化肥做持续
-现金流,甜瓜只有 225 单。方案:`SELL_HALF_<p>`×9(头 22→31,新 run 才
-兼容,与 FEED 的 7→8 同一验收模式);几轮可组合出任意比例。预期把
-market 头状态级保真度 57% → ~75%+(见 rl/bc/build_dataset.py 台账),
-然后重建 BC 数据集重训 parrot。
+## Phase 4 - 联合分层训练
 
-**#8 追记(2026-08-20 晚)**:SELL_HALF 落地后重建 BC 数据集,market 状态级
-保真度 57.0%→**57.7%,基本没动**——榜首的分批卖是小额定量(众数 7 单位),
-"半仓"在大库存下对不上(40 存货的一半是 20)。教训:精确量匹配是 BC 标签
-的错误标尺;RL 侧 SELL_HALF 仍成立(可跨回合组合任意比例,granger 在用)。
-BC 若重启,用区间匹配(qty ∈ [0.25,0.75]×held → SELL_HALF)或定量动作
-(SELL_N,N∈{4,8})。
+这一阶段刻意放在最后。
 
-## 9. 容量路线图(2026-08-20 夜,调研判词 + draught 探针)
+- [ ] 让低层策略以所选 Option 为条件，并暴露终止/失败信号。
+- [ ] 高低层使用独立 critic 与 replay/advantage 流；高层消费 Semi-MDP transition，低层
+  消费逐回合 transition。
+- [ ] 从 Phase 2 的冻结组件开始，交替更新或显著降低高层更新频率。第一个实验禁止两层
+  同时从零初始化训练。
+- [ ] 保留 `FOLLOW_POLICY` 与冻结执行器作为消融对照，确保收益来自联合适应，而不是
+  宏规则悄悄改变。
 
-调研核心(全文见会话,来源含 Hilton/Schulman 2301.13442、Neumann&Gros
-2210.00849、BRO/SimBa、Net2Net、OpenAI Five surgery):游戏 RL 历史上
-**普遍尺寸不足**;更大网络在**等环境步数**下就更强(判定性实验);我们
-2.7M actor 的 93% 耗在 4867 维输入投影,主干仅 ~170k;critic(1.3M)
-比 actor 小——与"value 网应更宽"的证据相反。行动序:
-1. **draught 探针在跑**(4× 宽 + 2× critic,granger 配方,等步对照)——
-   赢了即证容量是绑定约束;
-2. 先决条件(下一代前):trunk 加 LayerNorm + weight decay(可塑性
-   前提;注意会破 8 数组导出契约,与 CNN 线一并动);
-3. **critic 4–8×**(部署零成本,长视野 value 欠拟合最可疑)+ PPG 式
-   value 多 epoch;诊断项:分段 explained variance / srank / 死神经元率;
-4. 结构大招:棋盘 CNN 干(4–8 个 SE 残差块 @64–128ch,标量池化后注入,
-   12×8 hand 头映射到逐格头)——kickstart 从最强 MLP checkpoint 蒸馏,
-   平行线不热切;推理预算允许 ~60×(现用 0.02%);
-5. 增长机制:Net2Net 加宽 / 手术式函数保持扩容 / 可塑性注入(也可当
-   诊断:平台期注入容量,曲线复活=容量绑定)。
+最终研究门：纯学习控制必须对 `closer_cleo` 产生可重复的非零胜率，相对冻结低层的
+边际贡献为正，并且在 held-out 场上不反向。只有过门后，提交天梯才有信息价值。
 
-## 10. 磁带课程与两个定价观察(2026-08-21)
+## 降级候选
 
-- **tape:k06 已可用**(k6tape 分支 91e36bb 待合并):idx 路径补上 PLACE
-  的第二语义(邻棚定量存货)后 k06 磁带逐元判等(100,032)。gen-6 课程
-  阶梯:barnyard(47k)→ tape:w49(84k)→ tape:k06(100k)。
-- **单一产品经济的价格脆弱性(实测)**:cropper 对局中双方倾销把奶价砸到
-  3–7,同种子收入 24.5k(draught 早先 58.6k)——顶端的 5 线收入结构是
-  价格风险保险;作物曲线信用 30/株在既有奶业盆地面前可能太弱,等 cropper
-  链尾判词再调。
-- **蛋价生态位**:hinge 平衡下 EG 尾盘冲到 107–149(3× base)而无人养鹅;
-  future 势给动物产品按 base 定价,鹅被 3× 低估——候选:动物未来产出按
-  max(base, 当前价) 定价(注意别复活市值 mark-to-market 的旧病,只对
-  above-base 方向开口)。
+- **COMA 式因子化 baseline**：仍可能改善同一状态下 farmer 与 market 的归因，但它依赖
+  对一个几乎不被采样的动作学出可靠 Q。先做模拟器反事实审计，再考虑 COMA。
+- **Decision Transformer**：保留为离线序列备选，但现有 open-loop 数据有状态分布错位和
+  稀有事件失衡。只有拿到 Phase 1 的事件平衡数据或搜索轨迹后再议。
+- **推理期市场优化器**：策略足够强之后可作为部署 wrapper；单步卖出优化不是缺失的
+  整季 planner。
+- **继续扩模型容量**：保留 critic 分时段诊断，但不再排 width-only 实验。容量曾经是
+  约束，后续延长已经不能移动战略平台。
 
-## 11. gen-7 候选:给死动作上掩码(2026-08-21 动作普查)
+## 旧 TODO 收口表
 
-cropper-peek 3 局普查:市场头 18% 的动作是雇满 12 人后的死 HIRE(静默
-no-op 零梯度,习惯永不剪除,挤占 BUY_SEED 槽位)。候选修法:hands==cap
-时掩掉 HIRE(actions.py market_mask + features_t 孪生 + 门)。同理可查:
-土地满后的 BUY_LAND、无空格时的 BUY_SEED。种植不起量的判词见 RUNS.md
-同日条目——信用/规模问题:农夫被奶业循环占满(53% 回合在走路),边际
-一株的 ROI 撑不起从 1.7 到 30 株的梯度上坡;等 cropper(30/株曲线)与
-wrangler(磁带价格压力)判词后定 gen-7 配方。
+| 旧事项 | 截至 2026-08-24 的状态 |
+|---|---|
+| 张量化脚本对手 | `barnyard_t.py` 与 tape 对手均已落地；继续移植不是当前路线的前置条件。 |
+| 推理期市场优化器 | 降级为后续部署 wrapper，不是当前学习实验。 |
+| 离线 N x N Bradley-Terry 重排 | 工具已存在；没有新候选群时不是战略瓶颈。 |
+| 榜单轨迹 BC | open-loop BC/kickstart 已测；`tutor2` 仅 +133 且压低稀有 BUY_LAND。事件平衡蒸馏保留到 Phase 3。 |
+| 容量实验/容量路线图 | `draught` 证明容量曾经绑定，长续训随后平台；关闭单独扩宽路线。 |
+| 反事实信用分配 | 升为 Phase 1；顺序由 COMA 优先改成模拟器 rollout 优先。 |
+| Decision Transformer | 降级为依赖更好数据的备选。 |
+| SELL_HALF | 已实现；状态级保真度只从 57.0% 到 57.7%，关闭单独路线。 |
+| tape/k06 集成与定价观察 | 已集成并完成后续实验；tape 课程最终平台在 7/12。 |
+| 死动作掩码与继续扩词表 | 必要机械修复已吸收，多轮词表/解码实验已平台，不再作为独立轴。 |
+| 土地信用 | `furrow` 买了地却留下更多空地；直接抬资产信用的处方被否。 |
+| 小麦饲料 cap | `granary` 改善训练墙上的产量，但没有广泛迁移；不再单独排队。 |
 
-## 12. 第三梯队词表 + gen-8 合流(2026-08-21 k06 解剖后)
+## worktree 清理后的工作区
 
-k06 解剖(RUNS.md 同日):化肥工业 31.8%/量 3342 是 k 线对 w49 的结构跨越。
-剩余词表缺口(帮手):FERTILIZE(118 次,带化肥取货腿,镜像 FEED 的
-wheat 腿)与 PLACE 棚存计量(100 次)——比 PLANT(352)小一个量级,
-等 sower 判词后决定是否实现。gen-8 合流候选:handplant(含 k6tape)
-× gen5 的 aa38644(作物曲线+化肥流)× wrangler 的磁带混池配方;
-头手术工具 rl/widen_hands.py 已在生产验证(sower it0 = 树干原强度,
-ks CE 重退火教 PLANT 标签)。
-
-## 13. gen-10:土地按其解锁的价值计价(it≈160 普查证据)
-
-sower-v3 在收入抬升期卡上土地门:BUY_LAND 1/局(2 块地),种子采购
-自适应收敛到可种植量,闲置回升。势函数里 LAND_VALUE=300 平价,而一块
-地实际解锁 ~25 株 × ~200 ≈ 5k 下游信用,梯度要过两步链。候选修法:
-(a) build 曲线加 land 项权重;(b) LAND_VALUE 动态化(按当前种子流/
-作物流计价);(c) 最简:LAND_VALUE 300→1500 静态上调 + A/B。注意与
-docs/ROADMAP §11 的教训一致——引擎级改动必须 A/B,不靠论证。
-
-## 14. 小麦对冲循环:每局净亏 2.1 万(2026-08-21 对 cleo 实测)
-
-sower-it228 三局:WHEAT 卖出 141,999(总收入 48.6%)/ 买入 163,175
-→ **净 −21,176**,约等于我们一局收入的三到四成。存栏只有 5-7 只,
-喂食一天用不到 20 单位——这是自我做市:买入推价、卖出压价,每来回
-付掉价差。势函数里棚内小麦按 min(市价,base)×0.9 计价 ⇒ 来回近乎
-势中性,而**市场冲击没有进势函数**,所以无人惩罚。
-修法(需 A/B,§11 纪律):
-(a) 最小改动:market_mask 在 shed WHEAT > 2×存栏 时掐掉 BUY_WHEAT;
-(b) 势函数加市场冲击项(卖出按成交后价格计价);
-(c) 小麦在势里按饲料计价(存栏需求内计 base,超出计 0)。
-建议先做 (a) —— 一行掩码 + 门,能立刻量出 +2 万的上限。
+2026-08-24 按用户决定移除了全部 31 个辅助 worktree，对应 Git branch 仍保留。辅助树内
+被忽略的 checkpoint 与导出产物已经丢弃。主树仍有 `chisel`、`longcredit`、`cropper`、
+`anvil` 等可用 checkpoint 和 fork/restore 实现。`RUNS.md` 中类似
+`Kaggriculture-gen41/rl/runs/bazaar` 的历史路径只说明当时在哪里运行，不代表产物当前仍
+存在。

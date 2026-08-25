@@ -12,6 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
 from stats import bradley_terry, wilson, resolved, elo    # noqa: E402
+from eval import _interval_winner                           # noqa: E402
 
 FAILS = []
 
@@ -86,6 +87,9 @@ check("52/100 is not resolved", not ok, f"needs ~{n} episodes")
 check("and the estimate is the documented 384-for-5-points order", 300 < n < 3000)
 ok, n = resolved(50, 100)
 check("an exact coin flip never resolves", not ok and n is None)
+check("eval resolves 10/96 for B", _interval_winner(*wilson(10, 96)) == "B")
+check("eval resolves 64/96 for A", _interval_winner(*wilson(64, 96)) == "A")
+check("eval leaves 50/100 unresolved", _interval_winner(*wilson(50, 100)) is None)
 
 # --- elo -------------------------------------------------------------------
 e = elo({"a": 4.0, "b": 1.0, "c": 0.25})

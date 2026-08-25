@@ -5,9 +5,9 @@
 # `rl/train.py --resume` restores model + optimizer + seed stream +
 # curriculum/pool state, so chaining is free:
 #
-#   sbatch slurm/rl_train.sh --config rl/configs/league.yaml \
-#       --save rl/runs/<run>/latest.pt --resume rl/runs/<run>/latest.pt
-#   sbatch --dependency=afterany:<jobid> slurm/rl_train.sh <same args>
+#   python tools/submit_rl.py --run <run> --backend gpu --links 2 \
+#       --hypothesis "..." --acceptance "..." --gpu-justification "..." -- \
+#       --config rl/configs/league.yaml
 #
 # (--resume pointing at a not-yet-existing file is a fresh start, so the
 # first link of the chain uses the same command line.)
@@ -41,7 +41,22 @@ source "$PROJECT/setup_env.sh"
 export OMP_NUM_THREADS=1
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 
-echo "host=$(hostname) job=${SLURM_JOB_ID}"
+MAX_MINUTES=${KG_MAX_MINUTES:-25}
+MIN_SPS=${KG_MIN_SPS:-8000}
+RUN_ID=${KG_RUN_ID:-adhoc}
+source "$PROJECT/slurm/gpu_telemetry.sh"
+start_gpu_telemetry "$RUN_ID"
+trap finish_gpu_telemetry EXIT
+
+if [ -n "${KG_RUN_MANIFEST:-}" ]; then
+    python tools/run_preflight.py --manifest "$KG_RUN_MANIFEST" || exit 42
+elif [ -n "${KG_EXPECT_COMMIT:-}" ] && ! git diff --quiet "$KG_EXPECT_COMMIT" --; then
+    echo "RUN-PREFLIGHT source changed since submission; expected=$KG_EXPECT_COMMIT current=$(git rev-parse HEAD)" >&2
+    exit 42
+fi
+
+echo "RUN-META job=${SLURM_JOB_ID:-local} run=$RUN_ID host=$(hostname) backend=gpu cpus=${SLURM_CPUS_PER_TASK:-2} commit=$(git rev-parse HEAD)"
+git status --short --untracked-files=no | sed 's/^/RUN-DIRTY /'
 # --rb-free: measured 2026-08-23 with --mem-report at B=1024 (docs/RUNS.md).
 # The PPO update round-tripped the batch through a ReplayBuffer whose
 # LazyTensorStorage is a third full copy of the observation, refilled once per
@@ -61,4 +76,10 @@ echo "host=$(hostname) job=${SLURM_JOB_ID}"
 # storage, as rl/tensor_env/train_t.py --obs-half already does; every feature is
 # normalised into about [-1, 1], so the range is safe. That changes what the
 # update sees and needs an A/B before it goes in.
-python rl/train.py --device cuda --max-minutes 25 --rb-free "$@"
+set +e
+python rl/train.py --device cuda --max-minutes "$MAX_MINUTES" \
+    --min-sps "$MIN_SPS" --rb-free --profile-timing "$@"
+rc=$?
+set -e
+echo "TRAIN-EXIT code=$rc telemetry=$GPU_CSV"
+exit "$rc"

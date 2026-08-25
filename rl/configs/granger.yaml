@@ -10,11 +10,11 @@
 #     30-70% band; money handicap failed twice, so the ladder is OPPONENT
 #     NOISE, annealed per chain link (a CLI arg, not pool state):
 #
-#   L1: sbatch slurm/rl_train.sh --config rl/configs/granger.yaml \
-#         --opp-noise 0.40 --save rl/runs/granger/latest.pt --resume ...
+#   Historical L1 used --opp-noise 0.40.
 #   L2: same with --opp-noise 0.25
 #   L3: same with --opp-noise 0.10
 #   L4+: same with --opp-noise 0.0
+# This schedule is archived; new runs go through tools/submit_rl.py.
 #
 # NO residual_base on purpose: kickstart labels + the build-curve credit
 # provide the warm direction without the melon anchor. Hand heads still

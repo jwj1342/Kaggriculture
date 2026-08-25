@@ -7,8 +7,7 @@
 # planting/animals at expected future output (gate vii, test_trl.py).
 # Everything else is byte-identical to breach.yaml.
 #
-#   sbatch slurm/rl_train.sh --config rl/configs/foresight.yaml \
-#       --save rl/runs/foresight/latest.pt --resume rl/runs/foresight/latest.pt
+# Archived preset; submit any new derivative through tools/submit_rl.py.
 device: cuda
 B: 1024
 iters: 240

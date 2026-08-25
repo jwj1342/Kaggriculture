@@ -10,8 +10,7 @@
 # hands-only feeding sustains a herd, device == CPU bit-exact).
 # Single variable vs vendetta: the action space.
 #
-#   sbatch slurm/rl_train.sh --config rl/configs/herdsman.yaml \
-#       --save rl/runs/herdsman/latest.pt --resume rl/runs/herdsman/latest.pt
+# Archived preset; submit any new derivative through tools/submit_rl.py.
 device: cuda
 B: 1024
 iters: 240

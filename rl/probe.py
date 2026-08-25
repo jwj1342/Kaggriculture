@@ -25,8 +25,9 @@ test_trl.py gate ix). Three triggers, in the order they are checked:
   `patience` probes is exactly a stale peak, measured deterministically.)
 
 Chain safety: the trainer writes {"stopped": reason} into the checkpoint;
-a resumed link sees the marker and exits cleanly at once, so afterany
-chains do not resurrect a stopped run and afterok evals still fire.
+a resumed link sees the marker and exits cleanly at once. New training chains
+use `afterok` through tools/submit_rl.py; a stale queued link therefore cannot
+resume model updates after an early-stop marker.
 """
 
 import torch

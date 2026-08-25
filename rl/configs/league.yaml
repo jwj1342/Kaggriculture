@@ -1,7 +1,6 @@
 # Curriculum + self-play league on the tensor path:
 #
-#     sbatch slurm/rl_train.sh --config rl/configs/league.yaml \
-#         --save rl/runs/<run>/latest.pt --resume rl/runs/<run>/latest.pt
+# Submit new runs through tools/submit_rl.py; see docs/INFRA.md.
 #
 # `opponents` lists the ordered curriculum stages; each must be
 # tensor-representable -- "starter", or exported weights (npz / checkpoint),

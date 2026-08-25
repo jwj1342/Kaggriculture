@@ -7,8 +7,7 @@
 # where "打得有来有回" starts and RL takes over. Single variable vs
 # herdsman: the kickstart.
 #
-#   sbatch slurm/rl_train.sh --config rl/configs/drover.yaml \
-#       --save rl/runs/drover/latest.pt --resume rl/runs/drover/latest.pt
+# Archived preset; submit any new derivative through tools/submit_rl.py.
 device: cuda
 B: 1024
 iters: 240

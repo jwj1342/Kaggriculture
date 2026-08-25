@@ -2,8 +2,7 @@
 # curriculum starter -> pitchfork with a handicap ladder, self-play league,
 # bounded terminal margin so losses are graded, light opponent noise.
 #
-#   sbatch slurm/rl_train.sh --config rl/configs/foothold.yaml \
-#       --save rl/runs/foothold/latest.pt --resume rl/runs/foothold/latest.pt
+# Archived preset; submit any new derivative through tools/submit_rl.py.
 #
 # Rationale (docs/RUNS.md 2026-08-19): at 0%/100% win frontiers the binary
 # outcome carries no gradient; margin grades the loss, the handicap ladder
