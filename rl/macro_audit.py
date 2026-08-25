@@ -481,6 +481,19 @@ def _parse_option(text):
                 "crop_index": A.CROP_LIST.index(crop),
                 "farmer_index": A.FARMER_ACTIONS.index(f"PLANT_{crop}"),
                 "market_index": A.MARKET_ACTIONS.index(f"BUY_SEED_{crop}")}
+    if text.startswith("scale_herd:"):
+        animal = text.split(":", 1)[1].upper()
+        if animal not in A.ANIMAL_LIST:
+            raise ValueError(f"unknown animal in option {text!r}")
+        structure = engine_t.E.ANIMALS[animal]["structure"]
+        return {
+            "name": text, "kind": "scale_herd", "animal": animal,
+            "animal_index": engine_t.ITEM_IDX[animal],
+            "market_index": A.MARKET_ACTIONS.index(f"BUY_{animal}"),
+            "place_index": A.FARMER_ACTIONS.index(f"PLACE_{animal}"),
+            "build_index": A.FARMER_ACTIONS.index(f"BUILD_{structure}"),
+            "cost": engine_t.E.ANIMALS[animal]["cost"],
+        }
     raise ValueError(f"unknown option {text!r}")
 
 
@@ -513,7 +526,7 @@ def _affords_with_reserve(money, cost, cash_reserve):
 @torch.no_grad()
 def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         option_text, min_day, timeout, crop_target,
-                        cash_reserve=0, steps_override=0):
+                        cash_reserve=0, herd_target=2, steps_override=0):
     _, saved, actor_net, _, multi = _load_checkpoint(checkpoint, device)
     option = _parse_option(option_text)
     kwargs = _env_kwargs(saved)
@@ -557,11 +570,15 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                     eligible = (bool(td["market_mask"][odd, _BUY_LAND])
                                 and _affords_with_reserve(
                                     ep.money[odd, seat], land_cost, cash_reserve))
-                else:
+                elif option["kind"] in {"establish_crop", "expand_crop"}:
                     seed_cost = engine_t.CROP_SEED_COST[option["crop_index"]]
                     eligible = (bool(td["market_mask"][odd, option["market_index"]])
                                 and _affords_with_reserve(
                                     ep.money[odd, seat], seed_cost, cash_reserve))
+                else:
+                    eligible = (bool(td["market_mask"][odd, option["market_index"]])
+                                and _affords_with_reserve(
+                                    ep.money[odd, seat], option["cost"], cash_reserve))
                 if eligible:
                     diff = _pair_snapshot_equal(ep, pair)
                     if diff:
@@ -583,8 +600,9 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             if elapsed >= timeout:
                 finished[pair] = True
                 completion_elapsed[pair] = timeout
-                target_key = ("land" if option["kind"] == "expand_land"
-                              else "crops")
+                target_key = ("land" if option["kind"] == "expand_land" else
+                              "herd" if option["kind"] == "scale_herd" else
+                              "crops")
                 completion_target_delta[pair] = (
                     int(state[target_key][odd]) - start_value[pair][target_key])
                 continue
@@ -606,6 +624,22 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 if remaining > 0 and bool(
                         td["farmer_mask"][odd, option["farmer_index"]]):
                     action[odd, 0] = option["farmer_index"]
+            elif option["kind"] == "scale_herd":
+                remaining = max(0, herd_target - (
+                    int(state["herd"][odd]) - start_value[pair]["herd"]))
+                animal_i = option["animal_index"]
+                unplaced = int(ep.shed[odd, seat, animal_i])
+                unplaced += int(ep.unit_inv[odd, seat, :, animal_i].sum())
+                can_reserve = _affords_with_reserve(
+                    ep.money[odd, seat], option["cost"], cash_reserve)
+                if (remaining > unplaced and can_reserve and bool(
+                        td["market_mask"][odd, option["market_index"]])):
+                    action[odd, 1] = option["market_index"]
+                if remaining > 0:
+                    if bool(td["farmer_mask"][odd, option["place_index"]]):
+                        action[odd, 0] = option["place_index"]
+                    elif bool(td["farmer_mask"][odd, option["build_index"]]):
+                        action[odd, 0] = option["build_index"]
 
         td["action"] = action
         stepped = env.step(td)
@@ -625,14 +659,18 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         int(state["land"][odd]) > start_value[pair]["land"]
                         and int(state["crops"][odd]) - start_value[pair]["crops"]
                         >= crop_target)
+                elif option["kind"] == "scale_herd":
+                    success[pair] = (int(state["herd"][odd])
+                                     - start_value[pair]["herd"] >= herd_target)
                 else:
                     success[pair] = (int(state["crops"][odd])
                                      - start_value[pair]["crops"] >= crop_target)
                 finished[pair] = success[pair] or elapsed >= timeout
                 if finished[pair]:
                     completion_elapsed[pair] = min(timeout, elapsed)
-                    target_key = ("land" if option["kind"] == "expand_land"
-                                  else "crops")
+                    target_key = ("land" if option["kind"] == "expand_land" else
+                                  "herd" if option["kind"] == "scale_herd" else
+                                  "crops")
                     completion_target_delta[pair] = (
                         int(state[target_key][odd])
                         - start_value[pair][target_key])
@@ -712,7 +750,8 @@ def run_counterfactual(args):
                 cells.append(counterfactual_cell(
                     args.checkpoint, opponent, seat, args.lanes, args.seed,
                     args.device, option, args.min_day, args.timeout,
-                    args.crop_target, args.cash_reserve, args.steps))
+                    args.crop_target, args.cash_reserve, args.herd_target,
+                    args.steps))
 
     option_summary = {}
     for option in args.option:
@@ -751,6 +790,7 @@ def run_counterfactual(args):
         "min_day": args.min_day,
         "timeout": args.timeout,
         "crop_target": args.crop_target,
+        "herd_target": args.herd_target,
         "cash_reserve": args.cash_reserve,
         "options": list(args.option),
         "gate": (
@@ -792,6 +832,7 @@ def parse_args(argv=None):
     cf.add_argument("--min-day", type=int, default=0)
     cf.add_argument("--timeout", type=int, default=48)
     cf.add_argument("--crop-target", type=int, default=4)
+    cf.add_argument("--herd-target", type=int, default=2)
     cf.add_argument("--cash-reserve", type=int, default=0,
                     help="minimum money retained after forced purchases")
     cf.add_argument("--output", required=True)
