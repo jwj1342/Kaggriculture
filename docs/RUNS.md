@@ -33,6 +33,10 @@ be traced back to the episodes behind it.
 starter/barnyard 接近全胜，对 cleo/w49 仍为 0 胜；这不是新强模型，只是统一场里的低层
 起点。
 
+配对状态门也在 CPU 和 CUDA 两条路径完成：GPU 作业 `20467057` 使用 H100 10GB MIG，
+在 step 200 fork 后重放 64 回合、跨两个游戏日，3 lanes 的完整 snapshot 逐字节一致；
+作业运行 18 秒。GPU 可用性因此不再是 Phase 0 未决项。
+
 `anvil` critic 的分时段平均 explained variance 为 day 0–4 `0.233`、5–11 `0.491`、
 12–19 `0.739`、20–29 `-0.292`。其建设行为也仍稀薄：合法时 BUY_LAND 选择率
 `0.147%`、BUY_ANIMAL `1.38%`，而 BUY_SEED `7.52%`、HIRE `5.31%`。这直接支持

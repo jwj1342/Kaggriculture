@@ -46,11 +46,12 @@
 - [x] 从主树仍存在的产物中选择一个低层 checkpoint。候选包括 `chisel`、
   `longcredit`、`cropper` 和 `anvil`；必须在新的同场评估中选择，不能混用历史上不同
   panel 的数字。记录 checkpoint SHA-256、源码 commit、参数和对手场。
-- [ ] 在 CPU 重跑 `bank_t.py` fork/restore 门，并在拿到 GPU 时补 CUDA 门。CPU 门已于
-  2026-08-24 通过：step 200 fork 后跨两个游戏日重放 64 回合，状态逐字节一致。
+- [x] 在 CPU 重跑 `bank_t.py` fork/restore 门，并在拿到 GPU 时补 CUDA 门。CPU 门于
+  2026-08-24 通过；CUDA 门由作业 `20467057` 于 2026-08-25 通过：step 200 fork 后跨
+  两个游戏日重放 64 回合，状态逐字节一致。
 - [x] 增加分时段 critic 诊断：分别报告 day 0-4、5-11、12-19、20-29 的 explained
-  variance 或 return error。当前证据强烈指向信用坍塌，但日志只有 value loss，还没有
-  直接指出 `V(s)` 从哪个阶段开始失真。
+  variance 或 return error。`anvil` 四段平均 explained variance 为 `0.233 / 0.491 /
+  0.739 / -0.292`，直接定位到最后十天失真；其他候选的最后十天均值也全部为负。
 - [x] 冻结一组 seed/opponent 审计场，至少包含被动对手、反应式中档对手、
   `closer_cleo` 和一个 held-out wall。
 - [x] 记录基线 BUY_LAND/BUY_SEED/BUY_ANIMAL/HIRE 概率，以及 land、seeds、herd、crop、
