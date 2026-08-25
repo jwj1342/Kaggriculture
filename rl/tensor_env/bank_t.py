@@ -19,6 +19,7 @@ Ends BANK-PASS / BANK-FAIL.
 """
 
 import copy
+import argparse
 import os
 import sys
 
@@ -99,7 +100,7 @@ def restore_lanes(ep, st, src_idx):
     return ep
 
 
-def _gate():
+def _gate(device="cpu"):
     import engine_t
     import engine_t_idx  # noqa: F401
     import features_t
@@ -107,8 +108,8 @@ def _gate():
 
     B, pre, post = 3, 200, 64
     seeds = [88_000 + 13 * i for i in range(B)]
-    gen = torch.Generator().manual_seed(17)
-    ep = engine_t.EpisodeT(seeds, episode_steps=720, device="cpu")
+    gen = torch.Generator(device=device).manual_seed(17)
+    ep = engine_t.EpisodeT(seeds, episode_steps=720, device=device)
 
     def rnd_actions(e):
         fi, mi = [], []
@@ -131,7 +132,7 @@ def _gate():
         ep.step_idx(fi, mi)
     want = [ep.snapshot(l) for l in range(B)]
 
-    fresh = engine_t.EpisodeT(seeds, episode_steps=720, device="cpu")
+    fresh = engine_t.EpisodeT(seeds, episode_steps=720, device=device)
     # dirty the fresh instance so restore() has to overwrite real state
     fi, mi = rnd_actions(fresh)
     fresh.step_idx(fi, mi)
@@ -143,10 +144,13 @@ def _gate():
         if d:
             print(f"BANK-FAIL lane {lane}: {d}")
             return 1
-    print(f"BANK-PASS: fork at step {pre}, {post} replayed steps across "
+    print(f"BANK-PASS device={device}: fork at step {pre}, "
+          f"{post} replayed steps across "
           f"{post // 24} day boundaries, {B} lanes snapshot-identical")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(_gate())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--device", default="cpu")
+    sys.exit(_gate(parser.parse_args().device))

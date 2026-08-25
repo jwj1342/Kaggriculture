@@ -39,21 +39,21 @@
 本阶段不训练新模型。
 
 进度（2026-08-25）：批量基线/critic/行为审计与配对反事实工具已在 `f6ff76a` 落地，
-受 manifest 约束的 Slurm 提交入口在 `64a99ee` 落地并通过本地及集群回归门。统一基线
-作业 `20464277` 按用户要求在运行 2:29 后取消，未形成完整结果，因此尚未选择 checkpoint，
-以下结果型项目保持未完成。
+受 manifest 约束的 Slurm 提交入口在 `64a99ee` 落地。完整统一基线作业 `20464673`
+（32 lanes × 4 对手 × 双座位）按预登记规则选出 `anvil/latest.pt`；Phase 1 随后完成，
+结果见下节与 `docs/RUNS.md` 顶部。
 
-- [ ] 从主树仍存在的产物中选择一个低层 checkpoint。候选包括 `chisel`、
+- [x] 从主树仍存在的产物中选择一个低层 checkpoint。候选包括 `chisel`、
   `longcredit`、`cropper` 和 `anvil`；必须在新的同场评估中选择，不能混用历史上不同
   panel 的数字。记录 checkpoint SHA-256、源码 commit、参数和对手场。
 - [ ] 在 CPU 重跑 `bank_t.py` fork/restore 门，并在拿到 GPU 时补 CUDA 门。CPU 门已于
   2026-08-24 通过：step 200 fork 后跨两个游戏日重放 64 回合，状态逐字节一致。
-- [ ] 增加分时段 critic 诊断：分别报告 day 0-4、5-11、12-19、20-29 的 explained
+- [x] 增加分时段 critic 诊断：分别报告 day 0-4、5-11、12-19、20-29 的 explained
   variance 或 return error。当前证据强烈指向信用坍塌，但日志只有 value loss，还没有
   直接指出 `V(s)` 从哪个阶段开始失真。
-- [ ] 冻结一组 seed/opponent 审计场，至少包含被动对手、反应式中档对手、
+- [x] 冻结一组 seed/opponent 审计场，至少包含被动对手、反应式中档对手、
   `closer_cleo` 和一个 held-out wall。
-- [ ] 记录基线 BUY_LAND/BUY_SEED/BUY_ANIMAL/HIRE 概率，以及 land、seeds、herd、crop、
+- [x] 记录基线 BUY_LAND/BUY_SEED/BUY_ANIMAL/HIRE 概率，以及 land、seeds、herd、crop、
   crew、money、margin 分布。
 
 通过条件：checkpoint 能干净导出，配对模拟器确定性成立，并且加入任何干预前能复现基线。
@@ -75,11 +75,22 @@
 ### 测量
 
 - [x] 基于 `EpisodeT` 与 `bank_t.fork/restore` 实现批量审计工具（`rl/macro_audit.py`）。
-- [ ] 测量 24、72、168 回合后及终局的配对差值。中间的 `future_worth` 只作诊断；
+- [x] 测量 24、72、168 回合后及终局的配对差值。中间的 `future_worth` 只作诊断；
   终局 money、margin、wins 是主指标，因为 potential 本身已有代理失真记录。
-- [ ] 按 trigger、day、Option、opponent、seat 分层报告。不能把一次稀有且有价值的开局
+- [x] 按 trigger、day、Option、opponent、seat 分层报告。不能把一次稀有且有价值的开局
   决策与数百个无关回合平均在一起。
-- [ ] 保存完整干预定义和原始配对结果；只有“build”标签而没有承诺窗口不可复现。
+- [x] 保存完整干预定义和原始配对结果；只有“build”标签而没有承诺窗口不可复现。
+
+### 2026-08-25 判词：Phase 1 未过门
+
+在固定 `anvil`、seed `240825`、四对手、双座位、每格 32 配对上，测试了土地、草莓、
+土地+草莓、牛、羊、现金保留，以及触发日和现金余量变体。最接近的是 `SCALE_HERD:SHEEP`
+目标 2：终局 margin `+1,149`，95% CI `[-100,+2,557]`，但 held-out `w49` 两座位均约
+`-1.1k`；目标 4 退化到 `-12,059`。`EXPAND_LAND` 加 `$1k` 余量虽全场 `+2,820`，
+收益来自弱对手，`w49` 为 `-182/+228` 且不显著。其余 option 明确为负。没有 option
+同时满足“终局 CI 排除 0 + held-out 同号 + 目标行为移动”，因此 **Phase 2 不启动**。
+新的工作若要重启本路线，必须先提出不同的执行器/战略动作并重新通过本阶段，不能把
+这些阴性 option 交给高层 PPO 或搜索器挑选。
 
 进入 Phase 2 的门：至少一个持久建设 Option 在预注册场上的终局配对收益区间排除 0，
 在 held-out 对手上保持同号，并且移动的是目标行为而非奖励代理。若没有 Option 通过，
@@ -89,6 +100,8 @@
 
 只训练高层 controller，冻结已验证的低层策略/执行器，避免一开始就同时学习两层造成
 非平稳性。
+
+**状态：被 Phase 1 门阻塞；当前不申请 GPU 训练。**
 
 - [ ] 高层动作使用显式、带掩码的 categorical 分布并保存 log-prob。不要使用连续意愿值
   加硬 threshold；硬阈值会把真正的因果决策藏在 PPO 梯度之外。
@@ -110,6 +123,8 @@
 
 只有 Phase 1 产出有效 Option 后才搜索。第一用途是离线生成教师数据，不是在提交 agent
 里实时跑 MCTS。
+
+**状态：被 Phase 1 门阻塞；仓库目前也没有现成 beam/CEM/MCTS 骨架。**
 
 - [ ] 在同一 Option 接口上比较 beam search、CEM/evolution 和 MCTS，以单位模拟步的
   validation return 选型，而不是预先指定算法名称。
