@@ -71,7 +71,7 @@ def build_parser():
     ap.add_argument("--acceptance", required=True)
     ap.add_argument("--minutes", type=int, default=30)
     ap.add_argument("--cpus", type=int, default=8)
-    ap.add_argument("--mem-gb", type=int, default=24)
+    ap.add_argument("--mem-gb", type=int, default=4)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("audit_args", nargs=argparse.REMAINDER)
     return ap

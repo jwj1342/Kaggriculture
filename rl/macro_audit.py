@@ -284,6 +284,13 @@ def _strategic_context(ep, lane, seat):
     return out
 
 
+def _select_herd_context(context, max_money=0, max_demand_milk=-1):
+    """Apply preregistered observable gates to a one-shot herd option."""
+    return ((max_money <= 0 or context["money"] <= max_money)
+            and (max_demand_milk < 0
+                 or context["demand_milk"] <= max_demand_milk))
+
+
 def _new_max_state(ep, seat):
     values = _state_metrics(ep, seat)
     return {key: value.clone() for key, value in values.items()}
@@ -604,7 +611,7 @@ def _operate_herd(action, td, ep, lane, seat, counters, cash_reserve):
 def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         option_text, min_day, timeout, crop_target,
                         cash_reserve=0, herd_target=2, max_trigger_money=0,
-                        steps_override=0):
+                        max_trigger_demand_milk=-1, steps_override=0):
     _, saved, actor_net, _, multi = _load_checkpoint(checkpoint, device)
     option = _parse_option(option_text)
     kwargs = _env_kwargs(saved)
@@ -668,19 +675,21 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         raise AssertionError(
                             f"state diverged before trigger in pair {pair}: {diff}")
                     triggered[pair] = True
-                    selected[pair] = (
-                        option["kind"] != "select_herd"
-                        or float(ep.money[odd, seat]) <= max_trigger_money)
-                    trigger_step[pair] = ep._step
-                    start_value[pair] = {
+                    context = {
                         key: int(value[odd]) for key, value in state.items()}
-                    start_value[pair].update({
+                    context.update({
                         "money": float(ep.money[odd, seat]),
                         "opp_money": float(ep.money[odd, 1 - seat]),
                         "future_worth": float(env._pot(ep, seat)[odd]),
                     })
-                    start_value[pair].update(
-                        _strategic_context(ep, odd, seat))
+                    context.update(_strategic_context(ep, odd, seat))
+                    selected[pair] = (
+                        option["kind"] != "select_herd"
+                        or _select_herd_context(
+                            context, max_trigger_money,
+                            max_trigger_demand_milk))
+                    trigger_step[pair] = ep._step
+                    start_value[pair] = context
                     if not selected[pair]:
                         finished[pair] = True
                         completion_elapsed[pair] = 0
@@ -879,7 +888,8 @@ def run_counterfactual(args):
                     args.checkpoint, opponent, seat, args.lanes, args.seed,
                     args.device, option, args.min_day, args.timeout,
                     args.crop_target, args.cash_reserve, args.herd_target,
-                    args.max_trigger_money, args.steps))
+                    args.max_trigger_money, args.max_trigger_demand_milk,
+                    args.steps))
 
     option_summary = {}
     for option in args.option:
@@ -927,6 +937,9 @@ def run_counterfactual(args):
         "herd_target": args.herd_target,
         "cash_reserve": args.cash_reserve,
         "max_trigger_money": args.max_trigger_money or None,
+        "max_trigger_demand_milk": (
+            args.max_trigger_demand_milk
+            if args.max_trigger_demand_milk >= 0 else None),
         "options": list(args.option),
         "gate": (
             "terminal paired margin bootstrap CI excludes zero and heldout "
@@ -970,6 +983,9 @@ def parse_args(argv=None):
     cf.add_argument("--herd-target", type=int, default=2)
     cf.add_argument("--max-trigger-money", type=int, default=0,
                     help="select_herd takes the option only at or below this cash")
+    cf.add_argument("--max-trigger-demand-milk", type=int, default=-1,
+                    help="select_herd takes the option only at or below this "
+                         "unlocked-shop milk demand (-1 disables the gate)")
     cf.add_argument("--cash-reserve", type=int, default=0,
                     help="minimum money retained after forced purchases")
     cf.add_argument("--output", required=True)
@@ -983,8 +999,9 @@ def parse_args(argv=None):
         parser.error("--lanes must be positive")
     if (args.command == "counterfactual"
             and any(option.startswith("select_herd:") for option in args.option)
-            and args.max_trigger_money <= 0):
-        parser.error("select_herd requires a positive --max-trigger-money")
+            and args.max_trigger_money <= 0
+            and args.max_trigger_demand_milk < 0):
+        parser.error("select_herd requires at least one trigger gate")
     return args
 
 

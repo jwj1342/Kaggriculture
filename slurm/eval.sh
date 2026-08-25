@@ -8,7 +8,7 @@
 #SBATCH --job-name=kg-eval
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=32G
+#SBATCH --mem=12G
 #SBATCH --output=/scratch/jwj/Kaggriculture/logs/eval-%j.out
 #SBATCH --error=/scratch/jwj/Kaggriculture/logs/eval-%j.err
 

@@ -105,6 +105,10 @@ def test_input_hash():
 
 
 def test_macro_audit_submit():
+    defaults = submit_macro_audit.build_parser().parse_args([
+        "--run", "defaults", "--hypothesis", "h", "--acceptance", "a",
+        "--", "baseline", "--checkpoint", "model.pt"])
+    assert defaults.mem_gb == 4
     args = SimpleNamespace(run="phase0", cpus=4, mem_gb=12, minutes=20)
     run_dir = submit_macro_audit.ROOT / "rl" / "runs" / "phase0"
     manifest = run_dir / "submission.json"

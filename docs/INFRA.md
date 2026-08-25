@@ -15,6 +15,8 @@
 | H100 B=1536 | 首轮 15,166 sps，随后 OOM | 不可作为稳定配置 |
 | CPU 16 核，B=1024 | 6,304–10,939 sps，依节点而变 | 拥堵时默认路径 |
 | CPU B=1024 RSS | 约 76.5 GiB（有效训练链） | 申请 96G；140G 是过量预留 |
+| 宏观反事实审计，8 核 | 1.01–1.48 GiB RSS | 默认 4G，不再沿用 24G |
+| 官方引擎配对评估，8 worker | 1.44 GiB RSS | 8 worker 用 4G；32 worker 默认 12G |
 
 GPU sweep 的零利用率样本主要来自进程启动、不同 probe 之间和 OOM 后清理。
 `nvidia-smi` 的 utilization 只说明采样窗口内是否有 kernel 执行，不能等同于 SM
@@ -65,7 +67,7 @@ python tools/submit_macro_audit.py --run macro-phase0 \
   baseline --checkpoint rl/runs/chisel/latest.pt --opponent starter
 ```
 
-它固定 CPU 资源、管理输出路径，并把 checkpoint、tape 对手、完整审计参数、假设、
+它固定 CPU 资源（默认 8 核、4G）、管理输出路径，并把 checkpoint、tape 对手、完整审计参数、假设、
 阈值和 job ID 写入 `submission.json`。`slurm/rl_macro_audit.sh` 拒绝没有 manifest 的
 手工提交，避免评测作业绕过训练线已经执行的源码与输入哈希门。
 

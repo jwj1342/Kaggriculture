@@ -110,6 +110,16 @@ def test_strategic_context():
     assert context["demand_wool"] == 0
 
 
+def test_select_herd_context():
+    context = {"money": 1800, "demand_milk": 1}
+    assert M._select_herd_context(context, max_money=1900)
+    assert not M._select_herd_context(context, max_money=1700)
+    assert M._select_herd_context(context, max_demand_milk=1)
+    assert not M._select_herd_context(context, max_demand_milk=0)
+    assert M._select_herd_context(
+        context, max_money=1900, max_demand_milk=1)
+
+
 if __name__ == "__main__":
     test_discounted_returns()
     test_critic_stats()
@@ -118,4 +128,5 @@ if __name__ == "__main__":
     test_legacy_hand_head_adaptation()
     test_cash_reserve()
     test_strategic_context()
+    test_select_herd_context()
     print("macro audit tests passed")
