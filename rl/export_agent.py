@@ -65,6 +65,14 @@ def _forward(x):
 
 _TEMP = {temp}   # 0 = greedy argmax; >0 = softmax sampling at this temperature
 _RNG = np.random.default_rng(20260820)
+_SHEEP_CASH_MAX = {sheep_cash_max}
+_SHEEP_MIN_DAY = {sheep_min_day}
+_SHEEP_TIMEOUT = {sheep_timeout}
+_SHEEP_LAST_STEP = -1
+_SHEEP_DECIDED = False
+_SHEEP_ACTIVE = False
+_SHEEP_TRIGGER_STEP = -1
+_SHEEP_START = 0
 
 
 def _pick(logits):
@@ -76,18 +84,84 @@ def _pick(logits):
     return int(_RNG.choice(len(p), p=p))
 
 
+def _count_sheep(farm):
+    return sum(
+        1 for row in (farm.get("tiles") or []) for tile in (row or [])
+        if isinstance(tile, dict) and tile.get("animal") == "SHEEP"
+    )
+
+
+def _sheep_option(obs, action):
+    """One-shot FOLLOW_POLICY/BUY_ONE_SHEEP controller; disabled at cash 0."""
+    global _SHEEP_LAST_STEP, _SHEEP_DECIDED, _SHEEP_ACTIVE
+    global _SHEEP_TRIGGER_STEP, _SHEEP_START
+    if _SHEEP_CASH_MAX <= 0:
+        return action
+    try:
+        step = int(obs.get("step", 0) or 0)
+        if step == 0 or step <= _SHEEP_LAST_STEP:
+            _SHEEP_DECIDED = False
+            _SHEEP_ACTIVE = False
+            _SHEEP_TRIGGER_STEP = -1
+            _SHEEP_START = 0
+        _SHEEP_LAST_STEP = step
+
+        player = int(obs.get("player", 0) or 0)
+        farm = (obs.get("farms") or [])[player]
+        private = obs.get("private") or {}
+        shed = private.get("shed") or {}
+        money = float(farm.get("money", 0) or 0)
+        sheep = _count_sheep(farm)
+        room = sum(int(v or 0) for v in shed.values()) < 100
+
+        if (not _SHEEP_DECIDED and step // 24 >= _SHEEP_MIN_DAY
+                and money >= 1500 and room):
+            _SHEEP_DECIDED = True
+            _SHEEP_ACTIVE = money <= _SHEEP_CASH_MAX
+            _SHEEP_TRIGGER_STEP = step
+            _SHEEP_START = sheep
+
+        if not _SHEEP_ACTIVE:
+            return action
+        if sheep > _SHEEP_START or step - _SHEEP_TRIGGER_STEP >= _SHEEP_TIMEOUT:
+            _SHEEP_ACTIVE = False
+            return action
+
+        inventories = private.get("inventories") or []
+        carried = sum(int(inv.get("SHEEP", 0) or 0) for inv in inventories)
+        unplaced = int(shed.get("SHEEP", 0) or 0) + carried
+        out = dict(action)
+        if unplaced <= 0 and money >= 1500 and room:
+            out["market"] = [["BUY_ANIMAL", "SHEEP", 1]]
+
+        scan = _A._scan(obs)
+        if unplaced > 0 and scan["pasture_free"]:
+            farmer = _A._farmer_action(obs, "PLACE_SHEEP", scan)
+        elif scan["empty"]:
+            farmer = _A._farmer_action(obs, "BUILD_PASTURE", scan)
+        else:
+            farmer = None
+        if farmer:
+            out["farmer"] = farmer
+        return out
+    except Exception:
+        return action
+
+
 def _act(obs_dict):
     x = _O.encode(obs_dict)
     flog, mlog, hlog = _forward(x)
     flog[~_A.farmer_mask(obs_dict)] = -1e9
     mlog[~_A.market_mask(obs_dict)] = -1e9
     if hlog is None:
-        return _A.decode(obs_dict, _pick(flog), _pick(mlog))
+        return _sheep_option(
+            obs_dict, _A.decode(obs_dict, _pick(flog), _pick(mlog)))
     hm = np.array(_A.hand_task_mask(obs_dict), dtype=bool)
     hlog = hlog.reshape(hm.shape)
     hlog[~hm] = -1e9
     tasks = [_pick(row) for row in hlog]
-    return _A.decode_multi(obs_dict, _pick(flog), tasks, _pick(mlog))
+    return _sheep_option(
+        obs_dict, _A.decode_multi(obs_dict, _pick(flog), tasks, _pick(mlog)))
 
 
 def agent(obs, config=None):
@@ -113,7 +187,8 @@ def get_last_callable(path):
     return callables[-1] if callables else None
 
 
-def write_agent_dir(policy, out_dir, temperature=0.0):
+def write_agent_dir(policy, out_dir, temperature=0.0, sheep_cash_max=0,
+                    sheep_min_day=4, sheep_timeout=96):
     """Write a ready-to-run numpy agent directory for `policy` and verify the
     loader contract statically. Shared by the CLI export and league promotion.
 
@@ -122,6 +197,12 @@ def write_agent_dir(policy, out_dir, temperature=0.0):
     must be unique per export or two of our agents in one process share the
     cached module and the second reads the first's weights."""
     import re
+    if sheep_cash_max < 0:
+        raise ValueError("sheep_cash_max must be non-negative")
+    if sheep_min_day < 0:
+        raise ValueError("sheep_min_day must be non-negative")
+    if sheep_timeout <= 0:
+        raise ValueError("sheep_timeout must be positive")
     os.makedirs(out_dir, exist_ok=True)
     sfx = re.sub(r"\W", "_", os.path.basename(os.path.normpath(out_dir)))
     policy.export_npz(os.path.join(out_dir, "weights.npz"))
@@ -132,7 +213,10 @@ def write_agent_dir(policy, out_dir, temperature=0.0):
     main_path = os.path.join(out_dir, "main.py")
     with open(main_path, "w") as f:
         f.write(MAIN_TEMPLATE.replace("{sfx}", sfx)
-                .replace("{temp}", repr(float(temperature))))
+                .replace("{temp}", repr(float(temperature)))
+                .replace("{sheep_cash_max}", repr(int(sheep_cash_max)))
+                .replace("{sheep_min_day}", repr(int(sheep_min_day)))
+                .replace("{sheep_timeout}", repr(int(sheep_timeout))))
     fn = get_last_callable(main_path)
     assert fn is not None and fn.__name__ == "agent", \
         f"last callable is {fn}, expected the agent"
@@ -147,6 +231,10 @@ def main():
     ap.add_argument("--sample", type=float, default=0.0,
                     help="softmax sampling temperature baked into the "
                          "export (0 = greedy argmax)")
+    ap.add_argument("--sheep-cash-max", type=int, default=0,
+                    help="enable the one-sheep option at or below this cash")
+    ap.add_argument("--sheep-min-day", type=int, default=4)
+    ap.add_argument("--sheep-timeout", type=int, default=96)
     args = ap.parse_args()
 
     import torch
@@ -181,7 +269,10 @@ def main():
         # strict=False: pre-value-net checkpoints lack v1/v2 keys, and the
         # value net never ships anyway -- only the policy side is exported.
         policy.load_state_dict(sd, strict=False)
-    main_path = write_agent_dir(policy, out_dir, temperature=args.sample)
+    main_path = write_agent_dir(
+        policy, out_dir, temperature=args.sample,
+        sheep_cash_max=args.sheep_cash_max,
+        sheep_min_day=args.sheep_min_day, sheep_timeout=args.sheep_timeout)
     fn = get_last_callable(main_path)
     from kg_env import KGEnv
     raw = KGEnv(opponent="starter").reset(seed=123)
