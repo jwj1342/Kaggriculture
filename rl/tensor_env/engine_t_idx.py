@@ -157,7 +157,7 @@ class _Tabs:
                  "dir_lut", "key100_lut", "key1024_lut", "shed_dir",
                  "crop_first_i8", "u_arange", "hand_op_lut", "mfk_lut",
                  "pack_clear", "mop_lut", "mitem_lut", "mrem_lut", "move_lut",
-                 "move_code", "plant_deadline")
+                 "move_code", "plant_deadline", "animal_item")
 
 
 _CACHE = {}
@@ -190,6 +190,7 @@ def _tabs(device):
         t.crop_maxy = mk(ET.CROP_MAXY)
         t.crop_ongoing = torch.tensor(ET.CROP_ONGOING, dtype=torch.bool, device=device)
         t.animal_struct = mk(ET.ANIMAL_STRUCT)
+        t.animal_item = mk([ET.ITEM_IDX[a] for a in ET.ANIMAL_NAMES])
         t.animal_product = mk(ET.ANIMAL_PRODUCT)
         # fib(n) exact in float64 through n=78; decode money never nears
         # fib(79) ~ 1.4e16, so the clamped compare cannot flip (same
@@ -419,7 +420,7 @@ def _idx_decode_farmer(self, f_idx, fam, t):
 
 
 def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
-                      plant_kit=None, fert_plane=None):
+                      plant_kit=None, fert_plane=None, place_kit=None):
     """actions._hands_actions: per hand, greedy nearest untaken chore with
     strict-< first-pool-index tie-break == min (dist, family, y, x); the
     >=8-carry DROP leg. Serial over hand slots (the reference is), batch
@@ -506,6 +507,8 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
     use_feed = False
     use_plant = False
     use_fert = False
+    use_build = False
+    use_place = False
     if h_tasks is not None:
         ht = h_tasks[:, :, :max_h]
         idle = ht == 1
@@ -540,6 +543,19 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
             plantv = plantbuf[:BP * NN].view(B, P, NN)       # live view: claims show
             pen6 = torch.full_like(mfk, 600)
             pen6BIG = torch.full_like(mfk, BIG)
+        # BUILD (task 10) shares PLANT's empty-tile claim buffer.
+        is_build = ht == 10
+        use_build = plant_kit is not None and bool(is_build.any())
+        if use_build:
+            seek = seek & ~is_build
+            if not use_plant:
+                p_plane, _crop_unused, _budget_unused = plant_kit
+                plantbuf = torch.zeros(BP * NN + 1, dtype=torch.bool,
+                                       device=dev)
+                plantbuf[:BP * NN] = p_plane.reshape(-1)
+                plantv = plantbuf[:BP * NN].view(B, P, NN)
+                pen6 = torch.full_like(mfk, 600)
+                pen6BIG = torch.full_like(mfk, BIG)
         is_fert = ht == 9
         use_fert = fert_plane is not None and bool(is_fert.any())
         if use_fert:
@@ -553,6 +569,26 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
             hand_fert = self.unit_inv[:, :, 1:max_h + 1, ET.FERT_I].to(i64)
             carryF = self._idx_carry[:, :, 1:max_h + 1].to(i64)
             on_shedF = t.shed100.index_select(0, hpos.view(-1)).view(B, P, max_h)
+        # PLACE (task 11) fetches one selected animal and carries it to the
+        # nearest free matching structure.
+        is_place = ht == 11
+        use_place = place_kit is not None and bool(is_place.any())
+        if use_place:
+            seek = seek & ~is_place
+            pl_plane, animal_flat, place_left, place_ok = place_kit
+            place_left = place_left.clone()
+            placebuf = torch.zeros(BP * NN + 1, dtype=torch.bool, device=dev)
+            placebuf[:BP * NN] = pl_plane.reshape(-1)
+            placev = placebuf[:BP * NN].view(B, P, NN)
+            pen8 = torch.full_like(mfk, 800)
+            pen8big = torch.full_like(mfk, BIG)
+            animal_item_flat = t.animal_item.index_select(0, animal_flat)
+            hand_animal = self.unit_inv[:, :, 1:max_h + 1, :].to(i64).gather(
+                -1, animal_item_flat.view(B, P, 1, 1).expand(B, P, max_h, 1)
+            ).squeeze(-1)
+            carry_place = self._idx_carry[:, :, 1:max_h + 1].to(i64)
+            on_shed_place = t.shed100.index_select(
+                0, hpos.view(-1)).view(B, P, max_h)
     drop_op = t.shed_dir.index_select(0, hpos.view(-1)).view(B, P, max_h)
     bp100 = self._idx_ar_bp * NN                             # (B*P,)
     dummy = torch.full((BP,), BP * NN, dtype=i64, device=dev)
@@ -638,6 +674,62 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
             base_arg = (arg_u.reshape(-1) if arg_u is not None
                         else torch.zeros_like(op_u))
             arg_u = torch.where(hasp, crop_flat, base_arg).view(B, P)
+        if use_build:
+            act_u = act[:, :, u].reshape(-1)
+            loaded_u = loaded[:, :, u].reshape(-1)
+            isb = is_build[:, :, u].reshape(-1) & act_u & ~loaded_u
+            torch.add(t.key1024_lut.index_select(0, hp).view(B, P, NN),
+                      torch.where(plantv, pen6, pen6BIG), out=keybuf)
+            key_build = keybuf.amin(-1).view(-1)
+            has_build = isb & (key_build < BIG)
+            tile_build = ((key_build % 1024) - 600).clamp(
+                min=0, max=NN - 1).to(i64)
+            plantbuf[torch.where(has_build, bp100 + tile_build, dummy)] = False
+            move_build = t.dir_lut.index_select(0, hp * NN + tile_build)
+            op_build = torch.where(
+                hp == tile_build,
+                torch.full_like(op_u, U_BUILD_PASTURE), move_build)
+            op_u = torch.where(has_build, op_build, op_u)
+        if use_place:
+            act_u = act[:, :, u].reshape(-1)
+            loaded_u = loaded[:, :, u].reshape(-1)
+            isp = is_place[:, :, u].reshape(-1) & act_u
+            op_u = torch.where(isp & ~place_ok, t.c_pass, op_u)
+            isp = isp & place_ok
+            held = hand_animal[:, :, u].reshape(-1)
+            op_u = torch.where(isp & (held > 0) & loaded_u, t.c_pass, op_u)
+
+            torch.add(t.key1024_lut.index_select(0, hp).view(B, P, NN),
+                      torch.where(placev, pen8, pen8big), out=keybuf)
+            key_place = keybuf.amin(-1).view(-1)
+            has_place = isp & (held > 0) & (key_place < BIG)
+            tile_place = ((key_place % 1024) - 800).clamp(
+                min=0, max=NN - 1).to(i64)
+            placebuf[torch.where(
+                has_place, bp100 + tile_place, dummy)] = False
+            move_place = t.dir_lut.index_select(0, hp * NN + tile_place)
+            op_place = torch.where(
+                hp == tile_place, torch.full_like(op_u, U_PLACE), move_place)
+            op_u = torch.where(has_place, op_place, op_u)
+
+            place_any = placev.any(-1).reshape(-1)
+            fetch = (isp & (held <= 0) & ~loaded_u
+                     & (place_left > 0) & place_any)
+            pickup = fetch & on_shed_place[:, :, u].reshape(-1)
+            place_left = place_left - pickup.to(i64)
+            fetch_op = torch.where(
+                on_shed_place[:, :, u].reshape(-1),
+                torch.full_like(op_u, U_PICKUP),
+                drop_op[:, :, u].reshape(-1))
+            op_u = torch.where(fetch, fetch_op, op_u)
+            base_arg = (arg_u.reshape(-1) if arg_u is not None
+                        else torch.zeros_like(op_u))
+            base_qty = (qty_u.reshape(-1) if qty_u is not None
+                        else torch.zeros_like(op_u))
+            arg_u = torch.where(pickup, animal_item_flat, base_arg)
+            arg_u = torch.where(has_place, animal_flat, arg_u).view(B, P)
+            qty_u = torch.where(
+                pickup, torch.ones_like(base_qty), base_qty).view(B, P)
         if use_fert:
             act_u = act[:, :, u].reshape(-1)
             loaded_u = loaded[:, :, u].reshape(-1)
@@ -1149,9 +1241,12 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
     player, indices into actions.FARMER_ACTIONS / actions.MARKET_ACTIONS.
     Byte-equivalent to step_raw fed with actions.decode(...) per lane.
 
-    override: optional (seat, ops) -- replace ONE seat's decoded actions
-    with raw internal encodings before the apply phase (tensor opponents
-    whose behaviour the macro space cannot express, e.g. barnyard_t):
+    override: optional (seat, ops) or (seat, ops, lane_mask) -- replace ONE
+    seat's decoded actions with raw internal encodings before the apply phase
+    (tensor opponents whose behaviour the macro space cannot express, e.g.
+    barnyard_t).  lane_mask is an optional (B,) bool tensor that limits the
+    graft to selected batch lanes; unselected lanes retain their decoded
+    actions.  A list may contain either tuple form:
         ops["f_op"/"f_arg"/"f_qty"]: (B,) unit codes for the farmer slot
         ops["h_op"/"h_arg"/"h_qty"]: lists of (B,) per hand slot
         ops["m_op"/"m_item"/"m_rem"]: (B, S) market order slots
@@ -1247,15 +1342,66 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
         stock = stock - ((f_op == U_PLANT) & (f_arg == crop_sel)).to(i64)
         plant_kit = (fam[F_EMPTY], crop_sel.reshape(-1),
                      stock.clamp(min=0).reshape(-1))
+    if h_tasks is not None and plant_kit is None and bool((h_tasks == 10).any()):
+        plant_kit = (
+            fam[F_EMPTY],
+            torch.zeros(B * P, dtype=i64, device=dev),
+            torch.zeros(B * P, dtype=i64, device=dev),
+        )
+    place_kit = None
+    if h_tasks is not None and bool((h_tasks == 11).any()):
+        shed = self.shed.to(i64)
+        shed_counts = shed.index_select(-1, t.animal_item)    # (B, P, 3)
+        available = shed_counts
+        max_hands = int(self.hands_n.max())
+        if max_hands > 0:
+            held = self.unit_inv[:, :, 1:max_hands + 1].to(i64).index_select(
+                -1, t.animal_item).sum(2)
+            available = available + held
+        coop_free = fam[F_COOPF].any(-1)
+        pasture_free = fam[F_PASTF].any(-1)
+        free = torch.stack([coop_free, pasture_free, pasture_free], -1)
+        keys = torch.where(
+            free & (available > 0), available,
+            torch.full_like(available, -1))
+        animal = keys.argmax(-1)
+        place_ok = keys.gather(-1, animal.unsqueeze(-1)).squeeze(-1) > 0
+        budget = torch.where(
+            place_ok,
+            shed_counts.gather(-1, animal.unsqueeze(-1)).squeeze(-1),
+            torch.zeros_like(animal))
+        plane = torch.where(
+            (animal == 0).unsqueeze(-1), fam[F_COOPF], fam[F_PASTF])
+        plane = plane & place_ok.unsqueeze(-1)
+        place_kit = (plane, animal.reshape(-1), budget.reshape(-1),
+                     place_ok.reshape(-1))
     hand_ops, hand_args, hand_qtys = self._idx_decode_hands(
         [harv_f, unwat_f, uncared_f, fready_f, weed_f], t, h_tasks,
-        unfed_f, plant_kit, unfert_f)
+        unfed_f, plant_kit, unfert_f, place_kit)
     m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t)
 
     zero = torch.zeros((B, P), dtype=i64, device=dev)
-    for seat, ops in ([] if override is None
-                      else [override] if isinstance(override, tuple)
-                      else list(override)):
+    for entry in ([] if override is None
+                  else [override] if isinstance(override, tuple)
+                  else list(override)):
+        if len(entry) == 2:
+            seat, ops = entry
+            lane_mask = None
+        elif len(entry) == 3:
+            seat, ops, lane_mask = entry
+            lane_mask = torch.as_tensor(
+                lane_mask, dtype=torch.bool, device=dev).reshape(B)
+        else:
+            raise ValueError(
+                "step_idx override entries must be (seat, ops) or "
+                "(seat, ops, lane_mask)")
+
+        def graft(dst, src):
+            if lane_mask is None:
+                return src
+            shape = (B,) + (1,) * (dst.ndim - 1)
+            return torch.where(lane_mask.reshape(shape), src, dst)
+
         # graft one seat's raw internal encodings over the macro decode;
         # clone before writing -- decode may hand back one shared zero
         # tensor across slots (and FEED slots carry real arg/qty now).
@@ -1267,9 +1413,9 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
         # the ceiling). Every pre-existing caller supplies all nine keys, so
         # the full-graft path is untouched -- gate test_barn.py G0.
         if "f_op" in ops:
-            f_op[:, seat] = ops["f_op"]
-            f_arg[:, seat] = ops["f_arg"]
-            f_qty[:, seat] = ops["f_qty"]
+            f_op[:, seat] = graft(f_op[:, seat], ops["f_op"])
+            f_arg[:, seat] = graft(f_arg[:, seat], ops["f_arg"])
+            f_qty[:, seat] = graft(f_qty[:, seat], ops["f_qty"])
         if "h_op" in ops:
             h_op, h_arg, h_qty = ops["h_op"], ops["h_arg"], ops["h_qty"]
             while len(hand_ops) < len(h_op):
@@ -1279,18 +1425,23 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
             for u in range(len(hand_ops)):
                 if u < len(h_op):
                     hand_ops[u] = hand_ops[u].clone()
-                    hand_ops[u][:, seat] = h_op[u]
+                    hand_ops[u][:, seat] = graft(
+                        hand_ops[u][:, seat], h_op[u])
                     hand_args[u] = hand_args[u].clone()
-                    hand_args[u][:, seat] = h_arg[u]
+                    hand_args[u][:, seat] = graft(
+                        hand_args[u][:, seat], h_arg[u])
                     hand_qtys[u] = hand_qtys[u].clone()
-                    hand_qtys[u][:, seat] = h_qty[u]
+                    hand_qtys[u][:, seat] = graft(
+                        hand_qtys[u][:, seat], h_qty[u])
                 else:
                     hand_ops[u] = hand_ops[u].clone()
-                    hand_ops[u][:, seat] = U_PASS
+                    hand_ops[u][:, seat] = graft(
+                        hand_ops[u][:, seat],
+                        torch.full_like(hand_ops[u][:, seat], U_PASS))
         if "m_op" in ops:
-            m_op[:, seat] = ops["m_op"]
-            m_item[:, seat] = ops["m_item"]
-            m_rem[:, seat] = ops["m_rem"]
+            m_op[:, seat] = graft(m_op[:, seat], ops["m_op"])
+            m_item[:, seat] = graft(m_item[:, seat], ops["m_item"])
+            m_rem[:, seat] = graft(m_rem[:, seat], ops["m_rem"])
 
     # ---- atomic PLANT validation (the reference's, verbatim): if the
     # turn's total PLANT requests for a crop exceed the farm's seeds, ALL

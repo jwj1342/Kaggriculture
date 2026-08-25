@@ -31,6 +31,7 @@ import torch
 
 import actions as A
 import engine_t
+import kg_rules as KGR
 import engine_t_idx  # noqa: F401
 from verify_t import lane_obs
 
@@ -71,6 +72,15 @@ def _check_mixed(obs, s, rng):
                                    "PICKUP"}, (task, act)
             if op == "PICKUP":
                 assert act[1] == "FERTILIZER" and act[2] >= 1, (task, act)
+        elif task == "BUILD":
+            assert op in _MOVES | {"PASS", "DROP", "BUILD_PASTURE"}, (task, act)
+        elif task == "PLACE":
+            assert op in _MOVES | {"PASS", "DROP", "PLACE", "PICKUP"}, (
+                task, act)
+            if op == "PICKUP":
+                assert act[1] in A.ANIMAL_LIST and act[2] == 1, (task, act)
+            if op == "PLACE":
+                assert act[1] in A.ANIMAL_LIST, (task, act)
         else:
             assert op in _MOVES | {"PASS", "DROP", task}, (task, act)
             if op == "PASS":
@@ -102,6 +112,23 @@ def _check_mixed(obs, s, rng):
                 want = ((i < n_hands) and bool(s["unfert"])
                         and (priv["shed"].get("FERTILIZER", 0) > 0
                              or hinv.get("FERTILIZER", 0) > 0))
+            elif name == "BUILD":
+                min_animal = min(
+                    KGR.ANIMALS[a]["cost"] for a in A.ANIMAL_LIST)
+                want = ((i < n_hands) and bool(s["empty"])
+                        and (obs["farms"][obs["player"]].get("money", 0)
+                             >= min_animal
+                             or any(priv["shed"].get(a, 0) > 0
+                                    for a in A.ANIMAL_LIST)))
+            elif name == "PLACE":
+                hinv = invs[i + 1] if i + 1 < len(invs) else {}
+                free = {"COOP": bool(s["coop_free"]),
+                        "PASTURE": bool(s["pasture_free"])}
+                reach = any(
+                    (priv["shed"].get(a, 0) > 0 or hinv.get(a, 0) > 0)
+                    and free[KGR.ANIMALS[a]["structure"]]
+                    for a in A.ANIMAL_LIST)
+                want = (i < n_hands) and reach
             else:
                 want = (i < n_hands) and bool(fam_lists[name])
             assert mask[i][k] == want, (i, name, mask[i][k], want)

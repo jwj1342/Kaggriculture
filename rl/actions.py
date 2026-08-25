@@ -490,7 +490,8 @@ def decode(obs, f_idx, m_idx):
 # barnyard's hands do 83% of its feeding, 181 FEEDs/episode; without this
 # task the animal engine is capped by the farmer's 24 turns/day).
 HAND_TASKS = ["AUTO", "IDLE", "HARVEST", "WATER", "CARE",
-              "COLLECT_FERTILIZER", "DIG", "FEED", "PLANT", "FERTILIZE"]
+              "COLLECT_FERTILIZER", "DIG", "FEED", "PLANT", "FERTILIZE",
+              "BUILD", "PLACE"]
 N_HAND_TASK = len(HAND_TASKS)
 _TASK_IDX = {n: i for i, n in enumerate(HAND_TASKS)}
 
@@ -518,16 +519,34 @@ def _hands_actions_multi(obs, s, tasks, farmer=None):
     hands = farm.get("hands", [])
     if not hands:
         return []
+    shed = priv["shed"]
+    free = {"COOP": s["coop_free"], "PASTURE": s["pasture_free"]}
+    n_hands = len(hands)
+    available = {
+        animal: shed.get(animal, 0) + sum(
+            inv.get(animal, 0)
+            for inv in priv["inventories"][1:1 + n_hands])
+        for animal in ANIMAL_LIST
+    }
+    placeable = [
+        animal for animal in ANIMAL_LIST
+        if available[animal] > 0 and free[R.ANIMALS[animal]["structure"]]
+    ]
+    place_animal = (max(placeable, key=lambda animal: available[animal])
+                    if placeable else None)
+    place_spots = (free[R.ANIMALS[place_animal]["structure"]]
+                   if place_animal else [])
+    place_left = shed.get(place_animal, 0) if place_animal else 0
     pool = ([("HARVEST", t) for t in s["harvest"]]
             + [("WATER", t) for t in s["unwatered"]]
             + [("CARE", t) for t in s["uncared"]]
             + [("COLLECT_FERTILIZER", t) for t in s["fert_ready"]]
             + [("DIG", t) for t in s["weeds"]]
-            # FEED entries next (device key: family 5), then PLANT
-            # (family 6) and FERTILIZE (family 7); AUTO skips all three
+            # BUILD and PLANT share EMPTY claims because they compete for tiles.
             + [("FEED", t) for t in s["unfed"]]
-            + [("PLANT", t) for t in s["empty"]]
-            + [("FERTILIZE", t) for t in s["unfert"]])
+            + [("EMPTY", t) for t in s["empty"]]
+            + [("FERTILIZE", t) for t in s["unfert"]]
+            + [("PLACE", t) for t in place_spots])
     taken = set()
     acts = []
     invs = priv["inventories"]
@@ -588,8 +607,30 @@ def _hands_actions_multi(obs, s, tasks, farmer=None):
             else:
                 acts.append(_goto_do((hx, hy), _SHED, ["PASS"]) or ["PASS"])
             continue
-        if carry >= 8 and task not in ("FEED", "FERTILIZE"):
+        if (task == "PLACE" and place_animal is not None
+                and hinv.get(place_animal, 0) <= 0):
+            if carry >= 8:
+                acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
+                continue
+            has_target = any(op == "PLACE" and j not in taken
+                             for j, (op, _target) in enumerate(pool))
+            if place_left <= 0 or not has_target:
+                acts.append(["PASS"])
+                continue
+            if (hx, hy) in set(_SHED):
+                place_left -= 1
+                acts.append(["PICKUP", place_animal, 1])
+            else:
+                acts.append(_goto_do((hx, hy), _SHED, ["PASS"]) or ["PASS"])
+            continue
+        if task == "PLACE" and place_animal is None:
+            acts.append(["PASS"])
+            continue
+        if carry >= 8 and task not in ("FEED", "FERTILIZE", "PLACE"):
             acts.append(_goto_do((hx, hy), _SHED, ["DROP"]) or ["PASS"])
+            continue
+        if task == "BUILD" and not s["empty"]:
+            acts.append(["PASS"])
             continue
         if task == "PLANT" and plant_left <= 0:
             # no seed survives earlier planters' reservations (or none held)
@@ -600,7 +641,10 @@ def _hands_actions_multi(obs, s, tasks, farmer=None):
             if j in taken:
                 continue
             if task == "AUTO":
-                if _op in ("FEED", "PLANT", "FERTILIZE"):
+                if _op in ("FEED", "EMPTY", "FERTILIZE", "PLACE"):
+                    continue
+            elif _op == "EMPTY":
+                if task not in ("PLANT", "BUILD"):
                     continue
             elif _op != task:
                 continue
@@ -612,10 +656,16 @@ def _hands_actions_multi(obs, s, tasks, farmer=None):
             continue
         taken.add(best)
         op, t = pool[best]
-        if op == "PLANT":
+        if op == "EMPTY" and task == "PLANT":
             plant_left -= 1  # reserved at claim time, walking hands included
         if (hx, hy) == t:
-            acts.append(["PLANT", plant_crop] if op == "PLANT" else [op])
+            if op == "EMPTY":
+                acts.append(["PLANT", plant_crop] if task == "PLANT"
+                            else ["BUILD_PASTURE"])
+            elif op == "PLACE":
+                acts.append(["PLACE", place_animal])
+            else:
+                acts.append([op])
         else:
             acts.append([_step_toward(hx, hy, t[0], t[1]) or "PASS"])
     return acts
@@ -635,8 +685,9 @@ def hand_task_mask(obs):
     a chore family is legal while it has at least one target; FEED needs an
     unfed animal plus reachable wheat (that hand's inventory or the shed);
     PLANT needs a viable farm seed (PLANT_DEADLINE not passed) plus an
-    empty tile; slots beyond the live hand count are IDLE-only (zero
-    entropy, zero gradient)."""
+    empty tile; BUILD needs an empty tile and the means to stock a pasture;
+    PLACE needs a reachable animal and a free matching structure. Slots beyond
+    the live hand count are IDLE-only (zero entropy, zero gradient)."""
     farm, priv, _inv, _pos = _me(obs)
     n_hands = len(farm.get("hands", []))
     s = _scan(obs)
@@ -652,6 +703,15 @@ def hand_task_mask(obs):
     shed_wheat = priv["shed"].get("WHEAT", 0) > 0
     shed_fert = priv["shed"].get("FERTILIZER", 0) > 0
     unfert_any = bool(s["unfert"])
+    min_animal = min(R.ANIMALS[a]["cost"] for a in ANIMAL_LIST)
+    build_ok = bool(s["empty"]) and (
+        farm.get("money", 0) >= min_animal
+        or any(priv["shed"].get(a, 0) > 0 for a in ANIMAL_LIST))
+    free = {"COOP": bool(s["coop_free"]),
+            "PASTURE": bool(s["pasture_free"])}
+    shed_place = any(
+        priv["shed"].get(a, 0) > 0 and free[R.ANIMALS[a]["structure"]]
+        for a in ANIMAL_LIST)
     invs = priv["inventories"]
     idle_only = [False, True] + [False] * (N_HAND_TASK - 2)
     rows = []
@@ -664,8 +724,12 @@ def hand_task_mask(obs):
                                         or hinv.get("WHEAT", 0) > 0)
         fert_ok = unfert_any and (shed_fert
                                   or hinv.get("FERTILIZER", 0) > 0)
+        place_ok = shed_place or any(
+            hinv.get(a, 0) > 0 and free[R.ANIMALS[a]["structure"]]
+            for a in ANIMAL_LIST)
         rows.append([True, True] + list(chores) + [feed_ok, plant_ok,
-                                                   fert_ok])
+                                                   fert_ok, build_ok,
+                                                   place_ok])
     return rows
 
 

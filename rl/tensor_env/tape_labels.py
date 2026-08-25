@@ -36,10 +36,9 @@ first version of this docstring said it was. Two confounds, both measured
 
 Our own trained policies earn 40-65k through these same options, so a drive
 ratio of 0.7% is a statement about this labelling scheme, not about the
-action space. What the arms DO establish is narrower and real: the tape's
-division of labour is inexpressible here -- it places animals and builds
-pastures with its HANDS, and HAND_TASKS has neither, so arm B reaches day 29
-with zero animals while the tape has fourteen.
+action space. HAND_TASKS now includes BUILD and PLACE, but a memoryless
+projection still cannot reproduce compound market queues or the teacher's
+temporal state. Paired, state-closed macro rollouts are the performance gate.
 
 Ends LABELS-PASS / LABELS-FAIL.
 """
@@ -77,7 +76,8 @@ _F_OP = {
 _H_OP = {
     "HARVEST": "HARVEST", "WATER": "WATER", "CARE": "CARE",
     "COLLECT_FERTILIZER": "COLLECT_FERTILIZER", "DIG": "DIG", "FEED": "FEED",
-    "PLANT": "PLANT", "FERTILIZE": "FERTILIZE", "PASS": "IDLE",
+    "PLANT": "PLANT", "FERTILIZE": "FERTILIZE",
+    "BUILD_PASTURE": "BUILD", "PLACE": "PLACE", "PASS": "IDLE",
 }
 
 MAX_LOOKAHEAD = 40
@@ -103,6 +103,13 @@ def _h_label(act):
     if not act:
         return A.HAND_TASKS.index("IDLE")
     name = _H_OP.get(act[0])
+    if act[0] == "PICKUP" and len(act) > 1:
+        if act[1] == "WHEAT":
+            name = "FEED"
+        elif act[1] == "FERTILIZER":
+            name = "FERTILIZE"
+        elif act[1] in A.ANIMAL_LIST:
+            name = "PLACE"
     if name is None or name not in A.HAND_TASKS:
         return -1
     return A.HAND_TASKS.index(name)
@@ -362,7 +369,7 @@ def main():
               f"-> {ratio*100:.1f}%")
 
     if rows:
-        print("\n=== summary (the DRIVE ratio is the vocabulary verdict)")
+        print("\n=== summary (DRIVE measures lossy projection fidelity)")
         print(f"{'tape':<20}{'farmer':>8}{'market':>8}{'hands':>8}"
               f"{'drive $':>12}{'tape $':>12}{'ratio':>8}")
         for n, fc, mc, hc, o, t2, r in rows:
@@ -370,15 +377,9 @@ def main():
                   f"{o:>12,.0f}{t2:>12,.0f}{r*100:>7.1f}%")
         best = max(r[6] for r in rows)
         print(f"\n  best drive ratio {best*100:.1f}%")
-        if best < 0.30:
-            print("  READING: the vocabulary/action layer is the ceiling. "
-                  "Reward and compute cannot cross it.")
-        elif best < 0.70:
-            print("  READING: partially expressible -- BC is worth doing, but "
-                  "the uncovered ops above are a real cap.")
-        else:
-            print("  READING: the vocabulary is sufficient. The gap is "
-                  "learning, so imitation-then-RL is the right investment.")
+        print("  READING: this is not a vocabulary ceiling; queueing and "
+              "temporal-state divergence dominate. Use paired macro rollouts "
+              "as the performance gate.")
     print("LABELS-PASS" if ok else "LABELS-FAIL")
     return 0 if ok else 1
 

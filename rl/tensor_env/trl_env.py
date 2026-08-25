@@ -41,6 +41,7 @@ from torchrl.data import Binary, Composite, MultiCategorical, Unbounded
 from torchrl.envs import EnvBase
 
 import actions as A
+import kg_rules
 import obs as O
 import engine_t
 import engine_t_idx  # noqa: F401  (attaches EpisodeT.step_idx)
@@ -104,6 +105,24 @@ def hand_task_mask_t(ep, player, n_hands=None):
                             engine_t.FERT_I] > 0                    # (B, H)
     mask[:, :, 9] = (alive & (shed_fert.view(B, 1) | hand_fert)
                      & unfert_any.view(B, 1))
+    # BUILD: an empty tile and the means to stock a pasture. PLACE: a
+    # reachable animal with a free matching structure.
+    empty_any = (kind == engine_t.K_EMPTY).any(-1)                  # (B,)
+    animal_item = X._tabs(dev).animal_item                          # (3,)
+    min_animal = min(kg_rules.ANIMALS[a]["cost"] for a in A.ANIMAL_LIST)
+    stockable = ((ep.money[:, player] >= min_animal)
+                 | (ep.shed[:, player].index_select(
+                     -1, animal_item) > 0).any(-1))
+    mask[:, :, 10] = alive & (empty_any & stockable).view(B, 1)
+    coop_free = ((kind == engine_t.K_COOP) & ~anim).any(-1)
+    pasture_free = ((kind == engine_t.K_PASTURE) & ~anim).any(-1)
+    free = torch.stack([coop_free, pasture_free, pasture_free], -1)
+    shed_animals = ep.shed[:, player].index_select(-1, animal_item) > 0
+    shed_place = (shed_animals & free).any(-1)
+    hand_animals = ep.unit_inv[:, player, 1:n_hands + 1].index_select(
+        -1, animal_item) > 0
+    hand_place = (hand_animals & free.view(B, 1, 3)).any(-1)
+    mask[:, :, 11] = alive & (shed_place.view(B, 1) | hand_place)
     return mask
 
 
@@ -477,6 +496,9 @@ class KGTensorEnv(EnvBase):
         self._ep = None
         self._episode_index = 0
         self._prev_w = None
+        # One-step raw action grafts used by paired macro audits. They are
+        # consumed by the next _step and leave the normal training path idle.
+        self._step_overrides = []
         # backplay: comma-separated bank files (make_bank.py). A banked
         # reset restores mid-game barnyard-vs-barnyard states into the
         # fresh batch (random bank lanes -> env lanes), so the win signal
@@ -563,6 +585,10 @@ class KGTensorEnv(EnvBase):
             out["teacher_f"], out["teacher_m"], out["teacher_h"] = tf, tm, th
         return TensorDict(out, batch_size=self.batch_size, device=self.device)
 
+    def queue_step_override(self, seat, ops, lane_mask=None):
+        """Queue one raw step_idx graft, optionally for selected lanes."""
+        self._step_overrides.append((int(seat), ops, lane_mask))
+
     # -- EnvBase hooks -------------------------------------------------------
 
     def _reset(self, tensordict, **kwargs):
@@ -578,6 +604,7 @@ class KGTensorEnv(EnvBase):
         self._episode_index += 1
         self._ep = engine_t.EpisodeT(seeds, episode_steps=self.episode_steps,
                                      device=self.device)
+        self._step_overrides.clear()
         if self._banks:
             r = ((self._episode_index * 40503 + self.base_seed) % 997) / 997.0
             if r < self.bank_frac:
@@ -598,6 +625,8 @@ class KGTensorEnv(EnvBase):
     def _step(self, tensordict):
         ep, seat = self._ep, self.seat
         opp = 1 - seat
+        step_overrides = self._step_overrides
+        self._step_overrides = []
         action = tensordict["action"]
         fa, ma = action[..., 0], action[..., 1]
         h_idx = None
@@ -634,7 +663,8 @@ class KGTensorEnv(EnvBase):
             m_idx = torch.zeros_like(f_idx)
             f_idx[:, seat] = fa
             m_idx[:, seat] = ma
-            ep.step_idx(f_idx, m_idx, override=(opp, ops), h_idx=h_idx)
+            overrides = [(opp, ops), *step_overrides]
+            ep.step_idx(f_idx, m_idx, override=overrides, h_idx=h_idx)
             return self._finish_step(ep, seat, opp)
         res = self.opp_fn(ep, opp)
         if len(res) == 3:
@@ -660,7 +690,7 @@ class KGTensorEnv(EnvBase):
         else:
             f_idx = torch.stack([ofa, fa], 1)
             m_idx = torch.stack([oma, ma], 1)
-        ep.step_idx(f_idx, m_idx, h_idx=h_idx)
+        ep.step_idx(f_idx, m_idx, override=step_overrides or None, h_idx=h_idx)
         return self._finish_step(ep, seat, opp)
 
     def _finish_step(self, ep, seat, opp):

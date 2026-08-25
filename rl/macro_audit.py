@@ -34,7 +34,7 @@ for _path in (_HERE, _TENSOR):
 import actions as A  # noqa: E402
 import bank_t  # noqa: E402
 import engine_t  # noqa: E402
-import engine_t_idx  # noqa: F401,E402
+import engine_t_idx  # noqa: E402
 import features_t  # noqa: E402
 import obs as O  # noqa: E402
 import verify  # noqa: E402
@@ -51,6 +51,9 @@ DEFAULT_FIELD = (
     "tape:agents/wrapped/w49.py",
 )
 DEFAULT_OPTIONS = ("expand_land", "establish_crop:STRAWBERRY")
+_BUILD_PHASE_KINDS = {
+    "build_phase", "crew_build_phase", "farm_phase", "build_then_policy",
+}
 
 _BUY_LAND = A.MARKET_ACTIONS.index("BUY_LAND")
 _BUY_WHEAT = A.MARKET_ACTIONS.index("BUY_WHEAT")
@@ -561,6 +564,37 @@ def _repeat_forked_initial_state(env, seeds):
 
 
 def _parse_option(text):
+    if text in {"opening_basket", "opening_phase"}:
+        return {"name": text, "kind": text}
+    if text.startswith("tape_prefix:"):
+        payload = text.split(":", 1)[1]
+        try:
+            path, steps = payload.rsplit(":", 1)
+            steps = int(steps)
+        except ValueError as exc:
+            raise ValueError(
+                "tape_prefix must be tape_prefix:<path>:<steps>") from exc
+        if not path or steps <= 0:
+            raise ValueError("tape_prefix requires a path and positive steps")
+        return {"name": text, "kind": "tape_prefix", "path": path,
+                "steps": steps}
+    if text.startswith("barnyard_prefix:"):
+        payload = text.split(":", 1)[1]
+        try:
+            if ":" in payload:
+                profile, steps_text = payload.rsplit(":", 1)
+            else:
+                profile, steps_text = "default", payload
+            steps = int(steps_text)
+        except ValueError as exc:
+            raise ValueError(
+                "barnyard_prefix must be "
+                "barnyard_prefix:[default|industrial|k01_state]:<steps>") from exc
+        if profile not in {"default", "industrial", "k01_state"} or steps <= 0:
+            raise ValueError("barnyard_prefix requires a known profile and "
+                             "positive steps")
+        return {"name": text, "kind": "barnyard_prefix", "steps": steps,
+                "profile": profile}
     if text == "expand_land":
         return {"name": text, "kind": text}
     if text.startswith(("establish_crop:", "expand_crop:")):
@@ -601,14 +635,14 @@ def _parse_option(text):
             raise ValueError("policy_npz requires a path and temperature >= 0")
         return {"name": text, "kind": "policy_npz", "path": path,
                 "temperature": temperature}
-    if text.startswith(("build_phase:", "farm_phase:",
+    if text.startswith(("build_phase:", "crew_build_phase:", "farm_phase:",
                         "build_then_policy:")):
         parts = text.split(":")
         composite = parts[0] == "build_then_policy"
         valid_lengths = (8,) if composite else (3, 6)
         if len(parts) not in valid_lengths:
             raise ValueError(
-                "build/farm phase must be <kind>:<crop>:<animal> or "
+                "build/crew/farm phase must be <kind>:<crop>:<animal> or "
                 "<kind>:<crop>:<animal>:<land>:<crops>:<herd>; "
                 "build_then_policy additionally needs :<npz_path>:<temperature>")
         crop, animal = parts[1].upper(), parts[2].upper()
@@ -697,6 +731,156 @@ def _option_targets(option, land, crops, herd):
         "land": int(land), "crops": int(crops), "herd": int(herd)})
 
 
+def _opening_basket_ops(ep):
+    """Raw day-0 market basket extracted from the public k01/k06 trace."""
+    orders = (
+        (engine_t_idx.OP_HIRE, 0, 0),
+        (engine_t_idx.OP_HIRE, 0, 0),
+        (engine_t_idx.OP_HIRE, 0, 0),
+        (engine_t_idx.OP_HIRE, 0, 0),
+        (engine_t_idx.OP_HIRE, 0, 0),
+        (engine_t.OP_ANIMAL, engine_t.ANIMAL_IDX["COW"], 2),
+        (engine_t.OP_ANIMAL, engine_t.ANIMAL_IDX["SHEEP"], 2),
+        (engine_t.OP_SEED, engine_t.CROP_IDX["WHEAT"], 7),
+        (engine_t.OP_SEED, engine_t.CROP_IDX["MELON"], 12),
+        (engine_t.OP_BUYP, engine_t.WHEAT_I, 6),
+    )
+    if ep.max_market_orders < len(orders):
+        raise ValueError(
+            "opening_basket requires at least 10 market order slots")
+    shape = (ep.B, ep.max_market_orders)
+    m_op = torch.zeros(shape, dtype=torch.int64, device=ep.device)
+    m_item = torch.zeros_like(m_op)
+    m_rem = torch.zeros_like(m_op)
+    for slot, (op, item, qty) in enumerate(orders):
+        m_op[:, slot] = op
+        m_item[:, slot] = item
+        m_rem[:, slot] = qty
+    return {"m_op": m_op, "m_item": m_item, "m_rem": m_rem}
+
+
+def _opening_phase_state(ep, lane, seat):
+    animal_items = [engine_t.ITEM_IDX[name] for name in ("COW", "SHEEP")]
+    board_animals = ep.animal[lane, seat] >= 0
+    return {
+        "crops": int((ep.kind[lane, seat] == engine_t.K_PLANT).sum()),
+        "herd": int(board_animals.sum()),
+        "unplaced": int(
+            ep.shed[lane, seat, animal_items].sum()
+            + ep.unit_inv[lane, seat, :, animal_items].sum()),
+        "open_structure": int((
+            (ep.kind[lane, seat] == engine_t.K_PASTURE)
+            & ~board_animals).sum()),
+        "wheat": int(
+            ep.shed[lane, seat, engine_t.WHEAT_I]
+            + ep.unit_inv[lane, seat, :, engine_t.WHEAT_I].sum()),
+        "seeds": int(ep.seeds_t[lane, seat].sum()),
+        "unfed": int((board_animals & ~ep.fed[lane, seat]).sum()),
+        "uncared": int((board_animals & ~ep.cared[lane, seat]).sum()),
+        "unwatered": int((
+            (ep.kind[lane, seat] == engine_t.K_PLANT)
+            & ~ep.watered[lane, seat]).sum()),
+    }
+
+
+def _apply_opening_phase(action, td, ep, lane, seat, counters):
+    """State-closed execution of the first 24 turns after the basket."""
+    p = _opening_phase_state(ep, lane, seat)
+    farmer_build = A.FARMER_ACTIONS.index("BUILD_PASTURE")
+    hour = ep._step % ep.turns_per_day
+
+    # Step zero constructs the first pasture while the market basket arrives.
+    # Afterwards the farmer keeps adding capacity until the crew can place all
+    # waiting animals; only then does it join the placement path.
+    if ((ep._step == 0 or p["open_structure"] < p["unplaced"])
+            and bool(td["farmer_mask"][lane, farmer_build])):
+        if int(action[lane, 0]) != farmer_build:
+            counters["build_structure"] += 1
+        action[lane, 0] = farmer_build
+    elif p["unplaced"] and p["open_structure"]:
+        animal_names = ("COW", "SHEEP")
+        carried = [
+            name for name in animal_names
+            if int(ep.unit_inv[
+                lane, seat, 0, engine_t.ITEM_IDX[name]]) > 0
+        ]
+        stocked = [
+            name for name in animal_names
+            if int(ep.shed[lane, seat, engine_t.ITEM_IDX[name]]) > 0
+        ]
+        choices = carried or stocked
+        if choices:
+            place_i = A.FARMER_ACTIONS.index(f"PLACE_{choices[0]}")
+            if bool(td["farmer_mask"][lane, place_i]):
+                if int(action[lane, 0]) != place_i:
+                    counters["place_animal"] += 1
+                action[lane, 0] = place_i
+    elif p["crops"] < 19 and p["seeds"] and hour < 20:
+        crop_i = int(ep.seeds_t[lane, seat].argmax())
+        plant_i = A.FARMER_ACTIONS.index(
+            f"PLANT_{A.CROP_LIST[crop_i]}")
+        if bool(td["farmer_mask"][lane, plant_i]):
+            if int(action[lane, 0]) != plant_i:
+                counters["plant_crop"] += 1
+            action[lane, 0] = plant_i
+
+    if action.shape[-1] > 2:
+        live_hands = min(int(ep.hands_n[lane, seat]), A.MAX_HANDS)
+        animal_items = [
+            engine_t.ITEM_IDX[name] for name in ("COW", "SHEEP")]
+        carrying = [
+            slot for slot in range(live_hands)
+            if int(ep.unit_inv[
+                lane, seat, 1 + slot, animal_items].sum()) > 0
+        ]
+        assigned = set()
+
+        def assign(task, count, preferred):
+            task_i = A.HAND_TASKS.index(task)
+            for slot in preferred:
+                if count <= 0:
+                    break
+                if slot in assigned or slot >= live_hands:
+                    continue
+                if not bool(td["hand_mask"][lane, slot, task_i]):
+                    continue
+                if int(action[lane, 2 + slot]) != task_i:
+                    counters[f"hand_{task.lower()}"] += 1
+                action[lane, 2 + slot] = task_i
+                assigned.add(slot)
+                count -= 1
+
+        all_slots = list(range(live_hands))
+        place_order = carrying + [0, 2, 1, 3, 4] + all_slots
+        place_n = min(2, p["unplaced"]) if p["open_structure"] else 0
+        build_n = min(2, max(0, p["unplaced"] - p["open_structure"]))
+        assign("PLACE", place_n, place_order)
+        assign("FEED", min(1, p["unfed"] if p["wheat"] else 0),
+               [2, 0, 3, 4, 1] + all_slots)
+        assign("BUILD", build_n, [3, 4, 1, 0, 2] + all_slots)
+
+        free_n = live_hands - len(assigned)
+        if hour >= 20:
+            water_budget = free_n
+        elif hour >= 12:
+            water_budget = max(1, (free_n + 1) // 2)
+        else:
+            water_budget = 1
+        water_n = min(p["unwatered"], water_budget)
+        assign("WATER", water_n, [1, 3, 4, 0, 2] + all_slots)
+        free_n = live_hands - len(assigned)
+        if hour < 20 and p["crops"] < 19 and p["seeds"]:
+            assign("PLANT", free_n, [1, 3, 4, 0, 2] + all_slots)
+        elif p["uncared"]:
+            assign("CARE", min(p["uncared"], free_n), all_slots)
+
+    # Keep the plan's tiny post-basket cash reserve available for upkeep.
+    # Sales still pass through; only autonomous purchases are suppressed.
+    if int(action[lane, 1]) in _PURCHASE_MARKET:
+        counters["purchase_suppressed"] += 1
+        action[lane, 1] = 0
+
+
 def _build_phase_state(ep, lane, seat, option):
     """Observable execution state for an absolute construction milestone."""
     animal_i = option["animal_index"]
@@ -731,32 +915,61 @@ def _build_phase_delta(progress, start):
 
 
 def _apply_build_phase(action, td, ep, lane, seat, option, counters,
-                       land_target, crop_target, herd_target, cash_reserve):
+                       land_target, crop_target, herd_target, cash_reserve,
+                       crew_build=False):
     """Advance one coupled land/crop/herd milestone with minimal overrides."""
     p = _build_phase_state(ep, lane, seat, option)
     money = float(ep.money[lane, seat])
+    live_hands = (min(int(ep.hands_n[lane, seat]), A.MAX_HANDS)
+                  if action.shape[-1] > 2 else 0)
+    hand_build_i = (A.HAND_TASKS.index("BUILD") if crew_build else None)
+    hand_place_i = (A.HAND_TASKS.index("PLACE") if crew_build else None)
+    hand_can_build = bool(
+        crew_build and live_hands
+        and td["hand_mask"][lane, :live_hands, hand_build_i].any())
+    hand_can_place = bool(
+        crew_build and live_hands
+        and td["hand_mask"][lane, :live_hands, hand_place_i].any())
+    hand_handles_place = (hand_can_place and p["herd"] < herd_target
+                          and p["unplaced"] > 0
+                          and p["open_structure"] > 0)
+    hand_handles_build = (hand_can_build and p["herd"] < herd_target
+                          and p["open_structure"] <= p["unplaced"])
 
     # The farmer only handles construction. Repeated PLANT intent monopolises
     # it for long walks and starves the existing farm; planting is delegated to
-    # a bounded number of hands below.
-    if p["herd"] < herd_target and p["unplaced"] > 0 and bool(
-            td["farmer_mask"][lane, option["place_index"]]):
+    # a bounded number of hands below. In crew mode it remains on its frozen
+    # policy once a live hand can carry the construction responsibility.
+    if (not hand_handles_place
+            and p["herd"] < herd_target and p["unplaced"] > 0 and bool(
+                td["farmer_mask"][lane, option["place_index"]])):
         if int(action[lane, 0]) != option["place_index"]:
             counters["place_animal"] += 1
         action[lane, 0] = option["place_index"]
-    elif (p["herd"] + p["unplaced"] < herd_target
+    elif (not hand_handles_build
+          and p["herd"] + p["unplaced"] < herd_target
           and p["open_structure"] <= p["unplaced"]
           and bool(td["farmer_mask"][lane, option["build_index"]])):
         if int(action[lane, 0]) != option["build_index"]:
             counters["build_structure"] += 1
         action[lane, 0] = option["build_index"]
+    elif crew_build:
+        farmer_name = A.FARMER_ACTIONS[int(action[lane, 0])]
+        if ((hand_handles_place and farmer_name.startswith("PLACE_"))
+                or (hand_handles_build and farmer_name.startswith("BUILD_"))):
+            counters["farmer_construction_yield"] += 1
+            action[lane, 0] = A.FARMER_ACTIONS.index("PASS")
 
     # Reserve at most two hands per missing task family. Prefer slots the
     # policy already left IDLE/AUTO and leave every other hand decision intact;
     # rewriting the entire crew to AUTO was itself a large intervention.
-    if action.shape[-1] > 2:
-        live_hands = min(int(ep.hands_n[lane, seat]), A.MAX_HANDS)
+    if live_hands:
         desired = []
+        if crew_build:
+            if hand_handles_place:
+                desired.append(hand_place_i)
+            if hand_handles_build:
+                desired.append(hand_build_i)
         if p["unfed"] > 0 and p["wheat"] > 0:
             desired.extend([A.HAND_TASKS.index("FEED")] * min(2, p["unfed"]))
         if p["crops"] < crop_target and p["seeds"] > 0:
@@ -767,6 +980,15 @@ def _apply_build_phase(action, td, ep, lane, seat, option, counters,
             range(live_hands),
             key=lambda slot: (
                 int(action[lane, 2 + slot]) not in (idle_i, auto_i), slot))
+        if crew_build and p["unplaced"] > 0:
+            # Keep the animal-carrying hand at the front so the multi-turn
+            # shed -> pasture trip is not reassigned on the next turn.
+            animal_i = option["animal_index"]
+            carrying = [
+                slot for slot in slots
+                if int(ep.unit_inv[lane, seat, 1 + slot, animal_i]) > 0
+            ]
+            slots = carrying + [slot for slot in slots if slot not in carrying]
         for slot, task_i in zip(slots, desired):
             if not bool(td["hand_mask"][lane, slot, task_i]):
                 continue
@@ -892,6 +1114,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
     crop_target = targets["crops"]
     herd_target = targets["herd"]
     option_actor = option_multi = option_generator = None
+    option_tape = None
     if option["kind"] in {"policy_npz", "build_then_policy"}:
         option_actor, option_multi = _load_export_actor(option["path"], device)
         if option_multi != multi:
@@ -899,6 +1122,12 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 "policy_npz hand-head shape must match the baseline checkpoint")
         option_generator = torch.Generator(device=device)
         option_generator.manual_seed(seed + 0x5EED)
+    elif option["kind"] == "tape_prefix":
+        import tape_t
+        option_tape = tape_t.TapeOpponent(option["path"], device)
+    elif option["kind"] == "barnyard_prefix":
+        import barnyard_t
+        option_tape = barnyard_t.BarnyardOpponent(option["profile"])
     kwargs = _env_kwargs(saved)
     if steps_override:
         kwargs["episode_steps"] = int(steps_override)
@@ -923,6 +1152,9 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
     forced_actions = [defaultdict(int) for _ in range(lanes)]
 
     while True:
+        opening_lanes = torch.zeros(
+            2 * lanes, dtype=torch.bool, device=env.device)
+        tape_lanes = torch.zeros_like(opening_lanes)
         action, _ = _policy(actor_net, td, multi)
         alternate_action = None
         if option_actor is not None:
@@ -941,8 +1173,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             odd = 2 * pair + 1
             if not triggered[pair] and ep._step >= min_day * 24:
                 if option["kind"] in {
-                        "build_phase", "farm_phase", "hands_auto",
-                        "policy_npz", "build_then_policy"}:
+                        "opening_basket", "opening_phase", "tape_prefix",
+                        "barnyard_prefix"}:
+                    eligible = ep._step == 0
+                elif option["kind"] in (_BUILD_PHASE_KINDS
+                                        | {"hands_auto", "policy_npz"}):
                     eligible = True
                 elif option["kind"] in {"expand_land", "expand_crop"}:
                     extra_land = int(ep.quad_unlocked[odd, seat].sum())
@@ -998,8 +1233,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 if option["kind"] == "preserve_cash":
                     completion_target_delta[pair] = (
                         float(ep.money[odd, seat]) - start_value[pair]["money"])
-                elif option["kind"] in {
-                        "build_phase", "farm_phase", "build_then_policy"}:
+                elif option["kind"] in _BUILD_PHASE_KINDS:
                     completion_target_delta[pair] = _build_phase_delta(
                         _build_phase_state(ep, odd, seat, option),
                         start_value[pair])
@@ -1010,6 +1244,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 elif option["kind"] == "policy_npz":
                     success[pair] = True
                     completion_target_delta[pair] = timeout
+                elif option["kind"] in {
+                        "opening_basket", "opening_phase", "tape_prefix",
+                        "barnyard_prefix"}:
+                    completion_target_delta[pair] = int(
+                        sum(forced_actions[pair].values()))
                 else:
                     target_key = ("land" if option["kind"] == "expand_land" else
                                   option["species_key"] if option["kind"] in {
@@ -1021,8 +1260,17 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                         success[pair] = completion_target_delta[pair] >= herd_target
                 continue
             land_complete = int(state["land"][odd]) > start_value[pair]["land"]
-            if option["kind"] in {
-                    "build_phase", "farm_phase", "build_then_policy"}:
+            if option["kind"] in {"opening_basket", "opening_phase"}:
+                if not forced_actions[pair]["opening_basket"]:
+                    opening_lanes[odd] = True
+                    forced_actions[pair]["opening_basket"] += 1
+                if option["kind"] == "opening_phase":
+                    _apply_opening_phase(
+                        action, td, ep, odd, seat, forced_actions[pair])
+            elif option["kind"] in {"tape_prefix", "barnyard_prefix"}:
+                tape_lanes[odd] = True
+                forced_actions[pair][f"{option['kind']}_step"] += 1
+            elif option["kind"] in _BUILD_PHASE_KINDS:
                 milestone_met = _build_phase_complete(
                     _build_phase_state(ep, odd, seat, option),
                     land_target, crop_target, herd_target)
@@ -1036,7 +1284,8 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 else:
                     _apply_build_phase(
                         action, td, ep, odd, seat, option, forced_actions[pair],
-                        land_target, crop_target, herd_target, cash_reserve)
+                        land_target, crop_target, herd_target, cash_reserve,
+                        crew_build=option["kind"] == "crew_build_phase")
             elif option["kind"] == "hands_auto":
                 _apply_auto_hands(
                     action, td, ep, odd, seat, forced_actions[pair])
@@ -1092,6 +1341,11 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                 if int(action[odd, 1]) in _PURCHASE_MARKET:
                     action[odd, 1] = 0
 
+        if bool(opening_lanes.any()):
+            env.queue_step_override(
+                seat, _opening_basket_ops(ep), opening_lanes)
+        if bool(tape_lanes.any()):
+            env.queue_step_override(seat, option_tape(ep, seat), tape_lanes)
         td["action"] = action
         stepped = env.step(td)
         nxt = stepped["next"]
@@ -1105,8 +1359,17 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             if not finished[pair]:
                 if option["kind"] == "expand_land":
                     success[pair] = int(state["land"][odd]) > start_value[pair]["land"]
-                elif option["kind"] in {
-                        "build_phase", "farm_phase", "build_then_policy"}:
+                elif option["kind"] == "opening_basket":
+                    success[pair] = bool(
+                        forced_actions[pair]["opening_basket"])
+                elif option["kind"] == "opening_phase":
+                    opening = _opening_phase_state(ep, odd, seat)
+                    success[pair] = (
+                        opening["herd"] >= 4 and opening["crops"] >= 19)
+                elif option["kind"] in {"tape_prefix", "barnyard_prefix"}:
+                    success[pair] = (elapsed >= option["steps"]
+                                     or bool(ep.done))
+                elif option["kind"] in _BUILD_PHASE_KINDS:
                     milestone_met = _build_phase_complete(
                         _build_phase_state(ep, odd, seat, option),
                         land_target, crop_target, herd_target)
@@ -1133,16 +1396,22 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                                      - start_value[pair]["crops"] >= crop_target)
                 persistent = option["kind"] in {
                     "operate_herd", "farm_phase", "hands_auto",
-                    "policy_npz", "build_then_policy"}
-                finished[pair] = ((success[pair] and not persistent)
-                                  or elapsed >= timeout or (persistent and ep.done))
+                    "policy_npz", "build_then_policy", "opening_phase",
+                    "tape_prefix", "barnyard_prefix"}
+                if option["kind"] == "opening_phase":
+                    finished[pair] = elapsed >= 24 or bool(ep.done)
+                elif option["kind"] in {"tape_prefix", "barnyard_prefix"}:
+                    finished[pair] = elapsed >= option["steps"] or bool(ep.done)
+                else:
+                    finished[pair] = ((success[pair] and not persistent)
+                                      or elapsed >= timeout
+                                      or (persistent and ep.done))
                 if finished[pair]:
                     completion_elapsed[pair] = min(timeout, elapsed)
                     if option["kind"] == "preserve_cash":
                         completion_target_delta[pair] = (
                             float(ep.money[odd, seat]) - start_value[pair]["money"])
-                    elif option["kind"] in {
-                            "build_phase", "farm_phase", "build_then_policy"}:
+                    elif option["kind"] in _BUILD_PHASE_KINDS:
                         completion_target_delta[pair] = _build_phase_delta(
                             _build_phase_state(ep, odd, seat, option),
                             start_value[pair])
@@ -1151,6 +1420,16 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
                             forced_actions[pair].values())
                     elif option["kind"] == "policy_npz":
                         completion_target_delta[pair] = min(timeout, elapsed)
+                    elif option["kind"] == "opening_basket":
+                        completion_target_delta[pair] = int(success[pair])
+                    elif option["kind"] == "opening_phase":
+                        final_opening = _opening_phase_state(ep, odd, seat)
+                        completion_target_delta[pair] = {
+                            key: final_opening[key] - start_value[pair].get(key, 0)
+                            for key in ("crops", "herd")}
+                    elif option["kind"] in {"tape_prefix", "barnyard_prefix"}:
+                        completion_target_delta[pair] = min(
+                            option["steps"], elapsed + int(bool(ep.done)))
                     else:
                         target_key = (
                             "land" if option["kind"] == "expand_land" else
@@ -1213,8 +1492,7 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
         "opponent": opponent,
         "seat": seat,
         "option": option_text,
-        "targets": (targets if option["kind"] in {
-            "build_phase", "farm_phase", "build_then_policy"} else None),
+        "targets": targets if option["kind"] in _BUILD_PHASE_KINDS else None,
         "lanes": lanes,
         "triggered": len(used),
         "successes": sum(bool(row.get("option_success")) for row in used),
@@ -1469,7 +1747,8 @@ def parse_args(argv=None):
     if args.lanes < 1:
         parser.error("--lanes must be positive")
     if (args.command == "counterfactual"
-            and any(option.startswith(("build_phase:", "farm_phase:",
+            and any(option.startswith(("build_phase:", "crew_build_phase:",
+                                       "farm_phase:",
                                        "build_then_policy:"))
                     for option in args.option)
             and (args.land_target < 1 or args.crop_target < 0

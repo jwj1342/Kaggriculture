@@ -81,6 +81,16 @@ _CROP_IDX = {c: i for i, c in enumerate(ET.CROP_NAMES)}
 _WHEAT = ET.WHEAT_I
 _ANIMAL_ITEM = [ET.N_MKT + i for i in range(3)]               # ITEMS indices
 
+# A state-closed strategic profile distilled from the public k01 trajectory.
+# This changes only long-horizon capacity targets. The scheduler, routing,
+# market rules, and default opponent remain the reference transcription.
+_INDUSTRIAL_CROP_PLAN = [
+    ("MELON", 20, 18),
+    ("STRAWBERRY", 30, 13),
+    ("WHEAT", 35, 24),
+]
+_INDUSTRIAL_TARGETS = {"COW": 9, "SHEEP": 4, "GOOSE": 0}
+
 # unit-op string forms (dict conversion for the gate / step_raw parity)
 _OP_STR = {X.U_PASS: ["PASS"], X.U_MOVE_N: ["NORTH"], X.U_MOVE_S: ["SOUTH"],
            X.U_MOVE_E: ["EAST"], X.U_MOVE_W: ["WEST"], X.U_WATER: ["WATER"],
@@ -98,6 +108,8 @@ class _BT:
                  "crop_first", "crop_maxday", "crop_maxy", "crop_ongoing",
                  "water_max", "crop_seed", "sell_floor", "animal_cap",
                  "animal_cost", "plan_crop", "plan_target", "plan_last",
+                 "industrial_plan_crop", "industrial_plan_target",
+                 "industrial_plan_last",
                  "land_prices", "land_reserve")
 
 
@@ -154,25 +166,55 @@ def _bt(device):
     t.plan_crop = mk([_CROP_IDX[c] for c, _, _ in BY.CROP_PLAN])
     t.plan_target = mk([tg for _, tg, _ in BY.CROP_PLAN])
     t.plan_last = mk([ld for _, _, ld in BY.CROP_PLAN])
+    t.industrial_plan_crop = mk(
+        [_CROP_IDX[c] for c, _, _ in _INDUSTRIAL_CROP_PLAN])
+    t.industrial_plan_target = mk(
+        [tg for _, tg, _ in _INDUSTRIAL_CROP_PLAN])
+    t.industrial_plan_last = mk(
+        [ld for _, _, ld in _INDUSTRIAL_CROP_PLAN])
     t.land_prices = mk(BY.LAND_PRICES)
     t.land_reserve = mk([600, 1500, 3000])
     _TABS[key] = t
     return t
 
 
-def compute(ep, player, want_dicts=False):
+def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
     """Barnyard's turn for every lane -> step_idx override encodings.
 
     want_dicts additionally returns per-lane action dicts in step_raw form
     (the gate compares them against agents/barnyard.py verbatim)."""
     dev = ep.device
     t = _bt(dev)
+    if profile in (None, "default"):
+        plan_crop, plan_target, plan_last = (
+            t.plan_crop, t.plan_target, t.plan_last)
+        target_cows = BY.TARGET_COWS
+        target_sheep = BY.TARGET_SHEEP
+        target_geese = BY.TARGET_GEESE
+    elif profile in {"industrial", "k01_state"}:
+        plan_crop, plan_target, plan_last = (
+            t.industrial_plan_crop, t.industrial_plan_target,
+            t.industrial_plan_last)
+        target_cows = _INDUSTRIAL_TARGETS["COW"]
+        target_sheep = _INDUSTRIAL_TARGETS["SHEEP"]
+        target_geese = _INDUSTRIAL_TARGETS["GOOSE"]
+    else:
+        raise ValueError(f"unknown Barnyard profile: {profile!r}")
+    target_animals = target_cows + target_sheep + target_geese
     B = ep.B
     assert B != N * N, "a batch of exactly 100 lanes is shape-ambiguous here"
     p = player
     day = ep._step // ep.turns_per_day
     hour = ep._step % ep.turns_per_day
     endgame = day >= BY.LIQUIDATE_DAY
+    state_guided = profile == "k01_state"
+    hand_cap = (5 if state_guided and day == 0 else
+                12 if state_guided else BY.HAND_CAP)
+    hire_budget_frac = 1.0 if state_guided else BY.HIRE_BUDGET_FRAC
+    wheat_per_trip = 1 if state_guided else BY.WHEAT_PER_TRIP
+    wheat_buy_batch = 2 if state_guided else 10
+    wheat_cash_reserve = 0 if state_guided else 150
+    purchase_cap = 7 if state_guided else S_MKT
 
     # ---- survey (all (B, 100) unless noted) --------------------------------
     kind = ep.kind[:, p].reshape(B, N * N).long()
@@ -226,7 +268,7 @@ def compute(ep, player, want_dicts=False):
     zone_size = torch.minimum(
         owned.sum(-1) - 2,
         torch.clamp(n_animals + n_empty_structs + n_pending + 3, min=4))
-    zone_size = zone_size.clamp(max=BY.TARGET_ANIMALS)
+    zone_size = zone_size.clamp(max=target_animals)
     perm = t.rank_perm.view(1, -1).expand(B, -1)
     owned_r = owned.gather(1, perm)
     in_zone_r = owned_r & (owned_r.long().cumsum(1) <= zone_size.view(B, 1))
@@ -308,10 +350,10 @@ def compute(ep, player, want_dicts=False):
         carried_wheat = (inv[:, :, _WHEAT] * active).sum(-1)
         unfed_n = (has_a & ~fed).sum(-1)
         gap = unfed_n - carried_wheat
-        trips = torch.minimum(n_units, -(-gap // BY.WHEAT_PER_TRIP))
+        trips = torch.minimum(n_units, -(-gap // wheat_per_trip))
         trips = torch.where((gap > 0) & (shed_wheat0 > 0), trips, zeros)
         take0 = torch.minimum(
-            torch.full_like(shed_wheat0, BY.WHEAT_PER_TRIP), shed_wheat0)
+            torch.full_like(shed_wheat0, wheat_per_trip), shed_wheat0)
         for k in range(16):
             add(trips > k, 1, 700 + k, X.U_PICKUP, arg=_WHEAT, qty=take0,
                 kcode=1)
@@ -338,10 +380,10 @@ def compute(ep, player, want_dicts=False):
                         - free_pasture).clamp(min=0)
         need_coop = (waiting[:, _ANIMAL_IDX["GOOSE"]] - free_coop).clamp(min=0)
         afford_now = ((money - 300).clamp(min=0.0) // 450).to(i64)
-        room = (BY.TARGET_ANIMALS - n_animals - n_empty_structs).clamp(min=0)
+        room = (target_animals - n_animals - n_empty_structs).clamp(min=0)
         lookahead = (torch.minimum(afford_now, zeros + 4)
                      - need_pasture - need_coop).clamp(min=0)
-        plan_pasture = (BY.TARGET_COWS + BY.TARGET_SHEEP
+        plan_pasture = (target_cows + target_sheep
                         - counts[:, _ANIMAL_IDX["COW"]]
                         - counts[:, _ANIMAL_IDX["SHEEP"]]
                         - free_pasture - need_pasture).clamp(min=0)
@@ -361,25 +403,28 @@ def compute(ep, player, want_dicts=False):
                         torch.full_like(qidx_r, X.U_BUILD_COOP), la_op))
         build_valid_r = fz_r & (qidx_r < qlen.view(B, 1))
 
-        want = (t.plan_target.view(1, 3)
-                - crop_counts.gather(1, t.plan_crop.view(1, 3).expand(B, 3))
+        want = (plan_target.view(1, 3)
+                - crop_counts.gather(1, plan_crop.view(1, 3).expand(B, 3))
                 ).clamp(min=0)
-        want = torch.where(t.plan_last.view(1, 3) >= day, want,
+        want = torch.where(plan_last.view(1, 3) >= day, want,
                            torch.zeros_like(want))
         kq = torch.minimum(
-            want, seeds.gather(1, t.plan_crop.view(1, 3).expand(B, 3)))
+            want, seeds.gather(1, plan_crop.view(1, 3).expand(B, 3)))
         cidx_r = fnz_r.long().cumsum(1) - 1
         k0 = kq[:, 0].view(B, 1)
         k01 = (kq[:, 0] + kq[:, 1]).view(B, 1)
         k012 = (kq[:, 0] + kq[:, 1] + kq[:, 2]).view(B, 1)
         plant_arg_r = torch.where(
-            cidx_r < k0, t.plan_crop[0].expand_as(cidx_r),
-            torch.where(cidx_r < k01, t.plan_crop[1].expand_as(cidx_r),
-                        t.plan_crop[2].expand_as(cidx_r)))
+            cidx_r < k0, plan_crop[0].expand_as(cidx_r),
+            torch.where(cidx_r < k01, plan_crop[1].expand_as(cidx_r),
+                        plan_crop[2].expand_as(cidx_r)))
         plant_valid_r = fnz_r & (cidx_r < k012)
-        plant_prio_r = torch.where(plant_arg_r == _CROP_IDX["MELON"],
-                                   torch.full_like(cidx_r, 6),
-                                   torch.full_like(cidx_r, 10))
+        if state_guided:
+            plant_prio_r = torch.full_like(cidx_r, 5)
+        else:
+            plant_prio_r = torch.where(
+                plant_arg_r == _CROP_IDX["MELON"],
+                torch.full_like(cidx_r, 6), torch.full_like(cidx_r, 10))
         rank_of = t.rank_inv.view(1, -1).expand(B, -1)
 
         def unrank(x_r, fill=0):
@@ -392,9 +437,12 @@ def compute(ep, player, want_dicts=False):
             1000 + rank_of, X.U_PLANT, tile=tiles_ar, arg=unrank(plant_arg_r))
 
         # H) weeds
-        weed_prio = torch.where(n_free <= n_weeds + 4,
-                                torch.full_like(zeros, 6),
-                                torch.full_like(zeros, 11))
+        if state_guided:
+            weed_prio = torch.full_like(zeros, 5)
+        else:
+            weed_prio = torch.where(n_free <= n_weeds + 4,
+                                    torch.full_like(zeros, 6),
+                                    torch.full_like(zeros, 11))
         add(is_weed, weed_prio.view(B, 1).expand(B, N * N), 1200 + tiles_ar,
             X.U_DIG, tile=tiles_ar)
     else:
@@ -406,8 +454,28 @@ def compute(ep, player, want_dicts=False):
 
     # ---- order candidates by (prio, construction ctr); compact valid -------
     valid = torch.cat([c[0] for c in cand], 1)
-    key = torch.cat([c[1] for c in cand], 1) * 4096 \
-        + torch.cat([c[2] for c in cand], 1)
+    all_prio = torch.cat([c[1] for c in cand], 1)
+    all_ctr = torch.cat([c[2] for c in cand], 1)
+    all_op = torch.cat([c[3] for c in cand], 1)
+    all_tile = torch.cat([c[4] for c in cand], 1)
+    all_arg = torch.cat([c[5] for c in cand], 1)
+    all_qty = torch.cat([c[6] for c in cand], 1)
+    all_need = torch.cat([c[7] for c in cand], 1)
+    all_kcode = torch.cat([c[8] for c in cand], 1)
+    key = all_prio * 4096 + all_ctr
+    if state_guided:
+        tx = (all_tile % N).unsqueeze(-1)
+        ty = (all_tile // N).unsqueeze(-1)
+        task_dist = ((upos[..., 0].unsqueeze(1) - tx).abs()
+                     + (upos[..., 1].unsqueeze(1) - ty).abs())
+        task_dist = torch.where(active.unsqueeze(1), task_dist,
+                                torch.full_like(task_dist, BIG))
+        nearest = task_dist.min(-1).values
+        nearest = torch.where(all_kcode == 0, nearest,
+                              torch.zeros_like(nearest))
+        # Preserve priority as the primary key, then favour work near the
+        # current crew before falling back to the reference's stable order.
+        key = all_prio * 65536 + nearest * 2048 + all_ctr
     key = torch.where(valid, key, torch.full_like(key, BIG))
     n_valid = int(valid.sum(1).max()) if valid.numel() else 0
     order = key.argsort(1)[:, :n_valid]
@@ -431,6 +499,7 @@ def compute(ep, player, want_dicts=False):
     # produce runbacks as U_DROP; unassigned stays U_PASS.
     out_task = torch.full((B, U), X.U_PASS, dtype=i64, device=dev)
     out_ta = torch.zeros((B, U), dtype=i64, device=dev)
+    next_target = torch.full((B, U), -1, dtype=i64, device=dev)
     claimed = torch.zeros((B, N * N * 18), dtype=torch.bool, device=dev)
     shed_wheat_left = shed_wheat0.clone()
     shed_animals_left = animals_in_shed.clone()
@@ -439,6 +508,47 @@ def compute(ep, player, want_dicts=False):
     at_shed_u = t.shed100[upos_f]                      # (B, U)
     shed_dist_u = t.shed_dist[upos_f]
     dir_to_shed_u = t.dir_lut[upos_f * (N * N) + t.near_shed_tile[upos_f]]
+
+    # Keep a unit on the tile it was already approaching while useful work
+    # remains there. This closes the main oscillation in the stateless greedy
+    # scheduler without changing the reference-compatible default profile.
+    if state_guided and sticky_tiles is not None:
+        old = torch.as_tensor(sticky_tiles, dtype=i64, device=dev)
+        sticky = torch.full((B, U), -1, dtype=i64, device=dev)
+        if old.dim() == 2:
+            sticky[:min(B, old.shape[0]), :min(U, old.shape[1])] = \
+                old[:min(B, old.shape[0]), :min(U, old.shape[1])]
+        for u in range(U):
+            target = sticky[:, u]
+            claim_id = all_tile * 18 + all_op
+            already = claimed.gather(1, claim_id.clamp(min=0))
+            need_stock = inv[:, u].gather(
+                1, all_need.clamp(min=0, max=inv.shape[-1] - 1))
+            need_ok = (all_need < 0) | (need_stock > 0)
+            eligible = (valid & (all_kcode == 0)
+                        & (all_tile == target.view(B, 1)) & ~already
+                        & need_ok & active[:, u:u + 1])
+            skey = torch.where(eligible, key, torch.full_like(key, BIG))
+            kval, best = skey.min(1)
+            found = kval < BIG
+            if not bool(found.any()):
+                continue
+            cop = all_op.gather(1, best.view(B, 1)).squeeze(1)
+            ctile = all_tile.gather(1, best.view(B, 1)).squeeze(1)
+            carg = all_arg.gather(1, best.view(B, 1)).squeeze(1)
+            cqty = all_qty.gather(1, best.view(B, 1)).squeeze(1)
+            at = upos_f[:, u] == ctile
+            mv = t.dir_lut[upos_f[:, u] * (N * N) + ctile]
+            out_op[found, u] = torch.where(at, cop, mv)[found]
+            out_arg[found, u] = torch.where(
+                at, carg, torch.zeros_like(carg))[found]
+            out_qty[found, u] = torch.where(
+                at, cqty, torch.zeros_like(cqty))[found]
+            out_task[found, u] = cop[found]
+            out_ta[found, u] = carg[found]
+            next_target[found, u] = ctile[found]
+            busy[found, u] = True
+            claimed[found, (ctile * 18 + cop)[found]] = True
 
     for s in range(o_op.shape[1]):
         if s % 4 == 0 and bool(busy.all()):
@@ -480,6 +590,7 @@ def compute(ep, player, want_dicts=False):
                                               torch.zeros_like(c_qty))[fb]
                 out_task[fb, bi] = c_op[fb]
                 out_ta[fb, bi] = c_arg[fb]
+                next_target[fb, bi] = c_tile[fb]
                 busy[fb, bi] = True
                 claimed[fb, (c_tile * 18 + c_op)[fb]] = True
 
@@ -489,7 +600,7 @@ def compute(ep, player, want_dicts=False):
             if not bool(sl.any()):
                 continue
             if kc == 1:
-                pre = inv[:, :, _WHEAT] < BY.WHEAT_PER_TRIP // 2
+                pre = inv[:, :, _WHEAT] < max(1, wheat_per_trip // 2)
                 sl = sl & (torch.minimum(c_qty, shed_wheat_left) > 0)
             else:
                 pre = ~(inv[:, :, ET.N_MKT:] > 0).any(-1)
@@ -556,7 +667,7 @@ def compute(ep, player, want_dicts=False):
         if endgame:
             walk = idle & ~at
         take = torch.minimum(
-            torch.full_like(shed_wheat_left, BY.WHEAT_PER_TRIP),
+            torch.full_like(shed_wheat_left, wheat_per_trip),
             shed_wheat_left)
         out_op[drop, u] = X.U_DROP
         out_op[pick, u] = X.U_PICKUP
@@ -589,15 +700,32 @@ def compute(ep, player, want_dicts=False):
 
     mkt_inv = ep.mkt_inv.to(i64)                       # (B, 9)
 
-    if not endgame:
+    exact_opening = state_guided and ep._step == 0
+    if exact_opening:
+        opening = [
+            (X.OP_HIRE, 0, 0), (X.OP_HIRE, 0, 0),
+            (X.OP_HIRE, 0, 0), (X.OP_HIRE, 0, 0),
+            (X.OP_HIRE, 0, 0),
+            (ET.OP_ANIMAL, _ANIMAL_IDX["COW"], 2),
+            (ET.OP_ANIMAL, _ANIMAL_IDX["SHEEP"], 2),
+            (ET.OP_SEED, _CROP_IDX["WHEAT"], 7),
+            (ET.OP_SEED, _CROP_IDX["MELON"], 12),
+            (ET.OP_BUYP, _WHEAT, 6),
+        ]
+        for slot, (op, item, qty) in enumerate(opening):
+            m_op[:, slot] = op
+            m_item[:, slot] = item
+            m_rem[:, slot] = qty
+        ptr.fill_(S_MKT)
+    elif not endgame:
         if hour <= 3:
             hires = ep.hires_today[:, p].to(i64).clone()
             payroll = t.fibsum[hires.clamp(max=39)].to(f64)
-            budget = torch.clamp(money * BY.HIRE_BUDGET_FRAC, min=4.0)
+            budget = torch.clamp(money * hire_budget_frac, min=4.0)
             alive = torch.ones((B,), dtype=torch.bool, device=dev)
             for _ in range(7):
                 cost = t.fib[hires.clamp(max=39)].to(f64)
-                ok = (alive & (ptr < 7) & (hires < BY.HAND_CAP)
+                ok = (alive & (ptr < 7) & (hires < hand_cap)
                       & (payroll + cost <= budget)
                       & (money - spend >= cost + 40))
                 ok = push(ok, X.OP_HIRE, 0, 0)
@@ -612,40 +740,49 @@ def compute(ep, player, want_dicts=False):
         land_p = t.land_prices[n_extra.clamp(max=2)].to(f64)
         reserve = t.land_reserve[n_extra.clamp(max=2)].to(f64)
         ok = ((n_extra < min(len(BY.LAND_PRICES), BY.MAX_QUADRANTS - 1))
-              & (crop_room <= 8) & (money - spend >= land_p + reserve))
+              & (ptr < purchase_cap) & (crop_room <= 8)
+              & (money - spend >= land_p + reserve))
         ok = push(ok, X.OP_LAND, 0, 0)
         spend = spend + torch.where(ok, land_p, torch.zeros_like(land_p))
+
+        if state_guided:
+            # Reserve each packet for an actual empty tile. Without this
+            # aggregate cap the three crop targets can strand dozens of
+            # packets in the shed before the next quadrant is affordable.
+            crop_room = (crop_room - seeds.sum(-1)).clamp(min=0)
 
         housing_free = n_empty_structs + room
         owned_of = counts + animals_in_shed
         gz = _ANIMAL_IDX
         want_a = torch.full((B,), -1, dtype=i64, device=dev)
-        want_a = torch.where(owned_of[:, gz["COW"]] < BY.TARGET_COWS,
+        want_a = torch.where(owned_of[:, gz["COW"]] < target_cows,
                              torch.full_like(want_a, gz["COW"]), want_a)
         want_a = torch.where(
-            (want_a < 0) & (owned_of[:, gz["SHEEP"]] < BY.TARGET_SHEEP),
+            (want_a < 0) & (owned_of[:, gz["SHEEP"]] < target_sheep),
             torch.full_like(want_a, gz["SHEEP"]), want_a)
         want_a = torch.where(
-            (want_a < 0) & (owned_of[:, gz["GOOSE"]] < BY.TARGET_GEESE)
+            (want_a < 0) & (owned_of[:, gz["GOOSE"]] < target_geese)
             & (day <= 20),
             torch.full_like(want_a, gz["GOOSE"]), want_a)
         cost = t.animal_cost[want_a.clamp(min=0)].to(f64)
         keep = 100.0 if day < 12 else 400.0
         ok = ((day <= 23) & (n_pending < 2) & (housing_free > n_pending)
+              & (ptr < purchase_cap)
               & (shed_total < BY.SHED_CAPACITY - 8) & (want_a >= 0)
               & (money - spend >= cost + keep))
         ok = push(ok, ET.OP_ANIMAL, want_a.clamp(min=0), 1)
         spend = spend + torch.where(ok, cost, torch.zeros_like(cost))
 
         for ci in range(3):
-            cidx = int(t.plan_crop[ci])
-            last_day = int(t.plan_last[ci])
-            tgt = int(t.plan_target[ci])
+            cidx = int(plan_crop[ci])
+            last_day = int(plan_last[ci])
+            tgt = int(plan_target[ci])
             have = crop_counts[:, cidx] + seeds[:, cidx]
             k = torch.minimum(torch.minimum(
                 torch.full_like(have, 4), tgt - have), crop_room)
             cost1 = float(t.crop_seed[cidx])
-            ok = ((day <= last_day) & (crop_room > 0) & (have < tgt) & (k > 0)
+            ok = ((ptr < purchase_cap) & (day <= last_day)
+                  & (crop_room > 0) & (have < tgt) & (k > 0)
                   & (money - spend >= cost1 * k.to(f64) + 100))
             ok = push(ok, ET.OP_SEED, cidx, k)
             kz = torch.where(ok, k, torch.zeros_like(k))
@@ -657,11 +794,12 @@ def compute(ep, player, want_dicts=False):
             n_animals * BY.WHEAT_RESERVE_PER_ANIMAL)
         wprice = ep._price_at(torch.full_like(mkt_inv[:, 0], _WHEAT),
                               mkt_inv[:, _WHEAT] - 1).to(f64)
-        kw = torch.minimum(torch.full_like(need_wheat, 10),
+        kw = torch.minimum(torch.full_like(need_wheat, wheat_buy_batch),
                            need_wheat - shed[:, _WHEAT])
-        ok = ((n_animals > 0) & (shed[:, _WHEAT] < need_wheat)
+        ok = ((ptr < purchase_cap) & (n_animals > 0)
+              & (shed[:, _WHEAT] < need_wheat)
               & (shed_total < BY.SHED_CAPACITY - 10)
-              & (money - spend >= wprice * kw.to(f64) + 150))
+              & (money - spend >= wprice * kw.to(f64) + wheat_cash_reserve))
         ok = push(ok, ET.OP_BUYP, _WHEAT, kw)
         spend = spend + torch.where(ok, wprice * kw.to(f64),
                                     torch.zeros_like(spend))
@@ -692,7 +830,7 @@ def compute(ep, player, want_dicts=False):
         it = sorder[:, r]
         held_r = held9.gather(1, it.view(B, 1)).squeeze(1)
         ok_r = skey.gather(1, it.view(B, 1)).squeeze(1) >= 0
-        if endgame:
+        if endgame or state_guided:
             qty = torch.minimum(held_r, torch.full_like(held_r, 40))
         else:
             lead_r = lead.gather(1, it.view(B, 1)).squeeze(1)
@@ -704,6 +842,16 @@ def compute(ep, player, want_dicts=False):
                 metered)
         push(ok_r & (qty > 0), ET.OP_SELL, it, qty)
 
+    if state_guided:
+        slot = torch.arange(S_MKT, dtype=i64, device=dev).view(1, -1)
+        rank = torch.where(m_op == ET.OP_SELL, torch.zeros_like(m_op),
+                           torch.where(m_op != 0, torch.ones_like(m_op),
+                                       torch.full_like(m_op, 2)))
+        order = (rank * S_MKT + slot).argsort(1)
+        m_op = m_op.gather(1, order)
+        m_item = m_item.gather(1, order)
+        m_rem = m_rem.gather(1, order)
+
     ops = {"f_op": out_op[:, 0], "f_arg": out_arg[:, 0], "f_qty": out_qty[:, 0],
            "h_op": [out_op[:, u] for u in range(1, U)],
            "h_arg": [out_arg[:, u] for u in range(1, U)],
@@ -711,7 +859,8 @@ def compute(ep, player, want_dicts=False):
            "m_op": m_op, "m_item": m_item, "m_rem": m_rem,
            # intent labels (kickstart teachers read these; the override
            # graft in step_idx ignores unknown keys)
-           "task": out_task, "task_arg": out_ta}
+           "task": out_task, "task_arg": out_ta,
+           "task_tile": next_target}
     if not want_dicts:
         return ops
     return ops, _to_dicts(ep, p, ops)
@@ -774,5 +923,14 @@ class BarnyardOpponent:
 
     provides_ops = True
 
+    def __init__(self, profile=None):
+        self.profile = profile
+        self.task_tiles = None
+
     def __call__(self, ep, player):
-        return compute(ep, player)
+        if ep._step == 0:
+            self.task_tiles = None
+        ops = compute(ep, player, profile=self.profile,
+                      sticky_tiles=self.task_tiles)
+        self.task_tiles = ops["task_tile"].detach().clone()
+        return ops

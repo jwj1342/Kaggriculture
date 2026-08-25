@@ -44,6 +44,20 @@ def test_paired_summary():
 
 
 def test_options():
+    assert M._parse_option("opening_basket")["kind"] == "opening_basket"
+    assert M._parse_option("opening_phase")["kind"] == "opening_phase"
+    tape = M._parse_option("tape_prefix:agents/champ/k01.py:24")
+    assert tape["kind"] == "tape_prefix"
+    assert tape["path"] == "agents/champ/k01.py" and tape["steps"] == 24
+    barn = M._parse_option("barnyard_prefix:480")
+    assert barn["kind"] == "barnyard_prefix" and barn["steps"] == 480
+    assert barn["profile"] == "default"
+    industrial = M._parse_option("barnyard_prefix:industrial:480")
+    assert industrial["kind"] == "barnyard_prefix"
+    assert industrial["profile"] == "industrial"
+    assert industrial["steps"] == 480
+    state_guided = M._parse_option("barnyard_prefix:k01_state:480")
+    assert state_guided["profile"] == "k01_state"
     assert M._parse_option("expand_land")["kind"] == "expand_land"
     crop = M._parse_option("establish_crop:strawberry")
     assert crop["crop"] == "STRAWBERRY"
@@ -69,6 +83,9 @@ def test_options():
     assert build["structure_code"] == M.engine_t.K_PASTURE
     targeted = M._parse_option("build_phase:strawberry:sheep:2:28:7")
     assert targeted["targets"] == {"land": 2, "crops": 28, "herd": 7}
+    crew = M._parse_option("crew_build_phase:strawberry:sheep:2:28:7")
+    assert crew["kind"] == "crew_build_phase"
+    assert crew["targets"] == targeted["targets"]
     assert M._option_targets(targeted, 3, 9, 4) == targeted["targets"]
     assert M._option_targets(build, 3, 9, 4) == {
         "land": 3, "crops": 9, "herd": 4}
@@ -138,6 +155,28 @@ def test_build_phase_milestone():
         "land": 1, "crops": 23, "herd": 6}
 
 
+def test_opening_basket_masked_override():
+    env = M.KGTensorEnv(
+        2, device="cpu", seat=0, base_seed=9, opponent="starter")
+    td = env.reset()
+    env.queue_step_override(
+        0, M._opening_basket_ops(env._ep), torch.tensor([False, True]))
+    td["action"] = torch.zeros((2, 2), dtype=torch.int64)
+    env.step(td)
+    ep = env._ep
+    assert int(ep.hands_n[0, 0]) == 0
+    assert int(ep.hands_n[1, 0]) == 5
+    assert int(ep.seeds_t[0, 0].sum()) == 0
+    assert int(ep.seeds_t[1, 0, M.engine_t.CROP_IDX["WHEAT"]]) == 7
+    assert int(ep.seeds_t[1, 0, M.engine_t.CROP_IDX["MELON"]]) == 12
+    assert int(ep.shed[1, 0, M.engine_t.ITEM_IDX["COW"]]) == 2
+    assert int(ep.shed[1, 0, M.engine_t.ITEM_IDX["SHEEP"]]) == 2
+    # The sixth unit can be unaffordable under a more expensive initial
+    # market; the raw order asks for six and the engine buys the affordable
+    # prefix exactly as it does for the traced agent.
+    assert 1 <= int(ep.shed[1, 0, M.engine_t.WHEAT_I]) <= 6
+
+
 def test_strategic_context():
     episode = M.engine_t.EpisodeT([123], episode_steps=48, device="cpu")
     context = M._strategic_context(episode, 0, 0)
@@ -198,6 +237,7 @@ if __name__ == "__main__":
     test_legacy_hand_head_adaptation()
     test_cash_reserve()
     test_build_phase_milestone()
+    test_opening_basket_masked_override()
     test_strategic_context()
     test_select_herd_context()
     test_option_oracle_summary()
