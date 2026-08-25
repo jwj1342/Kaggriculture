@@ -72,6 +72,10 @@ def test_options():
     assert M._option_targets(targeted, 3, 9, 4) == targeted["targets"]
     assert M._option_targets(build, 3, 9, 4) == {
         "land": 3, "crops": 9, "herd": 4}
+    farm = M._parse_option("farm_phase:strawberry:sheep:2:28:7")
+    assert farm["kind"] == "farm_phase"
+    assert farm["targets"] == targeted["targets"]
+    assert M._parse_option("hands_auto")["kind"] == "hands_auto"
     cash = M._parse_option("preserve_cash:3000")
     assert cash["kind"] == "preserve_cash"
     assert cash["cash_target"] == 3000
