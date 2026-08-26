@@ -209,7 +209,7 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
         target_cows = BY.TARGET_COWS
         target_sheep = BY.TARGET_SHEEP
         target_geese = BY.TARGET_GEESE
-    elif profile in {"industrial", "k01_state", "k01_urgent"}:
+    elif profile in {"industrial", "k01_state"}:
         plan_crop, plan_target, plan_last = (
             t.industrial_plan_crop, t.industrial_plan_target,
             t.industrial_plan_last)
@@ -225,8 +225,7 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     day = ep._step // ep.turns_per_day
     hour = ep._step % ep.turns_per_day
     endgame = day >= BY.LIQUIDATE_DAY
-    state_guided = profile in {"k01_state", "k01_urgent"}
-    urgent_guard = profile == "k01_urgent"
+    state_guided = profile == "k01_state"
     hand_cap = (_K01_HAND_CAP[min(day, len(_K01_HAND_CAP) - 1)]
                 if state_guided else BY.HAND_CAP)
     hire_budget_frac = 1.0 if state_guided else BY.HIRE_BUDGET_FRAC
@@ -573,14 +572,6 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
             eligible = (valid & (all_kcode == 0)
                         & (all_tile == upos_f[:, u].view(B, 1)) & ~already
                         & need_ok & active[:, u:u + 1] & ~busy[:, u:u + 1])
-            if urgent_guard:
-                available = (valid & (all_kcode == 0) & ~already & need_ok
-                             & active[:, u:u + 1] & ~busy[:, u:u + 1])
-                global_prio = torch.where(
-                    available, all_prio,
-                    torch.full_like(all_prio, BIG)).min(1).values
-                urgent = global_prio <= 1
-                eligible &= (~urgent.view(B, 1) | (all_prio <= 1))
             local_key = torch.where(eligible, key, torch.full_like(key, BIG))
             kval, best = local_key.min(1)
             found = kval < BIG
@@ -1065,7 +1056,7 @@ class BarnyardOpponent:
             self.fert_used.zero_()
             self.fert_day = day
         fert_remaining = None
-        if self.profile in {"k01_state", "k01_urgent"}:
+        if self.profile == "k01_state":
             cap = _K01_FERT_CAP[min(day, len(_K01_FERT_CAP) - 1)]
             fert_remaining = (cap - self.fert_used).clamp(min=0)
         ops = compute(ep, player, profile=self.profile,
