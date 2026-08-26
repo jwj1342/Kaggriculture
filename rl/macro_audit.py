@@ -56,6 +56,10 @@ _BUILD_PHASE_KINDS = {
 }
 _INITIAL_ONLY_OPTIONS = {"opening_basket", "opening_phase"}
 _DELAYABLE_PREFIX_OPTIONS = {"tape_prefix", "barnyard_prefix"}
+_PREFIX_SCOPE_KEYS = {
+    "farm": {"f_op", "f_arg", "f_qty", "h_op", "h_arg", "h_qty"},
+    "market": {"m_op", "m_item", "m_rem"},
+}
 
 _BUY_LAND = A.MARKET_ACTIONS.index("BUY_LAND")
 _BUY_WHEAT = A.MARKET_ACTIONS.index("BUY_WHEAT")
@@ -583,20 +587,29 @@ def _parse_option(text):
     if text.startswith("barnyard_prefix:"):
         payload = text.split(":", 1)[1]
         try:
-            if ":" in payload:
-                profile, steps_text = payload.rsplit(":", 1)
-            else:
+            parts = payload.split(":")
+            if len(parts) == 1:
                 profile, steps_text = "default", payload
+                scope = "all"
+            elif len(parts) == 2:
+                profile, steps_text = parts
+                scope = "all"
+            elif len(parts) == 3:
+                profile, scope, steps_text = parts
+            else:
+                raise ValueError
             steps = int(steps_text)
         except ValueError as exc:
             raise ValueError(
                 "barnyard_prefix must be "
-                "barnyard_prefix:[default|industrial|k01_state]:<steps>") from exc
-        if profile not in {"default", "industrial", "k01_state"} or steps <= 0:
+                "barnyard_prefix:[default|industrial|k01_state]:"
+                "[all|farm|market]:<steps>") from exc
+        if (profile not in {"default", "industrial", "k01_state"}
+                or scope not in {"all", "farm", "market"} or steps <= 0):
             raise ValueError("barnyard_prefix requires a known profile and "
-                             "positive steps")
+                             "scope, plus positive steps")
         return {"name": text, "kind": "barnyard_prefix", "steps": steps,
-                "profile": profile}
+                "profile": profile, "scope": scope}
     if text == "expand_land":
         return {"name": text, "kind": text}
     if text.startswith(("establish_crop:", "expand_crop:")):
@@ -740,6 +753,13 @@ def _scheduled_option_eligible(kind, step, min_day):
     if kind in _DELAYABLE_PREFIX_OPTIONS:
         return step == min_day * 24
     raise ValueError(f"option {kind!r} does not use a scheduled trigger")
+
+
+def _scoped_prefix_ops(ops, scope):
+    if scope == "all":
+        return ops
+    keys = _PREFIX_SCOPE_KEYS[scope]
+    return {key: value for key, value in ops.items() if key in keys}
 
 
 def _opening_basket_ops(ep):
@@ -1356,7 +1376,10 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
             env.queue_step_override(
                 seat, _opening_basket_ops(ep), opening_lanes)
         if bool(tape_lanes.any()):
-            env.queue_step_override(seat, option_tape(ep, seat), tape_lanes)
+            override = option_tape(ep, seat)
+            if option["kind"] == "barnyard_prefix":
+                override = _scoped_prefix_ops(override, option["scope"])
+            env.queue_step_override(seat, override, tape_lanes)
         td["action"] = action
         stepped = env.step(td)
         nxt = stepped["next"]

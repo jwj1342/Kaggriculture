@@ -51,13 +51,18 @@ def test_options():
     assert tape["path"] == "agents/champ/k01.py" and tape["steps"] == 24
     barn = M._parse_option("barnyard_prefix:480")
     assert barn["kind"] == "barnyard_prefix" and barn["steps"] == 480
-    assert barn["profile"] == "default"
+    assert barn["profile"] == "default" and barn["scope"] == "all"
     industrial = M._parse_option("barnyard_prefix:industrial:480")
     assert industrial["kind"] == "barnyard_prefix"
     assert industrial["profile"] == "industrial"
-    assert industrial["steps"] == 480
+    assert industrial["scope"] == "all" and industrial["steps"] == 480
     state_guided = M._parse_option("barnyard_prefix:k01_state:480")
     assert state_guided["profile"] == "k01_state"
+    state_farm = M._parse_option("barnyard_prefix:k01_state:farm:240")
+    assert state_farm["profile"] == "k01_state"
+    assert state_farm["scope"] == "farm" and state_farm["steps"] == 240
+    state_market = M._parse_option("barnyard_prefix:k01_state:market:240")
+    assert state_market["scope"] == "market"
     assert M._parse_option("expand_land")["kind"] == "expand_land"
     crop = M._parse_option("establish_crop:strawberry")
     assert crop["crop"] == "STRAWBERRY"
@@ -122,6 +127,18 @@ def test_scheduled_option_trigger():
     assert not M._scheduled_option_eligible("barnyard_prefix", 121, 5)
     assert M._scheduled_option_eligible("opening_phase", 0, 0)
     assert not M._scheduled_option_eligible("opening_phase", 120, 5)
+
+    ops = {
+        "f_op": 1, "f_arg": 2, "f_qty": 3,
+        "h_op": 4, "h_arg": 5, "h_qty": 6,
+        "m_op": 7, "m_item": 8, "m_rem": 9,
+        "task": 10,
+    }
+    assert set(M._scoped_prefix_ops(ops, "farm")) == {
+        "f_op", "f_arg", "f_qty", "h_op", "h_arg", "h_qty"}
+    assert set(M._scoped_prefix_ops(ops, "market")) == {
+        "m_op", "m_item", "m_rem"}
+    assert M._scoped_prefix_ops(ops, "all") is ops
 
 
 def test_legacy_hand_head_adaptation():
