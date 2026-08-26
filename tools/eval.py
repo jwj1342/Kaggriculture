@@ -123,10 +123,10 @@ def _summarise(name, records, label=""):
     n = len(records)
     wins = sum(1 for a, b, _ in records if a > b)
     ties = sum(1 for a, b, _ in records if a == b)
-    score = _win_score(wins, ties)
+    overall_score = _win_score(wins, ties)
     margins = [a - b for a, b, _ in records]
-    lo, hi = wilson(score, n)
-    p = score / n if n else 0.0
+    lo, hi = wilson(overall_score, n)
+    p = overall_score / n if n else 0.0
     m, mlo, mhi = bootstrap_mean(margins)
     mine = [a for a, _, _ in records]
 
@@ -142,10 +142,10 @@ def _summarise(name, records, label=""):
         if sub:
             w = sum(1 for a, b in sub if a > b)
             t = sum(1 for a, b in sub if a == b)
-            score = _win_score(w, t)
+            seat_score = _win_score(w, t)
             print(f"    as player {seat}: {w}W {len(sub) - w - t}L {t}T "
-                  f"= {score / len(sub):.0%}")
-    return {"n": n, "wins": wins, "ties": ties, "score": score,
+                  f"= {seat_score / len(sub):.0%}")
+    return {"n": n, "wins": wins, "ties": ties, "score": overall_score,
             "winrate": p, "ci": [lo, hi],
             "margin": m, "margin_ci": [mlo, mhi],
             "median_money": statistics.median(mine)}

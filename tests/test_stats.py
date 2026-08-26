@@ -9,10 +9,13 @@ exactly like a right one.
 """
 import os
 import sys
+from contextlib import redirect_stdout
+from io import StringIO
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
 from stats import bradley_terry, wilson, resolved, elo    # noqa: E402
-from eval import _interval_winner, _paired_pool_summary, _win_score  # noqa: E402
+from eval import (_interval_winner, _paired_pool_summary, _summarise,
+                  _win_score)  # noqa: E402
 
 FAILS = []
 
@@ -91,6 +94,13 @@ check("eval resolves 10/96 for B", _interval_winner(*wilson(10, 96)) == "B")
 check("eval resolves 64/96 for A", _interval_winner(*wilson(64, 96)) == "A")
 check("eval leaves 50/100 unresolved", _interval_winner(*wilson(50, 100)) is None)
 check("eval scores ties as half wins", _win_score(32, 32) == 48)
+with redirect_stdout(StringIO()):
+    tied = _summarise("tie regression", [
+        (2, 1, 0), (1, 2, 0), (1, 1, 0),
+        (2, 1, 1), (1, 2, 1), (1, 1, 1),
+    ])
+check("eval summary keeps the overall half-win score",
+      tied["score"] == 3 and approx(tied["winrate"], 0.5))
 
 paired = _paired_pool_summary([
     {"tag": "0|wall|0", "seed": 1, "money": [10, 5]},
