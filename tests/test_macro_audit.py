@@ -63,6 +63,8 @@ def test_options():
     assert state_farm["scope"] == "farm" and state_farm["steps"] == 240
     state_market = M._parse_option("barnyard_prefix:k01_state:market:240")
     assert state_market["scope"] == "market"
+    urgent = M._parse_option("barnyard_prefix:k01_urgent:720")
+    assert urgent["profile"] == "k01_urgent"
     assert M._parse_option("expand_land")["kind"] == "expand_land"
     crop = M._parse_option("establish_crop:strawberry")
     assert crop["crop"] == "STRAWBERRY"
@@ -234,6 +236,27 @@ def test_k01_state_daily_budgets():
     assert sum(fertilizer) > 0
 
 
+def test_k01_urgent_preserves_opening_herd():
+    """Urgent global work must outrank a harmless task under scarce feed."""
+    import barnyard_t
+    import tape_t
+
+    def herd_after_two_days(profile):
+        episode = M.engine_t.EpisodeT(
+            [1380825], episode_steps=49, device="cpu")
+        ours = barnyard_t.BarnyardOpponent(profile)
+        wall = tape_t.TapeOpponent("agents/bench3/closer_cleo.py")
+        zero = torch.zeros((1, 2), dtype=torch.int64)
+        while not episode.done:
+            episode.step_idx(
+                zero, zero,
+                override=[(0, ours(episode, 0)), (1, wall(episode, 1))])
+        return int((episode.animal[0, 0] >= 0).sum())
+
+    assert herd_after_two_days("k01_state") == 3
+    assert herd_after_two_days("k01_urgent") == 4
+
+
 def test_strategic_context():
     episode = M.engine_t.EpisodeT([123], episode_steps=48, device="cpu")
     context = M._strategic_context(episode, 0, 0)
@@ -297,6 +320,7 @@ if __name__ == "__main__":
     test_build_phase_milestone()
     test_opening_basket_masked_override()
     test_k01_state_daily_budgets()
+    test_k01_urgent_preserves_opening_herd()
     test_strategic_context()
     test_select_herd_context()
     test_option_oracle_summary()
