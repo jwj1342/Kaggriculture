@@ -122,6 +122,13 @@ def test_macro_audit_submit():
     assert command[-2:] == ["--output", str(run_dir / "result.json")]
     assert submit_macro_audit._validate_audit_args(
         ["--", "counterfactual", "--checkpoint", "model.pt"])[0] == "counterfactual"
+    inputs = submit_macro_audit._audit_inputs([
+        "counterfactual", "--option",
+        "tape_prefix:agents/champ/k01.py:120",
+        "--option=tape_prefix:agents/bench3/closer_cleo.py:24",
+    ])
+    assert "agents/champ/k01.py" in inputs
+    assert "agents/bench3/closer_cleo.py" in inputs
     try:
         submit_macro_audit._validate_audit_args(["baseline", "--output=x.json"])
     except ValueError:

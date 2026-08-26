@@ -25,14 +25,22 @@ def _audit_inputs(argv):
         for flag in INPUT_FLAGS:
             if value.startswith(flag + "="):
                 candidates.extend(submit_rl._path_values(value.split("=", 1)[1]))
-        if value.startswith("policy_npz:"):
-            payload = value.split(":", 1)[1]
+        option_value = (value.split("=", 1)[1]
+                        if value.startswith("--option=") else value)
+        if option_value.startswith("tape_prefix:"):
+            payload = option_value.split(":", 1)[1]
             try:
                 candidates.append(payload.rsplit(":", 1)[0])
             except ValueError:
                 pass
-        elif value.startswith("build_then_policy:"):
-            parts = value.split(":")
+        elif option_value.startswith("policy_npz:"):
+            payload = option_value.split(":", 1)[1]
+            try:
+                candidates.append(payload.rsplit(":", 1)[0])
+            except ValueError:
+                pass
+        elif option_value.startswith("build_then_policy:"):
+            parts = option_value.split(":")
             if len(parts) == 8:
                 candidates.append(parts[6])
 
