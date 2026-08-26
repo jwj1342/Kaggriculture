@@ -63,6 +63,12 @@ def test_options():
     assert state_farm["scope"] == "farm" and state_farm["steps"] == 240
     state_market = M._parse_option("barnyard_prefix:k01_state:market:240")
     assert state_market["scope"] == "market"
+    committed = M._parse_option("barnyard_prefix:k01_commit:720")
+    assert committed["profile"] == "k01_commit"
+    routed = M._parse_option("barnyard_prefix:k01_route:720")
+    assert routed["profile"] == "k01_route"
+    assert M._parse_option(
+        "barnyard_prefix:k01_route_s34:720")["profile"] == "k01_route_s34"
     assert M._parse_option("expand_land")["kind"] == "expand_land"
     crop = M._parse_option("establish_crop:strawberry")
     assert crop["crop"] == "STRAWBERRY"
@@ -234,6 +240,51 @@ def test_k01_state_daily_budgets():
     assert sum(fertilizer) > 0
 
 
+def test_k01_commit_tracks_completed_planting():
+    """One-shot crop targets persist after an annual crop is harvested."""
+    import barnyard_t
+    import opponents_t
+
+    episode = M.engine_t.EpisodeT(
+        [1980825], episode_steps=360, device="cpu")
+    opponent = barnyard_t.BarnyardOpponent("k01_commit")
+    planted = torch.zeros((1, len(M.engine_t.CROP_NAMES)), dtype=torch.int64)
+
+    while not episode.done:
+        ops = opponent(episode, 1)
+        unit_ops = torch.stack([ops["f_op"], *ops["h_op"]], dim=1)
+        unit_args = torch.stack([ops["f_arg"], *ops["h_arg"]], dim=1)
+        for crop_i in range(len(M.engine_t.CROP_NAMES)):
+            planted[:, crop_i] += ((unit_ops == M.engine_t_idx.U_PLANT)
+                                   & (unit_args == crop_i)).sum(1)
+        starter_f, starter_m = opponents_t.starter_indices(episode, 0)
+        farmer = torch.stack([starter_f, torch.zeros_like(starter_f)], dim=1)
+        market = torch.stack([starter_m, torch.zeros_like(starter_m)], dim=1)
+        episode.step_idx(farmer, market, override=(1, ops))
+
+    assert torch.equal(opponent.planted_total.cpu(), planted)
+    melon = M.engine_t.CROP_IDX["MELON"]
+    assert int(planted[0, melon]) == 20
+
+
+def test_k01_route_state_expands_with_new_hires():
+    """Persistent task identity survives the day-zero crew-size transition."""
+    import barnyard_t
+    import opponents_t
+
+    episode = M.engine_t.EpisodeT([2980825], episode_steps=3, device="cpu")
+    opponent = barnyard_t.BarnyardOpponent("k01_route")
+    starter_f, starter_m = opponents_t.starter_indices(episode, 0)
+    farmer = torch.stack([starter_f, torch.zeros_like(starter_f)], dim=1)
+    market = torch.stack([starter_m, torch.zeros_like(starter_m)], dim=1)
+    episode.step_idx(farmer, market, override=(1, opponent(episode, 1)))
+    opponent(episode, 1)
+
+    assert opponent.task_tiles.shape == opponent.task_ops.shape
+    assert opponent.task_tiles.shape == opponent.task_args.shape
+    assert opponent.task_tiles.shape[1] == 6
+
+
 def test_strategic_context():
     episode = M.engine_t.EpisodeT([123], episode_steps=48, device="cpu")
     context = M._strategic_context(episode, 0, 0)
@@ -297,6 +348,8 @@ if __name__ == "__main__":
     test_build_phase_milestone()
     test_opening_basket_masked_override()
     test_k01_state_daily_budgets()
+    test_k01_commit_tracks_completed_planting()
+    test_k01_route_state_expands_with_new_hires()
     test_strategic_context()
     test_select_herd_context()
     test_option_oracle_summary()

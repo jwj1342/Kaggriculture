@@ -602,9 +602,12 @@ def _parse_option(text):
         except ValueError as exc:
             raise ValueError(
                 "barnyard_prefix must be "
-                "barnyard_prefix:[default|industrial|k01_state]:"
+                "barnyard_prefix:[default|industrial|k01_state|k01_commit|"
+                "k01_route|k01_route_s34]:"
                 "[all|farm|market]:<steps>") from exc
-        known_profiles = {"default", "industrial", "k01_state"}
+        known_profiles = {"default", "industrial", "k01_state",
+                          "k01_commit", "k01_route", "k01_route_s34",
+                          }
         if (profile not in known_profiles
                 or scope not in {"all", "farm", "market"} or steps <= 0):
             raise ValueError("barnyard_prefix requires a known profile and "

@@ -196,7 +196,8 @@ def _bt(device):
 
 
 def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
-            fert_remaining=None):
+            fert_remaining=None, planted_total=None, sticky_ops=None,
+            sticky_args=None):
     """Barnyard's turn for every lane -> step_idx override encodings.
 
     want_dicts additionally returns per-lane action dicts in step_raw form
@@ -209,7 +210,8 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
         target_cows = BY.TARGET_COWS
         target_sheep = BY.TARGET_SHEEP
         target_geese = BY.TARGET_GEESE
-    elif profile in {"industrial", "k01_state"}:
+    elif profile in {"industrial", "k01_state", "k01_commit", "k01_route",
+                     "k01_route_s34"}:
         plan_crop, plan_target, plan_last = (
             t.industrial_plan_crop, t.industrial_plan_target,
             t.industrial_plan_last)
@@ -225,7 +227,18 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     day = ep._step // ep.turns_per_day
     hour = ep._step % ep.turns_per_day
     endgame = day >= BY.LIQUIDATE_DAY
-    state_guided = profile == "k01_state"
+    route_profiles = {
+        "k01_route", "k01_route_s34"}
+    state_guided = profile in {"k01_state", "k01_commit", *route_profiles}
+    committed_crops = profile in {"k01_commit", *route_profiles}
+    persistent_routes = profile in route_profiles
+    effective_plan_target = plan_target
+    strawberry_target = {
+        "k01_route_s34": 34,
+    }.get(profile)
+    if strawberry_target is not None:
+        effective_plan_target = plan_target.clone()
+        effective_plan_target[1] = strawberry_target
     hand_cap = (_K01_HAND_CAP[min(day, len(_K01_HAND_CAP) - 1)]
                 if state_guided else BY.HAND_CAP)
     hire_budget_frac = 1.0 if state_guided else BY.HIRE_BUDGET_FRAC
@@ -449,9 +462,19 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
                         torch.full_like(qidx_r, X.U_BUILD_COOP), la_op))
         build_valid_r = fz_r & (qidx_r < qlen.view(B, 1))
 
-        want = (plan_target.view(1, 3)
-                - crop_counts.gather(1, plan_crop.view(1, 3).expand(B, 3))
-                ).clamp(min=0)
+        crop_progress = crop_counts
+        if committed_crops and planted_total is not None:
+            # MELON is harvested once and disappears.  Its target is a
+            # cumulative build commitment, not a standing-stock target;
+            # otherwise the scheduler replants it all season and crowds out
+            # the recurring STRAWBERRY line.  WHEAT intentionally remains a
+            # standing target because it is the herd's renewable feed stock.
+            crop_progress = crop_counts.clone()
+            melon = _CROP_IDX["MELON"]
+            crop_progress[:, melon] = planted_total[:, melon]
+        want = (effective_plan_target.view(1, 3)
+                - crop_progress.gather(
+                    1, plan_crop.view(1, 3).expand(B, 3))).clamp(min=0)
         want = torch.where(plan_last.view(1, 3) >= day, want,
                            torch.zeros_like(want))
         kq = torch.minimum(
@@ -555,6 +578,17 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     at_shed_u = t.shed100[upos_f]                      # (B, U)
     shed_dist_u = t.shed_dist[upos_f]
     dir_to_shed_u = t.dir_lut[upos_f * (N * N) + t.near_shed_tile[upos_f]]
+    sticky = torch.full((B, U), -1, dtype=i64, device=dev)
+    sticky_op = torch.full_like(sticky, -1)
+    sticky_arg = torch.full_like(sticky, -1)
+    for source, target in ((sticky_tiles, sticky), (sticky_ops, sticky_op),
+                           (sticky_args, sticky_arg)):
+        if source is None:
+            continue
+        old = torch.as_tensor(source, dtype=i64, device=dev)
+        if old.dim() == 2:
+            target[:min(B, old.shape[0]), :min(U, old.shape[1])] = \
+                old[:min(B, old.shape[0]), :min(U, old.shape[1])]
 
     # A global priority queue can make two nearby workers cross paths: the
     # worker standing on a CARE tile leaves for a higher-priority WATER tile,
@@ -572,6 +606,19 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
             eligible = (valid & (all_kcode == 0)
                         & (all_tile == upos_f[:, u].view(B, 1)) & ~already
                         & need_ok & active[:, u:u + 1] & ~busy[:, u:u + 1])
+            if persistent_routes:
+                old_tile = sticky[:, u]
+                old_op = sticky_op[:, u]
+                old_arg = sticky_arg[:, u]
+                durable = ((old_op == X.U_PLANT)
+                           | (old_op == X.U_BUILD_COOP)
+                           | (old_op == X.U_BUILD_PASTURE)
+                           | (old_op == X.U_PLACE))
+                route_live = (valid & (all_kcode == 0) & ~already & need_ok
+                              & (all_tile == old_tile.view(B, 1))
+                              & (all_op == old_op.view(B, 1))
+                              & (all_arg == old_arg.view(B, 1))).any(1)
+                eligible &= ~(durable & route_live).view(B, 1)
             local_key = torch.where(eligible, key, torch.full_like(key, BIG))
             kval, best = local_key.min(1)
             found = kval < BIG
@@ -594,11 +641,6 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     # remains there. This closes the main oscillation in the stateless greedy
     # scheduler without changing the reference-compatible default profile.
     if state_guided and sticky_tiles is not None:
-        old = torch.as_tensor(sticky_tiles, dtype=i64, device=dev)
-        sticky = torch.full((B, U), -1, dtype=i64, device=dev)
-        if old.dim() == 2:
-            sticky[:min(B, old.shape[0]), :min(U, old.shape[1])] = \
-                old[:min(B, old.shape[0]), :min(U, old.shape[1])]
         for u in range(U):
             target = sticky[:, u]
             claim_id = all_tile * 18 + all_op
@@ -609,6 +651,14 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
             eligible = (valid & (all_kcode == 0)
                         & (all_tile == target.view(B, 1)) & ~already
                         & need_ok & active[:, u:u + 1] & ~busy[:, u:u + 1])
+            if persistent_routes:
+                durable = ((sticky_op[:, u] == X.U_PLANT)
+                           | (sticky_op[:, u] == X.U_BUILD_COOP)
+                           | (sticky_op[:, u] == X.U_BUILD_PASTURE)
+                           | (sticky_op[:, u] == X.U_PLACE))
+                eligible &= (durable.view(B, 1)
+                             & (all_op == sticky_op[:, u].view(B, 1))
+                             & (all_arg == sticky_arg[:, u].view(B, 1)))
             skey = torch.where(eligible, key, torch.full_like(key, BIG))
             kval, best = skey.min(1)
             found = kval < BIG
@@ -876,8 +926,12 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
         for ci in range(3):
             cidx = int(plan_crop[ci])
             last_day = int(plan_last[ci])
-            tgt = int(plan_target[ci])
-            have = crop_counts[:, cidx] + seeds[:, cidx]
+            tgt = int(effective_plan_target[ci])
+            progress = (planted_total[:, cidx]
+                        if committed_crops and planted_total is not None
+                           and cidx == _CROP_IDX["MELON"]
+                        else crop_counts[:, cidx])
+            have = progress + seeds[:, cidx]
             k = torch.minimum(torch.minimum(
                 torch.full_like(have, 4), tgt - have), crop_room)
             cost1 = float(t.crop_seed[cidx])
@@ -1043,14 +1097,24 @@ class BarnyardOpponent:
         self.task_tiles = None
         self.fert_used = None
         self.fert_day = None
+        self.planted_total = None
+        self.task_ops = None
+        self.task_args = None
 
     def __call__(self, ep, player):
         if (ep._step == 0 or self.fert_used is None
                 or self.fert_used.shape[0] != ep.B):
             self.task_tiles = None
+            self.task_ops = None
+            self.task_args = None
             self.fert_used = torch.zeros(
                 (ep.B,), dtype=i64, device=ep.device)
             self.fert_day = ep._step // ep.turns_per_day
+            current = ep.kind[:, player].reshape(ep.B, -1) == ET.K_PLANT
+            crop = ep.crop[:, player].reshape(ep.B, -1)
+            self.planted_total = torch.stack(
+                [(current & (crop == c)).sum(1)
+                 for c in range(len(ET.CROP_NAMES))], 1).to(i64)
         day = ep._step // ep.turns_per_day
         if day != self.fert_day:
             self.fert_used.zero_()
@@ -1061,8 +1125,19 @@ class BarnyardOpponent:
             fert_remaining = (cap - self.fert_used).clamp(min=0)
         ops = compute(ep, player, profile=self.profile,
                       sticky_tiles=self.task_tiles,
-                      fert_remaining=fert_remaining)
+                      fert_remaining=fert_remaining,
+                      planted_total=self.planted_total,
+                      sticky_ops=self.task_ops, sticky_args=self.task_args)
         self.task_tiles = ops["task_tile"].detach().clone()
+        self.task_ops = ops["task"].detach().clone()
+        self.task_args = ops["task_arg"].detach().clone()
+        if self.profile in {"k01_commit", "k01_route", "k01_route_s34"}:
+            unit_ops = torch.stack([ops["f_op"], *ops["h_op"]], 1)
+            unit_args = torch.stack([ops["f_arg"], *ops["h_arg"]], 1)
+            for crop_i in range(len(ET.CROP_NAMES)):
+                planted = ((unit_ops == X.U_PLANT)
+                           & (unit_args == crop_i)).sum(1)
+                self.planted_total[:, crop_i].add_(planted)
         if fert_remaining is not None:
             applied = (torch.stack(
                 [ops["f_op"], *ops["h_op"]], 1) == X.U_FERTILIZE).sum(1)
