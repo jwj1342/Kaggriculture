@@ -114,6 +114,16 @@ def test_options():
         raise AssertionError("unknown crop should fail")
 
 
+def test_scheduled_option_trigger():
+    assert M._scheduled_option_eligible("barnyard_prefix", 0, 0)
+    assert M._scheduled_option_eligible("barnyard_prefix", 120, 5)
+    assert M._scheduled_option_eligible("tape_prefix", 120, 5)
+    assert not M._scheduled_option_eligible("barnyard_prefix", 119, 5)
+    assert not M._scheduled_option_eligible("barnyard_prefix", 121, 5)
+    assert M._scheduled_option_eligible("opening_phase", 0, 0)
+    assert not M._scheduled_option_eligible("opening_phase", 120, 5)
+
+
 def test_legacy_hand_head_adaptation():
     old_tasks = 8
     hidden = 3
@@ -264,6 +274,7 @@ if __name__ == "__main__":
     test_critic_stats()
     test_paired_summary()
     test_options()
+    test_scheduled_option_trigger()
     test_legacy_hand_head_adaptation()
     test_cash_reserve()
     test_build_phase_milestone()

@@ -54,6 +54,8 @@ DEFAULT_OPTIONS = ("expand_land", "establish_crop:STRAWBERRY")
 _BUILD_PHASE_KINDS = {
     "build_phase", "crew_build_phase", "farm_phase", "build_then_policy",
 }
+_INITIAL_ONLY_OPTIONS = {"opening_basket", "opening_phase"}
+_DELAYABLE_PREFIX_OPTIONS = {"tape_prefix", "barnyard_prefix"}
 
 _BUY_LAND = A.MARKET_ACTIONS.index("BUY_LAND")
 _BUY_WHEAT = A.MARKET_ACTIONS.index("BUY_WHEAT")
@@ -731,6 +733,15 @@ def _option_targets(option, land, crops, herd):
         "land": int(land), "crops": int(crops), "herd": int(herd)})
 
 
+def _scheduled_option_eligible(kind, step, min_day):
+    """Eligibility for options whose trigger time is fixed by the audit."""
+    if kind in _INITIAL_ONLY_OPTIONS:
+        return step == 0
+    if kind in _DELAYABLE_PREFIX_OPTIONS:
+        return step == min_day * 24
+    raise ValueError(f"option {kind!r} does not use a scheduled trigger")
+
+
 def _opening_basket_ops(ep):
     """Raw day-0 market basket extracted from the public k01/k06 trace."""
     orders = (
@@ -1172,10 +1183,10 @@ def counterfactual_cell(checkpoint, opponent, seat, lanes, seed, device,
         for pair in range(lanes):
             odd = 2 * pair + 1
             if not triggered[pair] and ep._step >= min_day * 24:
-                if option["kind"] in {
-                        "opening_basket", "opening_phase", "tape_prefix",
-                        "barnyard_prefix"}:
-                    eligible = ep._step == 0
+                if option["kind"] in (
+                        _INITIAL_ONLY_OPTIONS | _DELAYABLE_PREFIX_OPTIONS):
+                    eligible = _scheduled_option_eligible(
+                        option["kind"], ep._step, min_day)
                 elif option["kind"] in (_BUILD_PHASE_KINDS
                                         | {"hands_auto", "policy_npz"}):
                     eligible = True
@@ -1724,7 +1735,10 @@ def parse_args(argv=None):
     cf.add_argument("--device", default="cpu")
     cf.add_argument("--steps", type=int, default=0,
                     help="test-only episode length override")
-    cf.add_argument("--min-day", type=int, default=0)
+    cf.add_argument(
+        "--min-day", type=int, default=0,
+        help="earliest trigger day; tape/barnyard prefixes start exactly at "
+             "that day's first turn")
     cf.add_argument("--timeout", type=int, default=48)
     cf.add_argument("--crop-target", type=int, default=4)
     cf.add_argument("--herd-target", type=int, default=2)
