@@ -38,9 +38,14 @@ fi
 # .py plus data files an RL export needs beside them (weights.npz); a tar
 # without the weights would make the agent PASS every turn -- the episode
 # check below catches it, but only because the files travel here.
-FILES=$(cd "$SRC" && ls *.py *.npz 2>/dev/null)
-for f in $FILES; do cp "$SRC/$f" "$OUT"/; done
-tar -czf "$OUT/submission.tar.gz" -C "$SRC" $FILES
+FILES=()
+for path in "$SRC"/*.py "$SRC"/*.npz; do
+  [ -f "$path" ] || continue
+  FILES+=("${path##*/}")
+done
+[ "${#FILES[@]}" -gt 0 ] || { echo "error: no package files found in $SRC" >&2; exit 1; }
+for f in "${FILES[@]}"; do cp "$SRC/$f" "$OUT"/; done
+tar -czf "$OUT/submission.tar.gz" -C "$SRC" "${FILES[@]}"
 
 # --- verify the archive is loadable the way Kaggle will load it -------------
 TMP="$(mktemp -d)"

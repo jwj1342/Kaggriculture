@@ -89,6 +89,11 @@ def _interval_winner(lo, hi):
     return None
 
 
+def _win_score(wins, ties):
+    """Competition score contribution: a tie is half a win for each side."""
+    return wins + 0.5 * ties
+
+
 # --------------------------------------------------------------------------
 # episode runner
 # --------------------------------------------------------------------------
@@ -118,9 +123,10 @@ def _summarise(name, records, label=""):
     n = len(records)
     wins = sum(1 for a, b, _ in records if a > b)
     ties = sum(1 for a, b, _ in records if a == b)
+    score = _win_score(wins, ties)
     margins = [a - b for a, b, _ in records]
-    lo, hi = wilson(wins, n)
-    p = wins / n if n else 0.0
+    lo, hi = wilson(score, n)
+    p = score / n if n else 0.0
     m, mlo, mhi = bootstrap_mean(margins)
     mine = [a for a, _, _ in records]
 
@@ -135,8 +141,12 @@ def _summarise(name, records, label=""):
         sub = [(a, b) for a, b, s in records if s == seat]
         if sub:
             w = sum(1 for a, b in sub if a > b)
-            print(f"    as player {seat}: {w}/{len(sub)} = {w / len(sub):.0%}")
-    return {"n": n, "wins": wins, "ties": ties, "winrate": p, "ci": [lo, hi],
+            t = sum(1 for a, b in sub if a == b)
+            score = _win_score(w, t)
+            print(f"    as player {seat}: {w}W {len(sub) - w - t}L {t}T "
+                  f"= {score / len(sub):.0%}")
+    return {"n": n, "wins": wins, "ties": ties, "score": score,
+            "winrate": p, "ci": [lo, hi],
             "margin": m, "margin_ci": [mlo, mhi],
             "median_money": statistics.median(mine)}
 
@@ -282,7 +292,10 @@ def mode_pool(args):
         for opp in pool:
             recs = by_cand_opp[(ci, opp)]
             w = sum(1 for a, b, _ in recs if a > b)
-            print(f"       vs {opp:32s} {w}/{len(recs)} = {w / len(recs):.0%}")
+            t = sum(1 for a, b, _ in recs if a == b)
+            score = _win_score(w, t)
+            print(f"       vs {opp:32s} {w}W {len(recs) - w - t}L {t}T "
+                  f"= {score / len(recs):.0%}")
         print()
 
     da = summaries["A"]["winrate"] - summaries["B"]["winrate"]

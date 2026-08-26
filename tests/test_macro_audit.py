@@ -177,6 +177,36 @@ def test_opening_basket_masked_override():
     assert 1 <= int(ep.shed[1, 0, M.engine_t.WHEAT_I]) <= 6
 
 
+def test_k01_state_daily_budgets():
+    """The state-closed executor keeps its day-scale commitments statefully."""
+    import barnyard_t
+    import opponents_t
+
+    episode = M.engine_t.EpisodeT(
+        [620825], episode_steps=720, device="cpu")
+    opponent = barnyard_t.BarnyardOpponent("k01_state")
+    hires = [0] * 30
+    fertilizer = [0] * 30
+
+    while not episode.done:
+        day = episode._step // episode.turns_per_day
+        ops = opponent(episode, 1)
+        unit_ops = torch.stack([ops["f_op"], *ops["h_op"]], dim=1)
+        hires[day] += int((ops["m_op"] == M.engine_t_idx.OP_HIRE).sum())
+        fertilizer[day] += int(
+            (unit_ops == M.engine_t_idx.U_FERTILIZE).sum())
+
+        starter_f, starter_m = opponents_t.starter_indices(episode, 0)
+        farmer = torch.stack([starter_f, torch.zeros_like(starter_f)], dim=1)
+        market = torch.stack([starter_m, torch.zeros_like(starter_m)], dim=1)
+        episode.step_idx(farmer, market, override=(1, ops))
+
+    assert hires == barnyard_t._K01_HAND_CAP
+    assert all(used <= cap for used, cap in zip(
+        fertilizer, barnyard_t._K01_FERT_CAP))
+    assert sum(fertilizer) > 0
+
+
 def test_strategic_context():
     episode = M.engine_t.EpisodeT([123], episode_steps=48, device="cpu")
     context = M._strategic_context(episode, 0, 0)
@@ -238,6 +268,7 @@ if __name__ == "__main__":
     test_cash_reserve()
     test_build_phase_milestone()
     test_opening_basket_masked_override()
+    test_k01_state_daily_budgets()
     test_strategic_context()
     test_select_herd_context()
     test_option_oracle_summary()

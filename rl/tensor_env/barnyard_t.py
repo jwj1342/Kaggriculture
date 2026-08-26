@@ -91,6 +91,23 @@ _INDUSTRIAL_CROP_PLAN = [
 ]
 _INDUSTRIAL_TARGETS = {"COW": 9, "SHEEP": 4, "GOOSE": 0}
 
+# Daily crew sizes from the same k01 teacher trajectory as the industrial
+# asset targets.  The old state-guided profile jumped from five hands on day
+# zero to twelve on day two, long before there was enough work to cover the
+# Fibonacci payroll.  That delayed both land purchases and herd growth.  Crew
+# size is a capacity commitment, so keep it in the persistent option instead
+# of re-deriving it greedily from this turn's cash balance.
+_K01_HAND_CAP = [
+    5, 0, 4, 5, 5, 4, 4, 8, 11, 12,
+    11, 12, 10, 11, 8, 12, 9, 12, 12, 12,
+    12, 12, 12, 12, 11, 11, 11, 11, 10, 8,
+]
+_K01_FERT_CAP = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 4, 0, 3, 4, 4, 0,
+    14, 4, 7, 0, 12, 0, 3, 0, 0, 0,
+]
+
 # unit-op string forms (dict conversion for the gate / step_raw parity)
 _OP_STR = {X.U_PASS: ["PASS"], X.U_MOVE_N: ["NORTH"], X.U_MOVE_S: ["SOUTH"],
            X.U_MOVE_E: ["EAST"], X.U_MOVE_W: ["WEST"], X.U_WATER: ["WATER"],
@@ -178,7 +195,8 @@ def _bt(device):
     return t
 
 
-def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
+def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
+            fert_remaining=None):
     """Barnyard's turn for every lane -> step_idx override encodings.
 
     want_dicts additionally returns per-lane action dicts in step_raw form
@@ -208,8 +226,8 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
     hour = ep._step % ep.turns_per_day
     endgame = day >= BY.LIQUIDATE_DAY
     state_guided = profile == "k01_state"
-    hand_cap = (5 if state_guided and day == 0 else
-                12 if state_guided else BY.HAND_CAP)
+    hand_cap = (_K01_HAND_CAP[min(day, len(_K01_HAND_CAP) - 1)]
+                if state_guided else BY.HAND_CAP)
     hire_budget_frac = 1.0 if state_guided else BY.HIRE_BUDGET_FRAC
     wheat_per_trip = 1 if state_guided else BY.WHEAT_PER_TRIP
     wheat_buy_batch = 2 if state_guided else 10
@@ -227,6 +245,7 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
     cared = ep.cared[:, p].reshape(B, N * N)
     starving = ep.consec_unfed[:, p].reshape(B, N * N) >= 1
     favail = ep.fert_avail[:, p].reshape(B, N * N)
+    fert_until = ep.fert_until[:, p].reshape(B, N * N).long()
     crop = ep.crop[:, p].reshape(B, N * N).long()
 
     has_a = animal >= 0
@@ -346,6 +365,21 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
         add(is_plant & ongoing & (age >= first) & (yu >= 2), 3,
             500 + tiles_ar * 2 + 1, X.U_HARVEST, tile=tiles_ar)
 
+        # k01 spends fertilizer selectively rather than selling every unit.
+        # The per-day budget is persistent in BarnyardOpponent, so recomputing
+        # this task list each turn cannot silently fertilize the whole farm.
+        fert_targets = torch.zeros_like(is_plant)
+        if state_guided and fert_remaining is not None:
+            remaining = torch.as_tensor(
+                fert_remaining, dtype=i64, device=dev).view(B).clamp(min=0)
+            eligible_fert = is_plant & ongoing & watered & (fert_until < day)
+            eligible_r = eligible_fert.gather(1, perm)
+            chosen_r = (eligible_r
+                        & (eligible_r.long().cumsum(1) <= remaining.view(B, 1)))
+            fert_targets.scatter_(1, perm, chosen_r)
+            add(fert_targets, 5, 650 + tiles_ar, X.U_FERTILIZE,
+                tile=tiles_ar, need=ET.FERT_I)
+
         # C) wheat trips (shed errands, prio 1)
         carried_wheat = (inv[:, :, _WHEAT] * active).sum(-1)
         unfed_n = (has_a & ~fed).sum(-1)
@@ -357,6 +391,18 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
         for k in range(16):
             add(trips > k, 1, 700 + k, X.U_PICKUP, arg=_WHEAT, qty=take0,
                 kcode=1)
+
+        if state_guided and fert_remaining is not None:
+            carried_fert = (inv[:, :, ET.FERT_I] * active).sum(1)
+            fert_gap = fert_targets.sum(-1) - carried_fert
+            fert_trips = torch.minimum(n_units, -(-fert_gap // 4))
+            fert_trips = torch.where(
+                (fert_gap > 0) & (shed[:, ET.FERT_I] > 0), fert_trips, zeros)
+            take_fert = torch.minimum(
+                torch.full_like(shed_wheat0, 4), shed[:, ET.FERT_I])
+            for k in range(16):
+                add(fert_trips > k, 4, 720 + k, X.U_PICKUP,
+                    arg=ET.FERT_I, qty=take_fert, kcode=3)
 
         # D) shed-animal errands (prio 5)
         n_shed_a = animals_in_shed.sum(-1)
@@ -502,12 +548,47 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
     next_target = torch.full((B, U), -1, dtype=i64, device=dev)
     claimed = torch.zeros((B, N * N * 18), dtype=torch.bool, device=dev)
     shed_wheat_left = shed_wheat0.clone()
+    shed_fert_left = shed[:, ET.FERT_I].clone()
     shed_animals_left = animals_in_shed.clone()
     coop_open = coop_free.any(-1)
     past_open = past_free.any(-1)
     at_shed_u = t.shed100[upos_f]                      # (B, U)
     shed_dist_u = t.shed_dist[upos_f]
     dir_to_shed_u = t.dir_lut[upos_f * (N * N) + t.near_shed_tile[upos_f]]
+
+    # A global priority queue can make two nearby workers cross paths: the
+    # worker standing on a CARE tile leaves for a higher-priority WATER tile,
+    # then another worker walks back to do the CARE.  The teacher spends much
+    # more of its turn budget working in place.  Claim one valid task on the
+    # current tile before assigning travel, while preserving the task's own
+    # priority when several operations are possible there.
+    if state_guided:
+        claim_id = all_tile * 18 + all_op
+        for u in range(U):
+            already = claimed.gather(1, claim_id.clamp(min=0))
+            need_stock = inv[:, u].gather(
+                1, all_need.clamp(min=0, max=inv.shape[-1] - 1))
+            need_ok = (all_need < 0) | (need_stock > 0)
+            eligible = (valid & (all_kcode == 0)
+                        & (all_tile == upos_f[:, u].view(B, 1)) & ~already
+                        & need_ok & active[:, u:u + 1] & ~busy[:, u:u + 1])
+            local_key = torch.where(eligible, key, torch.full_like(key, BIG))
+            kval, best = local_key.min(1)
+            found = kval < BIG
+            if not bool(found.any()):
+                continue
+            cop = all_op.gather(1, best.view(B, 1)).squeeze(1)
+            carg = all_arg.gather(1, best.view(B, 1)).squeeze(1)
+            cqty = all_qty.gather(1, best.view(B, 1)).squeeze(1)
+            ctile = all_tile.gather(1, best.view(B, 1)).squeeze(1)
+            out_op[found, u] = cop[found]
+            out_arg[found, u] = carg[found]
+            out_qty[found, u] = cqty[found]
+            out_task[found, u] = cop[found]
+            out_ta[found, u] = carg[found]
+            next_target[found, u] = ctile[found]
+            busy[found, u] = True
+            claimed[found, (ctile * 18 + cop)[found]] = True
 
     # Keep a unit on the tile it was already approaching while useful work
     # remains there. This closes the main oscillation in the stateless greedy
@@ -527,7 +608,7 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
             need_ok = (all_need < 0) | (need_stock > 0)
             eligible = (valid & (all_kcode == 0)
                         & (all_tile == target.view(B, 1)) & ~already
-                        & need_ok & active[:, u:u + 1])
+                        & need_ok & active[:, u:u + 1] & ~busy[:, u:u + 1])
             skey = torch.where(eligible, key, torch.full_like(key, BIG))
             kval, best = skey.min(1)
             found = kval < BIG
@@ -594,17 +675,20 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
                 busy[fb, bi] = True
                 claimed[fb, (c_tile * 18 + c_op)[fb]] = True
 
-        # shed errands (kcode 1 = wheat trip, 2 = shed animal) ---------------
-        for kc in (1, 2):
+        # shed errands (1 = wheat, 2 = animal, 3 = fertilizer) ----------------
+        for kc in (1, 2, 3):
             sl = live & (c_kc == kc)
             if not bool(sl.any()):
                 continue
             if kc == 1:
                 pre = inv[:, :, _WHEAT] < max(1, wheat_per_trip // 2)
                 sl = sl & (torch.minimum(c_qty, shed_wheat_left) > 0)
-            else:
+            elif kc == 2:
                 pre = ~(inv[:, :, ET.N_MKT:] > 0).any(-1)
                 sl = sl & (shed_animals_left.sum(-1) > 0)
+            else:
+                pre = inv[:, :, ET.FERT_I] < 3
+                sl = sl & (torch.minimum(c_qty, shed_fert_left) > 0)
             elig = ~busy & pre & sl.view(B, 1)
             ukey = torch.where(elig, shed_dist_u * 64 + u_ar,
                                torch.full_like(shed_dist_u, BIG))
@@ -626,7 +710,7 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
                                               shed_wheat_left)
                 out_task[fb, bi] = X.U_FEED
                 busy[fb, bi] = True
-            else:
+            elif kc == 2:
                 # prefer an animal whose structure is open: COW, SHEEP, GOOSE
                 openk = [past_open, past_open, coop_open]
                 prefs = [_ANIMAL_IDX["COW"], _ANIMAL_IDX["SHEEP"],
@@ -649,10 +733,26 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
                 out_task[fb, best[fb]] = X.U_PLACE
                 out_ta[fb, best[fb]] = pa[fb]
                 busy[fb, best[fb]] = True
+            else:
+                take = torch.minimum(c_qty, shed_fert_left)
+                fb, aa = found, found & at
+                bi = best[fb]
+                out_op[fb, bi] = torch.where(
+                    at, torch.full_like(mv, X.U_PICKUP), mv)[fb]
+                out_arg[aa, best[aa]] = ET.FERT_I
+                out_qty[aa, best[aa]] = take[aa]
+                shed_fert_left = torch.where(
+                    aa, shed_fert_left - take, shed_fert_left)
+                out_task[fb, bi] = X.U_FERTILIZE
+                busy[fb, bi] = True
 
     # ---- idle units: run produce back to the shed ---------------------------
     produce_u = inv[:, :, 1:ET.N_MKT].sum(-1)          # products minus WHEAT
     carrying_u = inv.sum(-1)
+    if state_guided and fert_remaining is not None:
+        field_fert = inv[:, :, ET.FERT_I].clamp(max=4)
+        produce_u = (produce_u - field_fert).clamp(min=0)
+        carrying_u = (carrying_u - field_fert).clamp(min=0)
     for u in range(U):
         idle = active[:, u] & ~busy[:, u]
         if not bool(idle.any()):
@@ -804,6 +904,21 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None):
         spend = spend + torch.where(ok, wprice * kw.to(f64),
                                     torch.zeros_like(spend))
 
+    # Liquidation still needs labour to harvest and carry the final two days
+    # of output.  The reference barnyard stops hiring with all other spending;
+    # k01 instead keeps a smaller 10/8-person closing crew.  Preserve that
+    # commitment while leaving every non-state-guided profile unchanged.
+    if endgame and state_guided and hour <= 3:
+        hires = ep.hires_today[:, p].to(i64).clone()
+        alive = torch.ones((B,), dtype=torch.bool, device=dev)
+        for _ in range(7):
+            cost = t.fib[hires.clamp(max=39)].to(f64)
+            ok = (alive & (hires < hand_cap) & (money - spend >= cost))
+            ok = push(ok, X.OP_HIRE, 0, 0)
+            spend = spend + torch.where(ok, cost, torch.zeros_like(cost))
+            hires = hires + ok.to(i64)
+            alive = ok
+
     # sells: (value, item-name) descending, metered by our own price impact
     held9 = shed[:, :ET.N_MKT].clone()
     if not endgame:
@@ -926,11 +1041,30 @@ class BarnyardOpponent:
     def __init__(self, profile=None):
         self.profile = profile
         self.task_tiles = None
+        self.fert_used = None
+        self.fert_day = None
 
     def __call__(self, ep, player):
-        if ep._step == 0:
+        if (ep._step == 0 or self.fert_used is None
+                or self.fert_used.shape[0] != ep.B):
             self.task_tiles = None
+            self.fert_used = torch.zeros(
+                (ep.B,), dtype=i64, device=ep.device)
+            self.fert_day = ep._step // ep.turns_per_day
+        day = ep._step // ep.turns_per_day
+        if day != self.fert_day:
+            self.fert_used.zero_()
+            self.fert_day = day
+        fert_remaining = None
+        if self.profile == "k01_state":
+            cap = _K01_FERT_CAP[min(day, len(_K01_FERT_CAP) - 1)]
+            fert_remaining = (cap - self.fert_used).clamp(min=0)
         ops = compute(ep, player, profile=self.profile,
-                      sticky_tiles=self.task_tiles)
+                      sticky_tiles=self.task_tiles,
+                      fert_remaining=fert_remaining)
         self.task_tiles = ops["task_tile"].detach().clone()
+        if fert_remaining is not None:
+            applied = (torch.stack(
+                [ops["f_op"], *ops["h_op"]], 1) == X.U_FERTILIZE).sum(1)
+            self.fert_used.add_(applied)
         return ops

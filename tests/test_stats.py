@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
 from stats import bradley_terry, wilson, resolved, elo    # noqa: E402
-from eval import _interval_winner, _paired_pool_summary     # noqa: E402
+from eval import _interval_winner, _paired_pool_summary, _win_score  # noqa: E402
 
 FAILS = []
 
@@ -90,6 +90,7 @@ check("an exact coin flip never resolves", not ok and n is None)
 check("eval resolves 10/96 for B", _interval_winner(*wilson(10, 96)) == "B")
 check("eval resolves 64/96 for A", _interval_winner(*wilson(64, 96)) == "A")
 check("eval leaves 50/100 unresolved", _interval_winner(*wilson(50, 100)) is None)
+check("eval scores ties as half wins", _win_score(32, 32) == 48)
 
 paired = _paired_pool_summary([
     {"tag": "0|wall|0", "seed": 1, "money": [10, 5]},
