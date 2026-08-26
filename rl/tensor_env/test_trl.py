@@ -388,21 +388,30 @@ def gate_potential():
     ep.placed_day[1, 1, 2, 2] = 1
     ep.cared[1, 1, 2, 2] = True
 
+    import potential as P
+
     day = ep._step // ep.turns_per_day
 
     def oracle(lane, p):
         phi = float(ep.money[lane, p])
         for i, prod in enumerate(engine_t.PRODUCTS):
-            phi += float(ep.shed[lane, p, i]) * R.MARKET_PARAMS[prod]["base"] * 0.9
+            phi += float(ep.shed[lane, p, i]) * R.MARKET_PARAMS[prod]["base"] * P.SHED_DISCOUNT
+        n_prod = len(engine_t.PRODUCTS)
+        for i, aname in enumerate(engine_t.ANIMAL_NAMES):
+            phi += (
+                float(ep.shed[lane, p, n_prod + i])
+                * R.ANIMALS[aname]["cost"] * P.SHED_ANIMAL_CREDIT
+            )
         for c, cname in enumerate(engine_t.CROP_NAMES):
-            phi += float(ep.seeds_t[lane, p, c]) * R.CROPS[cname]["seed"] * 0.5
+            phi += float(ep.seeds_t[lane, p, c]) * R.CROPS[cname]["seed"] * P.SEED_RESIDUAL
         for y in range(10):
             for x in range(10):
                 kind = int(ep.kind[lane, p, y, x])
+                a = int(ep.animal[lane, p, y, x])
                 if kind == engine_t.K_PLANT:
                     cname = engine_t.CROP_NAMES[int(ep.crop[lane, p, y, x])]
                     d = R.CROPS[cname]
-                    stress = 0.15 if (not bool(ep.watered[lane, p, y, x]) and
+                    stress = P.WATER_STRESS if (not bool(ep.watered[lane, p, y, x]) and
                                       int(ep.consec_unwatered[lane, p, y, x]) >= 1) else 0.0
                     if d.get("ongoing"):
                         sitting = float(ep.yield_units[lane, p, y, x])
@@ -420,10 +429,11 @@ def gate_potential():
                                 max(0.0, d["max_yield"] - produced), rem_ev)
                     else:
                         expected = float(d["max_yield"])
-                    phi += expected * R.MARKET_PARAMS[cname]["base"] * 0.5 * (1 - stress)
+                    phi += expected * R.MARKET_PARAMS[cname]["base"] * P.PLANT_CREDIT * (1 - stress)
                 elif kind == engine_t.K_WEED:
-                    phi -= 25.0
-                a = int(ep.animal[lane, p, y, x])
+                    phi -= P.WEED_COST
+                elif kind in (engine_t.K_PASTURE, engine_t.K_COOP) and a < 0:
+                    phi += P.HOUSING_VALUE
                 if a >= 0:
                     aname = engine_t.ANIMAL_NAMES[a]
                     ad = R.ANIMALS[aname]
@@ -432,13 +442,14 @@ def gate_potential():
                     start = max(day, int(ep.placed_day[lane, p, y, x])
                                 + int(ad["first_yield_day"]))
                     rem = held if start > 30 else held + 1.0 + (30 - start) / float(interval)
-                    phi += rem * R.MARKET_PARAMS[ad["product"]]["base"] * 0.4
+                    phi += rem * R.MARKET_PARAMS[ad["product"]]["base"] * P.ANIMAL_CREDIT
+                    phi += P.HERD_ASSET
                     if not bool(ep.fed[lane, p, y, x]):
-                        phi -= ad["cost"] * 0.8
+                        phi -= ad["cost"] * P.UNFED_RISK
                     if not bool(ep.cared[lane, p, y, x]):
-                        phi -= ad["cost"] * 0.3
-        phi += float(ep.hands_n[lane, p]) * 40.0
-        phi += float(ep.quad_unlocked[lane, p].sum()) * 300.0
+                        phi -= ad["cost"] * P.UNCARED_RISK
+        phi += float(ep.hands_n[lane, p]) * P.HAND_VALUE
+        phi += float(ep.quad_unlocked[lane, p].sum()) * P.LAND_VALUE
         return phi
 
     assert bool((ep.kind == engine_t.K_PLANT).any()), "no plants -- widen the walk"

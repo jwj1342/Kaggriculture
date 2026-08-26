@@ -21,7 +21,7 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
 
 ### → 想上手主线（RL）？读 [`rl/README.md`](rl/README.md) —— 与竞赛引擎逐字节一致的张量引擎（单卡 22.8 万步/秒，[`rl/tensor_env/README.md`](rl/tensor_env/README.md)）+ TorchRL 统一训练层（`rl/train.py`，`--algo` 换算法，`--device` 换 CPU/GPU）；已有结论在 [`docs/RUNS.md`](docs/RUNS.md) 末四条。
 
-### → 离开了几天？读 [`docs/ROADMAP.md`](docs/ROADMAP.md)（剧本线的全部证据与被推翻的结论；**它只覆盖到 2026-08-14**，之后的 RL 主线见其 §12 指引）+ [`docs/RUNS.md`](docs/RUNS.md) 末尾。
+### → 离开了几天？读 [`docs/ROADMAP.md`](docs/ROADMAP.md)（剧本线的全部证据与被推翻的结论；**它只覆盖到 2026-08-14**，之后的 RL 主线见其 §12 指引）+ [`docs/RUNS.md`](docs/RUNS.md) 末尾。2026-08-20～21 笔记本 PPO 对 barnyard 的工作线（检查点、考试数字、坑）见 [`docs/HANDOFF.md`](docs/HANDOFF.md)。
 
 ### → 只想知道榜上跑的是什么？读 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 场上两个提交对应本地哪两个、怎么一模一样地重建、以及为什么现在不要提交。
 

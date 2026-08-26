@@ -1201,3 +1201,29 @@ and gated) does exactly that, one flag away from an A/B; (b) pool
 dynamics -- the beatable half of the pool owns the reward hill; a
 barnyard-weighted or barnyard-only phase would isolate it. Both are
 single-variable follow-ups on breach's config.
+
+## laptop multi-head vs barnyard -- official engine, 16 seeds × 2 seats (2026-08-20..21)
+
+Not a cluster TorchRL run. `python -m rl.train_ppo` on the reference
+engine, opponent always `agents/barnyard.py`. Exam is `tools/eval.py h2h`
+with default `seed0=10000`. Full narrative, commands, and pitfalls:
+`docs/HANDOFF.md`. Checkpoints are local (`rl/ckpt*/`, gitignored).
+
+Same 32 games for every row:
+
+| Agent | W–L | our median | barnyard median | mean margin | artefact |
+|---|---|---|---|---|---|
+| Transformer 80 (from scratch) | **6–26** | **$33,734** | $36,180 | **−$3,943** | `logs/h2h_transformer80_vs_barnyard.json` |
+| idle-restock (no net) | 6–26 | $27,659 | $37,764 | −$7,197 | `logs/h2h_idle_vs_barnyard.json` |
+| phase-bias MLP 300 | 0–32 | $30,675 | $42,968 | −$11,692 | `logs/h2h_phase300_vs_barnyard.json` |
+| official MLP 300 | 0–32 | $27,389 | $42,222 | −$12,927 | `logs/h2h_official_vs_barnyard.json` |
+| CNN 80 (from scratch) | 0–32 | $16,606 | $52,464 | −$33,313 | `logs/h2h_cnn80_vs_barnyard.json` |
+
+Reading: decoder legality patches (empty-target scheduler, HOLD→RESTOCK,
+ban tomato, HAND_CAP 12→14) all made the exam worse and were reverted.
+More MLP iters moved money $27k→$31k and left W–L at 0–32. A 3-iter
+tensor finetune vs starter made the exam margin worse (−$15,790). CNN
+from scratch collapsed. Transformer from scratch is the best exam money
+on this ruler; it still loses 26/32 and the export needs torch (not a
+Kaggle file). Do not read the printed Wilson interval — `eval.py`
+formats `stats.wilson`'s percentages with `{:.1%}` again.

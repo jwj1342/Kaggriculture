@@ -25,6 +25,76 @@ MARKET_MODES = ["HOLD", "METERED", "DUMP", "RESTOCK"]
 TASK_IDX = {name: i for i, name in enumerate(FARM_TASKS)}
 MODE_IDX = {name: i for i, name in enumerate(MARKET_MODES)}
 
+# Soft logit extras on top of the learned IDLE / RESTOCK priors.
+# Split by calendar day (not raw 720-step index): watering, feed, and
+# liquidation are daily. This is an emphasis, not a mask — illegal ops
+# stay silent no-ops if the decoder cannot find a target.
+PHASE_EARLY_LAST_DAY = 8    # days 0–8  (steps 0–215)
+PHASE_LATE_FIRST_DAY = 28   # days 28–29 (steps 672–719)
+PHASE_BUILD_BOOST = 2.0
+PHASE_CHORE_BOOST = 1.5
+PHASE_HARVEST_BOOST = 2.0
+PHASE_DUMP_BOOST = 2.0
+# feats[4] in rl.features.encode is clamp(step / 720)
+STEP_FEATURE_INDEX = 4
+
+
+def phase_index(day):
+    """0 early / 1 mid / 2 late."""
+    try:
+        d = int(day)
+    except (TypeError, ValueError):
+        d = 0
+    if d >= PHASE_LATE_FIRST_DAY:
+        return 2
+    if d <= PHASE_EARLY_LAST_DAY:
+        return 0
+    return 1
+
+
+def day_from_step_feature(step_n):
+    """Invert feats[4] = clamp(step / 720) back to a calendar day 0–29."""
+    try:
+        x = float(step_n)
+    except (TypeError, ValueError):
+        x = 0.0
+    if x < 0.0:
+        x = 0.0
+    if x > 1.0:
+        x = 1.0
+    d = int(x * 30.0)
+    if d < 0:
+        return 0
+    if d > 29:
+        return 29
+    return d
+
+
+def phase_task_bias(day):
+    """Length-13 extras for farmer / hand task logits."""
+    b = [0.0] * len(FARM_TASKS)
+    p = phase_index(day)
+    if p == 0:
+        b[TASK_IDX["BUILD"]] = PHASE_BUILD_BOOST
+    elif p == 1:
+        for name in ("WATER", "HARVEST", "FEED", "CARE"):
+            b[TASK_IDX[name]] = PHASE_CHORE_BOOST
+    else:
+        b[TASK_IDX["HARVEST"]] = PHASE_HARVEST_BOOST
+    return b
+
+
+def phase_mode_bias(day):
+    """Length-4 extras for market-mode logits. RESTOCK stays on the learned prior."""
+    b = [0.0] * len(MARKET_MODES)
+    if phase_index(day) == 2:
+        b[MODE_IDX["DUMP"]] = PHASE_DUMP_BOOST
+    return b
+
+
+PHASE_TASK_BIAS = tuple(tuple(phase_task_bias(d)) for d in (0, 15, 28))
+PHASE_MODE_BIAS = tuple(tuple(phase_mode_bias(d)) for d in (0, 15, 28))
+
 # Targets aligned with agents/barnyard.py — IDLE fallback *is* the policy
 # for most steps, so these numbers are the agent's economy, not decoration.
 CROP_PLAN = [("MELON", 14, 18), ("STRAWBERRY", 14, 18), ("WHEAT", 20, 26)]

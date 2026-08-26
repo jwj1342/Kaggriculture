@@ -56,7 +56,7 @@ def encode(obs):
         a = 2.0 * math.pi * (float(t) / p)
         return math.sin(a), math.cos(a)
 
-    # phase features
+    # phase features: [0:2] day angle, [2:4] hour angle, [4] step/720
     f = list(norm_angle(day, 30))
     f += list(norm_angle(hour, 24))
     f.append(nrm(step, 720))
@@ -167,6 +167,8 @@ def encode(obs):
 
     return [float(v) for v in f]
 
+
+STEP_FEATURE_INDEX = 4  # encode()[4] == clamp(step / 720); used by phase logit bias
 
 FEATURE_DIM = len(encode({
     "player": 0,

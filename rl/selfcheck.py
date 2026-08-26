@@ -8,7 +8,8 @@ import numpy as np  # noqa: E402
 
 from . import features  # noqa: E402
 from .action_space import (  # noqa: E402
-    decode, decode_per_unit, FARM_TASKS, MARKET_MODES, TASK_IDX,
+    decode, decode_per_unit, FARM_TASKS, MARKET_MODES, TASK_IDX, MODE_IDX,
+    day_from_step_feature, phase_mode_bias, phase_task_bias,
 )
 from .potential import farm_potential, shaped_reward  # noqa: E402
 from .ppo import MLP, MultiHeadMLP, ppo_update_multihead  # noqa: E402
@@ -127,11 +128,77 @@ def test_potential_melon():
     phi_empty = farm_potential(empty["farms"][0], empty["private"], day=0)
     phi_melon = farm_potential(melon["farms"][0], melon["private"], day=0)
     delta = phi_melon - phi_empty
-    # 6 × 250 × 0.5 = 750
-    assert 600 < delta < 900, f"melon plant should lift Φ by ~750, got {delta}"
+    # 6 × 250 × 0.25 = 375  (plant credit used to be 0.5 / $750)
+    assert 300 < delta < 450, f"melon plant should lift Φ by ~375, got {delta}"
     r, _ = shaped_reward(empty, melon, done=False)
-    assert r > 0.5, f"planting melon should give immediate shaped reward, got {r}"
+    assert r > 0.3, f"planting melon should give immediate shaped reward, got {r}"
     print("potential melon ok  dPhi=", round(delta, 1), " r=", round(r, 3))
+
+
+def test_potential_herd_beats_tomato():
+    """Placing a cow must outrank planting tomato, or PPO will keep farming the plant hill."""
+    empty = _blank_obs()
+    tomato = _blank_obs(extra_tile=(1, 1, {
+        "kind": "PLANT", "crop": "TOMATO", "planted_day": 0,
+        "watered_today": True, "consecutive_unwatered": 0, "yield_units": 0,
+    }))
+    cow = _blank_obs(extra_tile=(1, 1, {
+        "kind": "PASTURE", "animal": "COW", "placed_day": 0,
+        "fed_today": True, "cared_today": True, "yield_units": 0,
+    }))
+    waiting = _blank_obs()
+    waiting["private"] = dict(waiting["private"])
+    waiting["private"]["shed"] = dict(waiting["private"]["shed"], COW=1)
+    base = farm_potential(empty["farms"][0], empty["private"], day=0)
+    d_tom = farm_potential(tomato["farms"][0], tomato["private"], day=0) - base
+    d_cow = farm_potential(cow["farms"][0], cow["private"], day=0) - base
+    d_wait = farm_potential(waiting["farms"][0], waiting["private"], day=0) - base
+    assert d_cow > 5 * d_tom, (
+        f"placed cow ({d_cow:.0f}) should dwarf tomato plant ({d_tom:.0f})"
+    )
+    assert 300 < d_wait < 400, f"shed cow should credit ~0.85×$400, got {d_wait}"
+    print("potential herd ok  dTomato=", round(d_tom, 1),
+          " dCow=", round(d_cow, 1), " dShedCow=", round(d_wait, 1))
+
+
+def test_phase_bias():
+    from .ppo import MultiHeadMLP, _apply_phase_logits
+
+    assert phase_task_bias(0)[TASK_IDX["BUILD"]] == 2.0
+    assert phase_task_bias(0)[TASK_IDX["FEED"]] == 0.0
+    assert phase_task_bias(15)[TASK_IDX["FEED"]] == 1.5
+    assert phase_task_bias(15)[TASK_IDX["BUILD"]] == 0.0
+    assert phase_task_bias(28)[TASK_IDX["HARVEST"]] == 2.0
+    assert phase_mode_bias(0)[MODE_IDX["DUMP"]] == 0.0
+    assert phase_mode_bias(28)[MODE_IDX["DUMP"]] == 2.0
+
+    obs = _blank_obs()
+    obs["day"], obs["hour"], obs["step"] = 28, 0, 672
+    feats = features.encode(obs)
+    assert day_from_step_feature(feats[4]) == 28, feats[4]
+
+    zeros = np.zeros((1, features.FEATURE_DIM), dtype=np.float64)
+    lf = np.zeros((1, len(FARM_TASKS)))
+    lh = np.zeros((1, 12 * len(FARM_TASKS)))
+    lm = np.zeros((1, len(MARKET_MODES)))
+    early = zeros.copy()
+    early[0, 4] = 0.0
+    lf_e, _, lm_e = _apply_phase_logits(lf.copy(), lh.copy(), lm.copy(), early)
+    assert lf_e[0, TASK_IDX["BUILD"]] == 2.0
+    assert lm_e[0, MODE_IDX["DUMP"]] == 0.0
+    late = zeros.copy()
+    late[0, 4] = 672 / 720
+    lf_l, _, lm_l = _apply_phase_logits(lf.copy(), lh.copy(), lm.copy(), late)
+    assert lf_l[0, TASK_IDX["HARVEST"]] == 2.0
+    assert lm_l[0, MODE_IDX["DUMP"]] == 2.0
+
+    mlp = MultiHeadMLP(seed=0)
+    a0, logp0, _, c0 = mlp.act(early[0], n_hands=2, sample=False)
+    c1 = mlp.forward(early)
+    assert np.allclose(c0["lf"], c1["lf"])
+    assert np.allclose(c0["lm"], c1["lm"])
+    print("phase bias ok  early_farm=", a0[0], " early_mkt=", a0[-1],
+          " late_dump_logit=", round(float(lm_l[0, MODE_IDX["DUMP"]]), 2))
 
 
 def test_mlp_forward():
@@ -220,18 +287,42 @@ def test_env_multi_episode():
     print("env multi ok  reward=", round(total, 3), " n_hands=", n_hands)
 
 
+def test_spatial_forward():
+    from .board_obs import BOARD_FLAT, PACKED_DIM, pack_obs
+    from .features import FEATURE_DIM
+    obs = _blank_obs()
+    packed = pack_obs(obs)
+    assert len(packed) == PACKED_DIM, (len(packed), PACKED_DIM)
+    assert packed[FEATURE_DIM:FEATURE_DIM + BOARD_FLAT][20 * 100 + 4 * 10 + 4] == 1.0  # farmer at 4,4 ch20
+    import torch
+    from .spatial_policy import SpatialActor
+    for net in ("cnn", "transformer"):
+        m = SpatialActor(net=net)
+        x = torch.tensor([packed], dtype=torch.float32)
+        nh = torch.tensor([2], dtype=torch.int64)
+        tasks, logp, val = m.act(x, nh, sample=False)
+        assert tasks.shape == (1, 14), tasks.shape
+        assert torch.isfinite(logp).all() and torch.isfinite(val).all()
+        lf, lh, lm, lv = m.forward(x)
+        assert lf.shape == (1, 13) and lh.shape == (1, 12, 13) and lm.shape == (1, 4)
+        print(f"spatial {net} ok  packed={PACKED_DIM}  greedy={tasks[0].tolist()[:3]}...{int(tasks[0, -1])}")
+
+
 def main():
     test_features()
     test_decode()
     test_decode_per_unit()
     test_default_scheduler_and_restock()
     test_potential_melon()
+    test_potential_herd_beats_tomato()
+    test_phase_bias()
     test_mlp_forward()
     test_multihead_forward()
     test_multihead_save_load()
     test_ppo_multihead_update()
     test_env_episode()
     test_env_multi_episode()
+    test_spatial_forward()
     print("selfcheck passed")
 
 

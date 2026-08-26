@@ -10,6 +10,11 @@ import torch.nn.functional as F
 
 from . import constants as C
 
+from ..action_space import (
+    PHASE_EARLY_LAST_DAY, PHASE_LATE_FIRST_DAY, PHASE_MODE_BIAS, PHASE_TASK_BIAS,
+    STEP_FEATURE_INDEX,
+)
+
 _IN = C.FEATURE_DIM
 _HID = 256
 _TASK = C.N_TASK
@@ -30,6 +35,14 @@ class MultiHeadActor(nn.Module):
         self.head_h = nn.Linear(_HID, _TASK * _NHAND)
         self.head_m = nn.Linear(_HID, _MODE)
         self.head_v = nn.Linear(_HID, 1)
+        self.register_buffer(
+            "phase_task_bias",
+            torch.tensor(PHASE_TASK_BIAS, dtype=torch.float32),
+        )
+        self.register_buffer(
+            "phase_mode_bias",
+            torch.tensor(PHASE_MODE_BIAS, dtype=torch.float32),
+        )
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -58,6 +71,10 @@ class MultiHeadActor(nn.Module):
         lh = self.head_h(h).view(-1, _NHAND, _TASK)
         lm = self.head_m(h)
         lv = self.head_v(h).squeeze(-1)
+        ph = _phase_from_obs(x)
+        lf = lf + self.phase_task_bias[ph]
+        lh = lh + self.phase_task_bias[ph][:, None, :]
+        lm = lm + self.phase_mode_bias[ph]
         return lf, lh, lm, lv
 
     @torch.no_grad()
@@ -142,6 +159,14 @@ class MultiHeadActor(nn.Module):
         with open(path, "rb") as f:
             payload = json.loads(zlib.decompress(f.read()).decode("utf-8"))
         self.load_numpy(payload, allow_partial=allow_partial)
+
+
+def _phase_from_obs(x):
+    """0 early / 1 mid / 2 late from obs[..., 4] = step/720."""
+    day = (x[..., STEP_FEATURE_INDEX].clamp(0, 1) * 30.0).floor().long()
+    return torch.where(
+        day >= PHASE_LATE_FIRST_DAY, 2, torch.where(day <= PHASE_EARLY_LAST_DAY, 0, 1),
+    )
 
 
 def _logp(lf, lh, lm, farmer, hands, mode, n_hands):

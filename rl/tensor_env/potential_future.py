@@ -3,12 +3,13 @@ ported to EpisodeT tensors as an alternative shaping potential.
 
 Where net_worth_t values what you HOLD (standing assets at base price),
 this one values what the state is EXPECTED to deliver by the end of the
-season: planting credits the expected remaining harvest immediately
-(a melon seed lifts phi by ~$750 the moment it is planted), animals carry
-their remaining production events, unfed/uncared animals are charged a
-flight-risk penalty, weeds an opportunity cost, hands and land a
-productivity value. The point is credit assignment: 240-turn causal chains
-(plant melon -> harvest) become instant gradient.
+season: planting credits the expected remaining harvest immediately,
+animals carry remaining production plus a herd-asset term, shed livestock
+count at purchase-cost residual, empty housing is an asset, unfed/uncared
+animals are charged a flight-risk penalty, weeds an opportunity cost,
+hands and land a productivity value. Credits live in rl/potential.py
+(plant 0.25, animal 0.9) so a day-0 cow outranks a melon plant. The point
+is credit assignment: 240-turn causal chains become instant gradient.
 
 Semantics are ported expression for expression from Kilo's dict version --
 including its deliberate simplifications (one-shot crops count max_yield
@@ -40,17 +41,39 @@ if _RL not in sys.path:
 
 import kg_rules as R
 
-# -- design constants (Kilo's, not engine values) ---------------------------
-SHED_DISCOUNT = 0.9
-SEED_RESIDUAL = 0.5
-PLANT_CREDIT = 0.5
-ANIMAL_CREDIT = 0.4
-UNFED_RISK = 0.8
-UNCARED_RISK = 0.3
-WATER_STRESS = 0.15
-WEED_COST = 25.0
-HAND_VALUE = 40.0
-LAND_VALUE = 300.0
+try:
+    from potential import (
+        ANIMAL_CREDIT,
+        HAND_VALUE,
+        HERD_ASSET,
+        HOUSING_VALUE,
+        LAND_VALUE,
+        PLANT_CREDIT,
+        SEED_RESIDUAL,
+        SHED_ANIMAL_CREDIT,
+        SHED_DISCOUNT,
+        UNCARED_RISK,
+        UNFED_RISK,
+        WATER_STRESS,
+        WEED_COST,
+    )
+except ImportError:
+    from rl.potential import (
+        ANIMAL_CREDIT,
+        HAND_VALUE,
+        HERD_ASSET,
+        HOUSING_VALUE,
+        LAND_VALUE,
+        PLANT_CREDIT,
+        SEED_RESIDUAL,
+        SHED_ANIMAL_CREDIT,
+        SHED_DISCOUNT,
+        UNCARED_RISK,
+        UNFED_RISK,
+        WATER_STRESS,
+        WEED_COST,
+    )
+
 SEASON_DAYS = 30
 
 # -- engine constants, pinned against kg_rules ------------------------------
@@ -130,15 +153,21 @@ def future_worth_t(ep, player):
                             placed + L["a_first"][aidx])
     rem_a = torch.where(a_start > SEASON_DAYS, yu,
                         yu + 1.0 + (SEASON_DAYS - a_start) / L["a_int"][aidx])
-    a_val = (rem_a * L["a_base"][aidx] * ANIMAL_CREDIT
+    a_val = (rem_a * L["a_base"][aidx] * ANIMAL_CREDIT + HERD_ASSET
              - (~ep.fed[:, player]).to(f64) * L["a_cost"][aidx] * UNFED_RISK
              - (~ep.cared[:, player]).to(f64) * L["a_cost"][aidx] * UNCARED_RISK)
     phi = phi + (a_val * has_a.to(f64)).sum((-1, -2))
+
+    empty_h = ((kind == ET.K_PASTURE) | (kind == ET.K_COOP)) & (ep.animal[:, player] < 0)
+    phi = phi + HOUSING_VALUE * empty_h.to(f64).sum((-1, -2))
 
     phi = phi - WEED_COST * (kind == ET.K_WEED).to(f64).sum((-1, -2))
     phi = phi + HAND_VALUE * ep.hands_n[:, player].to(f64)
     phi = phi + LAND_VALUE * ep.quad_unlocked[:, player].to(f64).sum(-1)
     phi = phi + (ep.shed[:, player].to(f64) * L["base12"]).sum(-1) * SHED_DISCOUNT
+    n_prod = len(ET.PRODUCTS)
+    waiting = ep.shed[:, player, n_prod:n_prod + len(ET.ANIMAL_NAMES)].to(f64)
+    phi = phi + (waiting * L["a_cost"] * SHED_ANIMAL_CREDIT).sum(-1)
     phi = phi + (ep.seeds_t[:, player].to(f64) * L["seedc"]).sum(-1) * SEED_RESIDUAL
     phi = phi + ep.money[:, player]
     return phi

@@ -2,6 +2,7 @@
 
     pip install -r requirements/gpu.txt
     python -m rl.gpu.train --device cpu --batch 256 --iters 200 \\
+        --opponent scripted --switch-after 0 \\
         --init-weights rl/ckpt_official/ppo_it0300.npz --ckpt-dir rl/ckpt_gpu
 
 `--device auto` picks CUDA when present. On a laptop GPU (measured RTX 4060)
@@ -9,9 +10,11 @@ that is slower: one 256×720 iter is ~246s on CUDA vs ~132s on CPU, because
 `step` is kernel-launch bound, not compute bound. Prefer `--device cpu` unless
 you have measured the other way on that machine.
 
-Opponent `starter` is the official carrot loop; `scripted` is all-IDLE + RESTOCK
-(the default farm scheduler). Log `win=` is against those vectorized opponents,
-not the ladder — exam is `tools/eval.py h2h` on the official interpreter.
+Default opponent is `scripted` (all-IDLE + RESTOCK, the farm scheduler) from
+iter 1 — not `starter`. Three tensor iters vs starter made the exported
+agent worse on the exam. True `agents/barnyard.py` is not vectorized here;
+that matchup belongs on `python -m rl.train_ppo`. Log `win=` is against
+the vectorized stand-in, not the ladder — exam is `tools/eval.py h2h`.
 
 Weights save in the same npz layout as CPU PPO so
 `python -m rl.export_multihead --arch multi` still works.
@@ -47,9 +50,10 @@ def main():
         help="cpu|cuda|mps|auto. auto→CUDA if available; CPU is faster on "
              "launch-bound laptop GPUs (see module docstring).",
     )
-    ap.add_argument("--opponent", choices=["starter", "scripted"], default="starter")
-    ap.add_argument("--switch-after", type=int, default=80,
-                    help="after this many iters, opponent becomes scripted")
+    ap.add_argument("--opponent", choices=["starter", "scripted"], default="scripted")
+    ap.add_argument("--switch-after", type=int, default=0,
+                    help="when --opponent starter, switch to scripted after this "
+                         "many iters. 0 with the scripted default means never switch.")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--gamma", type=float, default=0.997)
     ap.add_argument("--lam", type=float, default=0.95)

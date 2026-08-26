@@ -4,9 +4,18 @@
 The env uses r' = (Φ_rel(s') − Φ_rel(s)) / 1000, plus ±15 at episode end.
 Φ already estimates undiscounted terminal wealth, so the shaping term is
 undiscounted (Ng et al. 1999 with γ_Φ=1). The RL discount γ=0.997 applies
-to these shaped rewards. Planting a melon lifts Φ immediately (~$750).
+to these shaped rewards.
+
+Plant credits used to dominate (melon plant ~$750 vs a placed cow ~$700),
+so PPO learned to spam PLANT_TOMATO / HARVEST and skip the herd. Animals
+are now priced above plants: a day-0 cow is ~$1.9k, a melon plant ~$375,
+a tomato plant ~$60. Shed livestock count at 85% of purchase cost so
+BUY_ANIMAL is no longer a −$400 hole that the market head learns to HOLD
+through.
 
 Pure stdlib so it can be embedded verbatim in the exported single-file agent.
+Keep gpu/obs.py farm_phi and tensor_env/potential_future.py on these same
+named credits.
 """
 
 CROPS = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"]
@@ -30,6 +39,17 @@ ANIMAL_DATA = {
 }
 SEED_COST = {c: d["seed"] for c, d in CROP_DATA.items()}
 
+# Named credits: gpu/obs.py and tensor_env/potential_future.py import these.
+SHED_DISCOUNT = 0.9
+SEED_RESIDUAL = 0.5
+PLANT_CREDIT = 0.25
+ANIMAL_CREDIT = 0.9
+SHED_ANIMAL_CREDIT = 0.85
+HERD_ASSET = 200.0
+HOUSING_VALUE = 80.0
+UNFED_RISK = 0.8
+UNCARED_RISK = 0.3
+WATER_STRESS = 0.15
 WEED_COST = 25.0
 HAND_VALUE = 40.0
 LAND_VALUE = 300.0
@@ -97,11 +117,13 @@ def farm_potential(farm, priv, day=0):
 
     shed = _get(priv, "shed") or {}
     for item in PRODUCTS:
-        phi += _safe(shed.get(item)) * BASE_PRICE[item] * 0.9
+        phi += _safe(shed.get(item)) * BASE_PRICE[item] * SHED_DISCOUNT
+    for animal in ANIMALS:
+        phi += _safe(shed.get(animal)) * ANIMAL_DATA[animal]["cost"] * SHED_ANIMAL_CREDIT
 
     seeds = _get(priv, "seeds") or {}
     for crop in CROPS:
-        phi += _safe(seeds.get(crop)) * SEED_COST[crop] * 0.5
+        phi += _safe(seeds.get(crop)) * SEED_COST[crop] * SEED_RESIDUAL
 
     tiles = _get(farm, "tiles") or []
     for row in tiles:
@@ -112,20 +134,28 @@ def farm_potential(farm, priv, day=0):
             if kind == "PLANT":
                 crop = t.get("crop")
                 if crop in CROPS:
-                    # unwatered stress risk discount
                     stress = 0.0
                     if not t.get("watered_today") and _safe(t.get("consecutive_unwatered")) >= 1:
-                        stress = 0.15
-                    phi += _remaining_expected_yield(t, crop, day) * BASE_PRICE[crop] * 0.5 * (1.0 - stress)
-            elif "animal" in t:
+                        stress = WATER_STRESS
+                    phi += (
+                        _remaining_expected_yield(t, crop, day)
+                        * BASE_PRICE[crop] * PLANT_CREDIT * (1.0 - stress)
+                    )
+            elif kind in ("PASTURE", "COOP"):
                 animal = t.get("animal")
                 if animal in ANIMALS:
                     d = ANIMAL_DATA[animal]
-                    phi += _remaining_animal_yield(t, animal, day) * BASE_PRICE[d["product"]] * 0.4
+                    phi += (
+                        _remaining_animal_yield(t, animal, day)
+                        * BASE_PRICE[d["product"]] * ANIMAL_CREDIT
+                    )
+                    phi += HERD_ASSET
                     if not t.get("fed_today"):
-                        phi -= d["cost"] * 0.8
+                        phi -= d["cost"] * UNFED_RISK
                     if not t.get("cared_today"):
-                        phi -= d["cost"] * 0.3
+                        phi -= d["cost"] * UNCARED_RISK
+                else:
+                    phi += HOUSING_VALUE
             elif kind == "WEED":
                 phi -= WEED_COST
 
@@ -159,28 +189,6 @@ def shaped_reward(obs_prev, obs_curr, done=False, phi_prev=None):
     """
     if phi_prev is None:
         phi_prev = relative_potential(obs_prev) if obs_prev is not None else 0.0
-    phi_curr = relative_potential(obs_curr)
-    r = (phi_curr - phi_prev) / PHI_SCALE
-    if done:
-        player = int(_get(obs_curr, "player") or 0)
-        farms = _get(obs_curr, "farms") or []
-        mine = farms[player] if player < len(farms) else {}
-        opp = farms[1 - player] if len(farms) > 1 else {}
-        my_m = _safe(_get(mine, "money"))
-        opp_m = _safe(_get(opp, "money"))
-        if my_m > opp_m:
-            r += TERMINAL_BONUS
-        elif my_m < opp_m:
-            r -= TERMINAL_BONUS
-    return float(r), float(phi_curr)
-    """Potential-based shaping used by the env.
-
-    r' = (Φ_rel(s') − Φ_rel(s)) / 1000, plus ±15 at episode end.
-    Φ already estimates undiscounted terminal net worth, so the shaping
-    term is undiscounted (using γ here would add a (γ−1)Φ penalty that
-    punishes being rich). The RL discount γ=0.997 applies to these r'.
-    """
-    phi_prev = relative_potential(obs_prev) if obs_prev is not None else 0.0
     phi_curr = relative_potential(obs_curr)
     r = (phi_curr - phi_prev) / PHI_SCALE
     if done:

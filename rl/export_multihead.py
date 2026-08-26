@@ -237,6 +237,11 @@ def _forward(feats):
     lf = _matmul(h2, Wf)
     for i in range(len(lf)):
         lf[i] += float(bf[i])
+    _day = int(min(29, max(0, math.floor(float(x[4]) * 30.0))))
+    _tb = phase_task_bias(_day)
+    _mb = phase_mode_bias(_day)
+    for i in range(min(len(lf), len(_tb))):
+        lf[i] += float(_tb[i])
     farmer = _argmax(_softmax(lf))
 
     lh = _matmul(h2, Wh)
@@ -246,11 +251,15 @@ def _forward(feats):
     hands = []
     for i in range(_NHAND):
         sl = lh[i * n_task:(i + 1) * n_task]
+        for j in range(min(len(sl), len(_tb))):
+            sl[j] += float(_tb[j])
         hands.append(_argmax(_softmax(sl)) if sl else 0)
 
     lm = _matmul(h2, Wm)
     for i in range(len(lm)):
         lm[i] += float(bm[i])
+    for i in range(min(len(lm), len(_mb))):
+        lm[i] += float(_mb[i])
     mode = _argmax(_softmax(lm))
     return farmer, hands, mode
 

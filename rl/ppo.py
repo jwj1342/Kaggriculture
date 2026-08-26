@@ -12,7 +12,10 @@ import zlib
 import numpy as np
 
 from . import features  # noqa: E402
-from .action_space import FARM_TASKS, MARKET_MODES  # noqa: E402
+from .action_space import (  # noqa: E402
+    FARM_TASKS, MARKET_MODES, PHASE_EARLY_LAST_DAY, PHASE_LATE_FIRST_DAY,
+    PHASE_MODE_BIAS, PHASE_TASK_BIAS, STEP_FEATURE_INDEX,
+)
 from .features import FEATURE_DIM  # noqa: E402
 
 
@@ -23,6 +26,27 @@ _MODE = len(MARKET_MODES)
 _NHAND = 12
 _NHEADS = 1 + _NHAND  # farmer + hands; market is separate
 _ACT_MULTI = _NHEADS + 1  # farmer + 12 hands + market
+_PHASE_TASK = np.asarray(PHASE_TASK_BIAS, dtype=np.float64)
+_PHASE_MODE = np.asarray(PHASE_MODE_BIAS, dtype=np.float64)
+
+
+def _phase_from_feats(x):
+    """0 early / 1 mid / 2 late from feats[..., STEP_FEATURE_INDEX] = step/720."""
+    step_n = np.clip(np.asarray(x[..., STEP_FEATURE_INDEX], dtype=np.float64), 0.0, 1.0)
+    day = np.floor(step_n * 30.0).astype(np.int64)
+    return np.where(day >= PHASE_LATE_FIRST_DAY, 2, np.where(day <= PHASE_EARLY_LAST_DAY, 0, 1))
+
+
+def _apply_phase_logits(lf, lh, lm, x):
+    """Add calendar-day task/mode extras. Must run in both act() and PPO update."""
+    ph = _phase_from_feats(x)
+    tb = _PHASE_TASK[ph]
+    lf = lf + tb
+    B = lf.shape[0]
+    lh = lh.reshape(B, _NHAND, _TASK) + tb[:, None, :]
+    lh = lh.reshape(B, _NHAND * _TASK)
+    lm = lm + _PHASE_MODE[ph]
+    return lf, lh, lm
 
 
 def _as_feats(obs):
@@ -499,6 +523,8 @@ class MultiHeadMLP:
     def __init__(self, seed=0):
         idle_bias = np.zeros(_TASK, dtype=np.float64)
         idle_bias[0] = 2.5  # strong IDLE prior → default scheduler
+        # RESTOCK stays on the learned prior year-round; late DUMP is a
+        # forward-time extra in _apply_phase_logits, not a second init bias.
         hand_bias = np.tile(idle_bias, _NHAND)
         market_bias = np.zeros(_MODE, dtype=np.float64)
         market_bias[3] = 1.5  # RESTOCK (buy seeds) over HOLD/DUMP
@@ -533,6 +559,7 @@ class MultiHeadMLP:
         lf = h2 @ self.params["Wf"] + self.params["bf"]
         lh = h2 @ self.params["Wh"] + self.params["bh"]
         lm = h2 @ self.params["Wm"] + self.params["bm"]
+        lf, lh, lm = _apply_phase_logits(lf, lh, lm, x)
         lv = h2 @ self.params["Wv"] + self.params["bv"]
         return {
             "x": x, "z1": z1, "h1": h1, "z2": z2, "h2": h2,

@@ -4,7 +4,23 @@ import math
 
 import torch
 
+from ..potential import (
+    ANIMAL_CREDIT,
+    HAND_VALUE,
+    HERD_ASSET,
+    HOUSING_VALUE,
+    LAND_VALUE,
+    PLANT_CREDIT,
+    SEED_RESIDUAL,
+    SHED_ANIMAL_CREDIT,
+    SHED_DISCOUNT,
+    UNCARED_RISK,
+    UNFED_RISK,
+    WATER_STRESS,
+    WEED_COST,
+)
 from . import constants as C
+from ..board_obs import BOARD_FLAT, CH_PER_FARM, PACKED_DIM
 from .engine import market_prices
 from .tables import Tables
 
@@ -86,12 +102,86 @@ def encode(st, T: Tables, player=0):
     return torch.stack(feats, dim=-1)
 
 
+def _farm_board(st, p):
+    """[B, 22, H, W] for one player. Channel order is rl.board_obs."""
+    kind = st.kind[:, p]
+    crop = st.crop[:, p]
+    animal = st.animal[:, p]
+    device = kind.device
+    B, H, W = kind.shape
+    is_plant = kind == C.K_PLANT
+    ch = [
+        (kind == C.K_EMPTY).to(torch.float32),
+        (kind == C.K_LOCKED).to(torch.float32),
+        (kind == C.K_WEED).to(torch.float32),
+        is_plant.to(torch.float32),
+    ]
+    for c in range(C.N_CROP):
+        ch.append((is_plant & (crop == c)).to(torch.float32))
+    ch.append((st.yield_units[:, p].to(torch.float32) / 6.0).clamp(0.0, 1.0))
+    ch.append(st.watered[:, p].to(torch.float32))
+    ch.append((st.unwatered[:, p].to(torch.float32) / 2.0).clamp(0.0, 1.0))
+    ch.append((kind == C.K_PASTURE).to(torch.float32))
+    ch.append((kind == C.K_COOP).to(torch.float32))
+    for a in range(C.N_ANIMAL):
+        ch.append((animal == a).to(torch.float32))
+    ch.append(st.fed[:, p].to(torch.float32))
+    ch.append(st.cared[:, p].to(torch.float32))
+    ch.append(st.fert_avail[:, p].to(torch.float32))
+
+    farmer = torch.zeros(B, H, W, device=device, dtype=torch.float32)
+    fx = st.farmer_xy[:, p, 0].clamp(0, W - 1).long()
+    fy = st.farmer_xy[:, p, 1].clamp(0, H - 1).long()
+    farmer[torch.arange(B, device=device), fy, fx] = 1.0
+    ch.append(farmer)
+
+    hands = torch.zeros(B, H, W, device=device, dtype=torch.float32)
+    cap = st.hand_xy.shape[2]
+    n = st.n_hands[:, p].clamp(0, cap).long()
+    hx = st.hand_xy[:, p, :, 0]
+    hy = st.hand_xy[:, p, :, 1]
+    slot = torch.arange(cap, device=device)[None, :]
+    valid = (slot < n[:, None]) & (hx >= 0) & (hx < W) & (hy >= 0) & (hy < H)
+    if bool(valid.any()):
+        b_idx = torch.arange(B, device=device)[:, None].expand_as(hx)[valid]
+        hands.index_put_(
+            (b_idx, hy[valid].long(), hx[valid].long()),
+            torch.full((int(valid.sum()),), 0.25, device=device, dtype=torch.float32),
+            accumulate=True,
+        )
+    ch.append(hands.clamp(0.0, 1.0))
+    stacked = torch.stack(ch, dim=1)
+    if stacked.shape[1] != CH_PER_FARM:
+        raise RuntimeError(f"board channels {stacked.shape[1]} != {CH_PER_FARM}")
+    return stacked
+
+
+def encode_board(st, player=0):
+    """Own then opponent boards, [B, 44, 10, 10]."""
+    p = int(player)
+    mine = _farm_board(st, p)
+    opp = _farm_board(st, 1 - p)
+    return torch.cat([mine, opp], dim=1)
+
+
+def encode_packed(st, T: Tables, player=0):
+    """Global 75 + flattened boards. [B, PACKED_DIM]."""
+    g = encode(st, T, player=player)
+    b = encode_board(st, player=player).reshape(g.shape[0], BOARD_FLAT)
+    packed = torch.cat([g, b], dim=-1)
+    if packed.shape[-1] != PACKED_DIM:
+        raise RuntimeError(f"packed {packed.shape[-1]} != {PACKED_DIM}")
+    return packed
+
+
 def farm_phi(st, T: Tables, p, hide_private=False):
     """Dollar potential for one player. Opponent private is hidden when True."""
     phi = st.money[:, p].to(torch.float32)
     if not hide_private:
-        phi = phi + (st.shed[:, p, :C.N_PRODUCT].to(torch.float32) * T.base_price * 0.9).sum(-1)
-        phi = phi + (st.seeds[:, p].to(torch.float32) * T.seed_cost * 0.5).sum(-1)
+        phi = phi + (st.shed[:, p, :C.N_PRODUCT].to(torch.float32) * T.base_price * SHED_DISCOUNT).sum(-1)
+        waiting = st.shed[:, p, C.ANIMAL_SHED0:C.ANIMAL_SHED0 + C.N_ANIMAL].to(torch.float32)
+        phi = phi + (waiting * T.animal_cost * SHED_ANIMAL_CREDIT).sum(-1)
+        phi = phi + (st.seeds[:, p].to(torch.float32) * T.seed_cost * SEED_RESIDUAL).sum(-1)
 
     is_plant = st.kind[:, p] == C.K_PLANT
     cid = st.crop[:, p].clamp(min=0).long()
@@ -109,12 +199,18 @@ def farm_phi(st, T: Tables, p, hide_private=False):
     remaining_cap = (T.crop_max_yield[cid].to(torch.float32) - produced.to(torch.float32)).clamp(min=0)
     rem_on = sitting + torch.minimum(remaining_cap, remaining_events)
     rem = torch.where(ongoing, rem_on, T.crop_max_yield[cid].to(torch.float32))
-    stress = ((~st.watered[:, p]) & (st.unwatered[:, p] >= 1)).to(torch.float32) * 0.15
+    stress = ((~st.watered[:, p]) & (st.unwatered[:, p] >= 1)).to(torch.float32) * WATER_STRESS
     crop_price = T.base_price[cid.clamp(max=C.N_PRODUCT - 1)]
     # crop id 0-4 maps to product 0-4
-    plant_phi = rem * crop_price * 0.5 * (1.0 - stress)
+    plant_phi = rem * crop_price * PLANT_CREDIT * (1.0 - stress)
     phi = phi + (plant_phi * is_plant.to(torch.float32)).sum(dim=(-1, -2))
-    phi = phi - ((st.kind[:, p] == C.K_WEED).to(torch.float32).sum(dim=(-1, -2)) * 25.0)
+    phi = phi - ((st.kind[:, p] == C.K_WEED).to(torch.float32).sum(dim=(-1, -2)) * WEED_COST)
+
+    empty_h = (
+        ((st.kind[:, p] == C.K_PASTURE) | (st.kind[:, p] == C.K_COOP))
+        & (st.animal[:, p] < 0)
+    )
+    phi = phi + empty_h.to(torch.float32).sum(dim=(-1, -2)) * HOUSING_VALUE
 
     has_a = st.animal[:, p] >= 0
     aid = st.animal[:, p].clamp(min=0).long()
@@ -127,13 +223,13 @@ def farm_phi(st, T: Tables, p, hide_private=False):
     held = st.yield_units[:, p].to(torch.float32)
     prod_id = T.animal_product[aid]
     a_price = T.base_price[prod_id]
-    a_phi = (held + rem_ev) * a_price * 0.4
-    a_phi = a_phi - torch.where(~st.fed[:, p], T.animal_cost[aid] * 0.8, torch.zeros_like(a_phi))
-    a_phi = a_phi - torch.where(~st.cared[:, p], T.animal_cost[aid] * 0.3, torch.zeros_like(a_phi))
+    a_phi = (held + rem_ev) * a_price * ANIMAL_CREDIT + HERD_ASSET
+    a_phi = a_phi - torch.where(~st.fed[:, p], T.animal_cost[aid] * UNFED_RISK, torch.zeros_like(a_phi))
+    a_phi = a_phi - torch.where(~st.cared[:, p], T.animal_cost[aid] * UNCARED_RISK, torch.zeros_like(a_phi))
     phi = phi + (a_phi * has_a.to(torch.float32)).sum(dim=(-1, -2))
 
-    phi = phi + st.n_hands[:, p].to(torch.float32) * 40.0
-    phi = phi + (st.unlocked[:, p].to(torch.float32).sum(-1) - 1.0) * 300.0
+    phi = phi + st.n_hands[:, p].to(torch.float32) * HAND_VALUE
+    phi = phi + (st.unlocked[:, p].to(torch.float32).sum(-1) - 1.0) * LAND_VALUE
     return phi
 
 

@@ -51,6 +51,24 @@ def _n_hands(obs):
     return len(features._get(farm, "hands") or [])
 
 
+def terminal_money(obs):
+    """Learner / opponent cash at the current obs. NaN if the obs is missing."""
+    if not isinstance(obs, dict):
+        return float("nan"), float("nan")
+    player = int(features._get(obs, "player") or 0)
+    farms = features._get(obs, "farms") or []
+
+    def _m(i):
+        if i < 0 or i >= len(farms) or not isinstance(farms[i], dict):
+            return float("nan")
+        try:
+            return float(farms[i].get("money") or 0.0)
+        except (TypeError, ValueError):
+            return float("nan")
+
+    return _m(player), _m(1 - player)
+
+
 class _BaseEnv:
     def __init__(self, opponent=None, seed=None):
         self.opponent = opponent or _default_opponent()
