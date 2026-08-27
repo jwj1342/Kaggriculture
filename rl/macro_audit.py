@@ -604,12 +604,16 @@ def _parse_option(text):
                 "barnyard_prefix must be "
                 "barnyard_prefix:[default|industrial|k01_state|k01_commit|"
                 "k01_route|k01_route_s34|k01_route_s34_bulk6|"
-                "k01_route_s34_fert|k01_route_s34_logistics]:"
+                "k01_route_s34_fert|k01_route_s34_logistics|"
+                "k01_route_s34_latewheat|"
+                "k01_route_s34_fert_latewheat]:"
                 "[all|farm|market]:<steps>") from exc
         known_profiles = {"default", "industrial", "k01_state",
                           "k01_commit", "k01_route", "k01_route_s34",
                           "k01_route_s34_bulk6", "k01_route_s34_fert",
                           "k01_route_s34_logistics",
+                          "k01_route_s34_latewheat",
+                          "k01_route_s34_fert_latewheat",
                           }
         if (profile not in known_profiles
                 or scope not in {"all", "farm", "market"} or steps <= 0):

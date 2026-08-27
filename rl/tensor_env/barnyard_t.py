@@ -111,9 +111,15 @@ _K01_FERT_CAP = [
 _ROUTE_PROFILES = {
     "k01_route", "k01_route_s34", "k01_route_s34_bulk6",
     "k01_route_s34_fert", "k01_route_s34_logistics",
+    "k01_route_s34_latewheat", "k01_route_s34_fert_latewheat",
 }
 _FERT_PROFILES = {
     "k01_state", "k01_route_s34_fert", "k01_route_s34_logistics",
+    "k01_route_s34_fert_latewheat",
+}
+_S34_PROFILES = _ROUTE_PROFILES - {"k01_route"}
+_LATE_WHEAT_PROFILES = {
+    "k01_route_s34_latewheat", "k01_route_s34_fert_latewheat",
 }
 
 # unit-op string forms (dict conversion for the gate / step_raw parity)
@@ -240,13 +246,13 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     committed_crops = profile in {"k01_commit", *route_profiles}
     persistent_routes = profile in route_profiles
     effective_plan_target = plan_target
-    strawberry_target = (34 if profile in {
-        "k01_route_s34", "k01_route_s34_bulk6", "k01_route_s34_fert",
-        "k01_route_s34_logistics",
-    } else None)
+    strawberry_target = 34 if profile in _S34_PROFILES else None
     if strawberry_target is not None:
         effective_plan_target = plan_target.clone()
         effective_plan_target[1] = strawberry_target
+    if profile in _LATE_WHEAT_PROFILES:
+        plan_last = plan_last.clone()
+        plan_last[2] = 27
     hand_cap = (_K01_HAND_CAP[min(day, len(_K01_HAND_CAP) - 1)]
                 if state_guided else BY.HAND_CAP)
     hire_budget_frac = 1.0 if state_guided else BY.HIRE_BUDGET_FRAC
