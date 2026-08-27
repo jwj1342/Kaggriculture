@@ -18,10 +18,13 @@ from trl_env import KGTensorEnv  # noqa: E402
 
 
 def test_masked_categorical():
-    logits = torch.tensor([[0.0, 5.0, 1.0]])
-    mask = torch.tensor([[True, False, True]])
+    logits = torch.zeros((1, M.N_OPTIONS))
+    logits[0, 1] = 5.0
+    logits[0, -1] = 1.0
+    mask = torch.ones_like(logits, dtype=torch.bool)
+    mask[0, 1] = False
     distribution = M.masked_categorical(logits, mask)
-    assert int(distribution.probs.argmax(-1)) == 2
+    assert int(distribution.probs.argmax(-1)) == M.N_OPTIONS - 1
     assert float(distribution.probs[0, 1]) == 0.0
 
 
@@ -122,10 +125,27 @@ def test_reselecting_route_preserves_exact_executor_behavior():
     assert verify.first_diff(game.env._ep.snapshot(0), env._ep.snapshot(0)) is None
 
 
+def test_stage_masks_redundant_route_variants():
+    checkpoint = str(ROOT / "rl" / "runs" / "anvil" / "latest.pt")
+    game = M.MacroGame(checkpoint, "starter", 1, 991, steps_override=2)
+    game.reset()
+    opening = game.action_mask()[0]
+    assert bool(opening[int(M.Option.K01_ROUTE_S34)])
+    assert not bool(opening[int(M.Option.K01_ROUTE_S34_FERT)])
+    assert not bool(opening[int(M.Option.K01_ROUTE_S34_FERT_LATEWHEAT)])
+    game.lifecycle.stage.fill_(2)
+    middle = game.action_mask()[0]
+    assert bool(middle[int(M.Option.K01_ROUTE_S34_FERT)])
+    assert not bool(middle[int(M.Option.K01_ROUTE_S34_FERT_LATEWHEAT)])
+    game.lifecycle.stage.fill_(len(M.MILESTONES))
+    assert bool(game.action_mask()[
+        0, int(M.Option.K01_ROUTE_S34_FERT_LATEWHEAT)])
+
+
 if __name__ == "__main__":
     test_masked_categorical()
     test_semimdp_gae_uses_gamma_to_tau()
     test_follow_policy_is_exact_low_level_baseline()
     test_reselecting_route_preserves_exact_executor_behavior()
+    test_stage_masks_redundant_route_variants()
     print("macro hierarchy tests passed")
-

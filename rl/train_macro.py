@@ -263,6 +263,9 @@ def evaluate(controller, args, iteration, low_level=None):
         "controller": None,
         "FIXED_K01_ROUTE": Option.K01_ROUTE,
         "FIXED_K01_ROUTE_S34": Option.K01_ROUTE_S34,
+        "FIXED_K01_ROUTE_S34_FERT": Option.K01_ROUTE_S34_FERT,
+        "FIXED_K01_ROUTE_S34_FERT_LATEWHEAT":
+            Option.K01_ROUTE_S34_FERT_LATEWHEAT,
     }
     rows = []
     pooled = {name: {"margin": [], "money": [], "win": []}

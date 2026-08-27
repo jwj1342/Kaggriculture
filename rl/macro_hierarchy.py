@@ -37,10 +37,20 @@ class Option(enum.IntEnum):
     FOLLOW_POLICY = 0
     K01_ROUTE = 1
     K01_ROUTE_S34 = 2
+    K01_ROUTE_S34_FERT = 3
+    K01_ROUTE_S34_FERT_LATEWHEAT = 4
 
 
 OPTION_NAMES = tuple(option.name for option in Option)
 N_OPTIONS = len(OPTION_NAMES)
+OPTION_PROFILES = {
+    Option.K01_ROUTE: "k01_route",
+    Option.K01_ROUTE_S34: "k01_route_s34",
+    Option.K01_ROUTE_S34_FERT: "k01_route_s34_fert",
+    Option.K01_ROUTE_S34_FERT_LATEWHEAT:
+        "k01_route_s34_fert_latewheat",
+}
+ROUTE_OPTIONS = tuple(OPTION_PROFILES)
 
 
 class Termination(enum.IntEnum):
@@ -214,9 +224,9 @@ def macro_observation(ep, seat, lifecycle, executors):
         N_OPTIONS + 1).to(torch.float32)
     reason = torch.nn.functional.one_hot(
         lifecycle.termination_reason, len(TERMINATION_NAMES)).to(torch.float32)
-    planted = torch.maximum(
-        executors[Option.K01_ROUTE].planted_total,
-        executors[Option.K01_ROUTE_S34].planted_total).to(torch.float32) / 40.0
+    planted = torch.stack([
+        executors[option].planted_total for option in ROUTE_OPTIONS
+    ]).amax(0).to(torch.float32) / 40.0
     return torch.cat([base, stage, previous, reason, planted], -1)
 
 
@@ -245,6 +255,9 @@ class MacroActorCritic(nn.Module):
         with torch.no_grad():
             self.actor.bias[int(Option.K01_ROUTE)] = route_bias * 0.5
             self.actor.bias[int(Option.K01_ROUTE_S34)] = route_bias
+            self.actor.bias[int(Option.K01_ROUTE_S34_FERT)] = route_bias * 0.75
+            self.actor.bias[
+                int(Option.K01_ROUTE_S34_FERT_LATEWHEAT)] = route_bias * 0.75
         nn.init.orthogonal_(self.critic.weight, 1.0)
         nn.init.zeros_(self.critic.bias)
 
@@ -324,9 +337,8 @@ class MacroGame:
     def reset(self):
         self.td = self.env.reset()
         self.executors = {
-            Option.K01_ROUTE: barnyard_t.BarnyardOpponent("k01_route"),
-            Option.K01_ROUTE_S34: barnyard_t.BarnyardOpponent(
-                "k01_route_s34"),
+            option: barnyard_t.BarnyardOpponent(profile)
+            for option, profile in OPTION_PROFILES.items()
         }
         for executor in self.executors.values():
             executor.reset(self.env._ep, self.env.seat)
@@ -342,25 +354,33 @@ class MacroGame:
             self.env._ep, self.env.seat, self.lifecycle, self.executors)
 
     def action_mask(self):
-        return torch.ones(
+        mask = torch.ones(
             (self.B, N_OPTIONS), dtype=torch.bool, device=self.device)
+        # The daily fertilizer budget first becomes non-zero on day 14, which
+        # lies in the stage beginning at day 12.  Late wheat differs only in
+        # the closing stage beginning at day 25.  Masking redundant labels
+        # avoids asking PPO to distinguish actions with identical rollouts.
+        mask[:, int(Option.K01_ROUTE_S34_FERT)] = self.lifecycle.stage >= 2
+        mask[:, int(Option.K01_ROUTE_S34_FERT_LATEWHEAT)] = (
+            self.lifecycle.stage >= len(MILESTONES))
+        return mask
 
     def start_options(self, lane_mask, option_id, state, action_mask, log_prob,
                       value, probs):
         lane_mask = torch.as_tensor(
             lane_mask, dtype=torch.bool, device=self.device).view(self.B)
         ep, seat = self.env._ep, self.env.seat
-        for option in (Option.K01_ROUTE, Option.K01_ROUTE_S34):
+        previous_route = self.last_route.clone()
+        for option in ROUTE_OPTIONS:
             chosen = lane_mask & (option_id == int(option))
             if not bool(chosen.any()):
                 continue
-            other = (Option.K01_ROUTE_S34
-                     if option == Option.K01_ROUTE else Option.K01_ROUTE)
-            switched = chosen & (self.last_route == int(other))
-            fresh = chosen & (self.last_route < 0)
-            if bool(switched.any()):
-                self.executors[option].sync_lanes_from(
-                    self.executors[other], switched)
+            for source in ROUTE_OPTIONS:
+                switched = chosen & (previous_route == int(source))
+                if bool(switched.any()) and source != option:
+                    self.executors[option].sync_lanes_from(
+                        self.executors[source], switched)
+            fresh = chosen & (previous_route < 0)
             if bool(fresh.any()):
                 self.executors[option].sync_current_plants(ep, seat, fresh)
             self.last_route[chosen] = int(option)
@@ -374,7 +394,7 @@ class MacroGame:
         follow = self.lifecycle.option_id == int(Option.FOLLOW_POLICY)
         action = greedy_low_action(
             self.low_actor, self.td, self.multi, lane_mask=follow)
-        for option in (Option.K01_ROUTE, Option.K01_ROUTE_S34):
+        for option in ROUTE_OPTIONS:
             lane_mask = self.lifecycle.option_id == int(option)
             if bool(lane_mask.any()):
                 ops = self.executors[option](
