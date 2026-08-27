@@ -20,9 +20,10 @@ for _path in (_HERE, _TENSOR):
         sys.path.insert(0, str(_path))
 
 from macro_hierarchy import (MACRO_OBS_DIM, N_OPTIONS, OPTION_NAMES,  # noqa: E402
-                             TERMINATION_NAMES, MacroActorCritic,
+                             TERMINATION_NAMES, MacroActorCritic, Option,
                              MacroGame, masked_categorical,
                              semimdp_gae)
+import macro_audit  # noqa: E402
 
 
 DEFAULT_OPPONENTS = (
@@ -62,6 +63,8 @@ def build_parser():
     parser.add_argument("--log", default="")
     parser.add_argument("--max-minutes", type=float, default=0.0)
     parser.add_argument("--eval-every", type=int, default=0)
+    parser.add_argument("--eval-before", action="store_true",
+                        help="run the paired fixed-route probe before update 0")
     parser.add_argument("--eval-lanes", type=int, default=16)
     parser.add_argument(
         "--eval-opponents",
@@ -98,10 +101,12 @@ def _flatten(chunks):
 
 
 @torch.no_grad()
-def collect(controller, args, opponent, seat, seed, deterministic=False):
+def collect(controller, args, opponent, seat, seed, deterministic=False,
+            forced_option=None, include_raw=False, low_level=None):
     game = MacroGame(
         args.checkpoint, opponent, args.B, seed, args.device, seat,
-        args.gamma, args.option_timeout, steps_override=args.steps)
+        args.gamma, args.option_timeout, steps_override=args.steps,
+        low_level=low_level)
     game.reset()
     chunks = []
     sequence = torch.zeros(args.B, dtype=torch.int64, device=game.device)
@@ -114,8 +119,13 @@ def collect(controller, args, opponent, seat, seed, deterministic=False):
             action_mask = game.action_mask()
             logits, value = controller(state)
             distribution = masked_categorical(logits, action_mask)
-            option_id = (logits.masked_fill(~action_mask, -1e9).argmax(-1)
-                         if deterministic else distribution.sample())
+            if forced_option is not None:
+                option_id = torch.full(
+                    (game.B,), int(forced_option), dtype=torch.int64,
+                    device=game.device)
+            else:
+                option_id = (logits.masked_fill(~action_mask, -1e9).argmax(-1)
+                             if deterministic else distribution.sample())
             game.start_options(
                 inactive, option_id, state, action_mask,
                 distribution.log_prob(option_id), value, distribution.probs)
@@ -135,6 +145,13 @@ def collect(controller, args, opponent, seat, seed, deterministic=False):
     transitions["next_value"] = next_value
     terminal = game.terminal_metrics()
     metrics = summarize_rollout(transitions, terminal, sequence, opponent, seat)
+    if include_raw:
+        metrics["margin_values"] = [
+            float(value) for value in terminal["margin"].cpu()]
+        metrics["money_values"] = [
+            float(value) for value in terminal["money"].cpu()]
+        metrics["win_values"] = [
+            float(value) for value in terminal["win"].cpu()]
     return transitions, metrics
 
 
@@ -239,27 +256,73 @@ def ppo_update(controller, optimizer, transitions, args):
 
 
 @torch.no_grad()
-def evaluate(controller, args, iteration):
+def evaluate(controller, args, iteration, low_level=None):
     old_B = args.B
     args.B = args.eval_lanes
+    policies = {
+        "controller": None,
+        "FIXED_K01_ROUTE": Option.K01_ROUTE,
+        "FIXED_K01_ROUTE_S34": Option.K01_ROUTE_S34,
+    }
     rows = []
+    pooled = {name: {"margin": [], "money": [], "win": []}
+              for name in policies}
+    paired = {name: [] for name in policies if name != "FIXED_K01_ROUTE_S34"}
     try:
         for opponent_index, opponent in enumerate(
                 value for value in args.eval_opponents.split(",") if value):
             for seat in (0, 1):
                 seed = args.seed + 90_000_000 + iteration * 10_000 \
                     + opponent_index * 1_000 + seat * 100
-                _, row = collect(
-                    controller, args, opponent, seat, seed,
-                    deterministic=True)
-                rows.append(row)
+                cell = {}
+                for name, forced_option in policies.items():
+                    _, row = collect(
+                        controller, args, opponent, seat, seed,
+                        deterministic=True, forced_option=forced_option,
+                        include_raw=True, low_level=low_level)
+                    cell[name] = row
+                    for metric in ("margin", "money", "win"):
+                        pooled[name][metric].extend(row[f"{metric}_values"])
+                baseline = cell["FIXED_K01_ROUTE_S34"]["margin_values"]
+                delta = {}
+                for name in paired:
+                    values = cell[name]["margin_values"]
+                    differences = [value - base
+                                   for value, base in zip(values, baseline)]
+                    paired[name].extend(differences)
+                    delta[name] = sum(differences) / len(differences)
+                rows.append({
+                    "opponent": opponent, "seat": seat,
+                    "margin_delta_vs_s34": delta,
+                    "policies": {
+                        name: {key: row[key] for key in (
+                            "win", "margin", "money", "options")}
+                        for name, row in cell.items()
+                    },
+                })
     finally:
         args.B = old_B
-    total = sum(row["episodes"] for row in rows)
+    total = len(pooled["controller"]["margin"])
+    summary = {}
+    for name, metrics in pooled.items():
+        summary[name] = {
+            metric: sum(values) / len(values)
+            for metric, values in metrics.items()
+        }
+    delta_summary = {
+        name: {
+            "mean": sum(values) / len(values),
+            "positive_fraction": sum(value > 0 for value in values) / len(values),
+            "n": len(values),
+        }
+        for name, values in paired.items()
+    }
     return {
         "episodes": total,
-        "win": sum(row["win"] * row["episodes"] for row in rows) / total,
-        "margin": sum(row["margin"] * row["episodes"] for row in rows) / total,
+        "win": summary["controller"]["win"],
+        "margin": summary["controller"]["margin"],
+        "policies": summary,
+        "margin_delta_vs_s34": delta_summary,
         "cells": rows,
     }
 
@@ -295,6 +358,9 @@ def main(argv=None):
     controller = MacroActorCritic(
         hidden=args.hidden, route_bias=args.route_bias).to(device)
     optimizer = torch.optim.Adam(controller.parameters(), lr=args.lr, eps=1e-5)
+    _, low_saved, low_actor, _, low_multi = macro_audit._load_checkpoint(
+        args.checkpoint, device)
+    low_level = (low_saved, low_actor, low_multi)
     first_iteration = 0
     total_episodes = 0
     if args.resume:
@@ -309,6 +375,19 @@ def main(argv=None):
             torch.set_rng_state(saved["torch_rng_state"].cpu())
 
     started = time.perf_counter()
+    if args.eval_before and first_iteration == 0:
+        controller.eval()
+        baseline_probe = {
+            "kind": "eval_before", "iter": -1, "episodes": total_episodes,
+            "eval": evaluate(controller, args, -1, low_level),
+        }
+        _append_jsonl(args.log, baseline_probe)
+        if not args.quiet:
+            probe = baseline_probe["eval"]
+            delta = probe["margin_delta_vs_s34"]["controller"]["mean"]
+            print(f"eval before win {probe['win']:.3f} "
+                  f"margin {probe['margin']:+,.0f} delta_s34 {delta:+,.0f}",
+                  flush=True)
     for iteration in range(first_iteration, args.iters):
         before = time.perf_counter()
         opponent = opponents[iteration % len(opponents)]
@@ -316,7 +395,8 @@ def main(argv=None):
         seed = args.seed + iteration * 100_000
         controller.eval()
         transitions, rollout = collect(
-            controller, args, opponent, seat, seed, deterministic=False)
+            controller, args, opponent, seat, seed, deterministic=False,
+            low_level=low_level)
         transitions = prepare_advantages(controller, transitions, args.lam)
         update = ppo_update(controller, optimizer, transitions, args)
         total_episodes += args.B
@@ -331,7 +411,7 @@ def main(argv=None):
                 (iteration + 1) % args.eval_every == 0
                 or iteration + 1 == args.iters):
             controller.eval()
-            row["eval"] = evaluate(controller, args, iteration)
+            row["eval"] = evaluate(controller, args, iteration, low_level)
         _append_jsonl(args.log, row)
         if args.save:
             _atomic_save(checkpoint_payload(
@@ -347,8 +427,11 @@ def main(argv=None):
                 f"ent {row['entropy']:.3f} pg {row['policy_loss']:+.4f} "
                 f"vf {row['value_loss']:.4f} {row['seconds']:.1f}s")
             if "eval" in row:
+                delta = row["eval"]["margin_delta_vs_s34"][
+                    "controller"]["mean"]
                 message += (f" eval {row['eval']['win']:.3f}/"
-                            f"{row['eval']['margin']:+,.0f}")
+                            f"{row['eval']['margin']:+,.0f}/"
+                            f"dS34 {delta:+,.0f}")
             print(message, flush=True)
         if args.max_minutes and (
                 time.perf_counter() - started) / 60.0 >= args.max_minutes:

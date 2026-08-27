@@ -79,12 +79,13 @@ python tools/submit_macro_rl.py --run macro-ppo-v1 --links 2 \
   --hypothesis "milestone-conditioned selector beats either fixed route" \
   --acceptance "held-out paired margin CI > 0 and cleo has a win" -- \
   --checkpoint rl/runs/anvil/latest.pt --B 32 --iters 1000 \
-  --eval-every 5 --eval-lanes 16
+  --eval-before --eval-every 5 --eval-lanes 16
 ```
 
 该路径当前固定 CPU（默认 8 核、16G）：route 执行器包含逐任务分派与 Python 标量分支，
 尚无 GPU 加速证据。`train.jsonl` 记录每季高层决策数、逐 Option 选择数/持续时间/熵贡献、
-终止原因和 terminal margin；checkpoint、对手 tape、argv、假设和门槛同样写入 manifest，
+终止原因和 terminal margin；probe 在相同 seed 上同时运行 controller、固定 route 和固定
+`route_s34`，直接报告配对 margin 差。checkpoint、对手 tape、argv、假设和门槛同样写入 manifest，
 后续 link 只通过 `afterok` 恢复。
 
 ## 每个 job 自动留下什么

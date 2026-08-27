@@ -290,9 +290,13 @@ class MacroGame:
     """One batched season with asynchronous persistent Option decisions."""
 
     def __init__(self, checkpoint, opponent, lanes, seed, device="cpu", seat=0,
-                 gamma=0.999, option_timeout=240, steps_override=0):
-        _, saved, actor, _, multi = macro_audit._load_checkpoint(
-            checkpoint, device)
+                 gamma=0.999, option_timeout=240, steps_override=0,
+                 low_level=None):
+        if low_level is None:
+            _, saved, actor, _, multi = macro_audit._load_checkpoint(
+                checkpoint, device)
+        else:
+            saved, actor, multi = low_level
         self.low_actor = actor
         self.multi = multi
         env_kwargs = macro_audit._env_kwargs(saved)
