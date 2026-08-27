@@ -4,11 +4,12 @@ Provenance for every experiment that produced a number cited anywhere in this
 repo. Append a row when you run something; the point is that a claim can always
 be traced back to the episodes behind it.
 
-## 当前 RL 总览（截至 2026-08-26）
+## 当前 RL 总览（截至 2026-08-27）
 
 这一节是下面八千多行逐次记录的索引，不替代原始证据。结论只比较同一对手场、同一
-评估路径上的数字；本地数字不再换算成天梯分。08-26 的首个持久路线正式验证已完成，
-当前正在接入 option-lite 高层训练。08-25
+评估路径上的数字；本地数字不再换算成天梯分。08-27 的首个 option-lite 高层 pilot 已
+完成：Semi-MDP 与训练链路通过，但三动作 selector 没有超过固定路线，当前转入新技能
+生成与阶段反事实筛选。08-25
 完成了统一基线/critic/行为审计；一个条件式单羊 Option 已跨张量反事实与官方 Python
 引擎两道独立验证门，Phase 2 已解锁。08-25 又补齐帮手 BUILD/PLACE、lane 级原始动作覆盖
 和整段 Option 审计，并验证“照着高分资产配额建设”仍不足以跨过强墙。当前没有天梯提交，
@@ -20,6 +21,28 @@ be traced back to the episodes behind it.
 并与历史 2302.2 归档代码等价。候选包已生成但尚未提交，故不能把历史分数写成当前活跃
 天梯分。纯学习线只在 256 个新状态中的 1 个跨过 `closer_cleo`，远未达到稳定胜出或
 1287 的标准。
+
+### 2026-08-27 · option-lite pilot：链路成立，三动作集合触顶
+
+作业 `20641453` 使用提交 `03ab781`、`anvil/latest.pt` 冻结低层、32 lanes，训练墙为
+cleo/lena/bea，评估墙为 cleo 与 held-out w49。高层只在六个资产/日历里程碑及残局
+决策，动作是 `FOLLOW_POLICY / k01_route / k01_route_s34`；Option transition 使用
+`gamma^tau` bootstrap。预更新的 32 局配对探针逐美元等于固定 `route_s34`，说明 selector
+与固定路线对照没有实现漂移。
+
+pilot 共完成 5 个 PPO iteration、160 个训练赛季。训练没有 NaN，单轮约 34 秒；但第 4
+轮确定性评估仍在所有阶段选择 `route_s34`，32 局配对 margin 差仍严格为 **0**，绝对
+margin `-31,704`、胜局 0。随机训练轨迹每季平均决策数为 `6.56..6.72`，原因是若干
+route 在 240 回合 timeout 后直接越过一个阶段；固定确定性评估则保持每季恰好 7 次决策。
+这违反了预登记的“每个完整赛季恰好七次决策”字面门，同时更关键地没有产生任何性能
+收益，因此不续跑这个 checkpoint。
+
+判词是**动作集合上限，不是 HRL 训练链失败**：`route` 与 `route_s34` 在正式验证中只差
+约 1k，`FOLLOW_POLICY` 又通常差 27k；selector 最多只能复现固定 `route_s34`，没有可供
+学习的强反事实分支。下一步先用同 seed 阶段账本定位路线与完整教师之间约 25k--40k 的
+现金流/联合时序差，再生成新的复合低层 Option；只有新集合的 completed-only oracle
+出现强墙胜局，才重训高层。最终目标仍是 learned RL/HRL 策略稳定超过 1287，第三方
+`k01` 回放只作教师与诊断上界。
 
 ### 2026-08-26 · 恢复 RL：累计建设承诺与选择性持久路线
 

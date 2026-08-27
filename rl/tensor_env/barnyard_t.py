@@ -108,6 +108,14 @@ _K01_FERT_CAP = [
     14, 4, 7, 0, 12, 0, 3, 0, 0, 0,
 ]
 
+_ROUTE_PROFILES = {
+    "k01_route", "k01_route_s34", "k01_route_s34_bulk6",
+    "k01_route_s34_fert", "k01_route_s34_logistics",
+}
+_FERT_PROFILES = {
+    "k01_state", "k01_route_s34_fert", "k01_route_s34_logistics",
+}
+
 # unit-op string forms (dict conversion for the gate / step_raw parity)
 _OP_STR = {X.U_PASS: ["PASS"], X.U_MOVE_N: ["NORTH"], X.U_MOVE_S: ["SOUTH"],
            X.U_MOVE_E: ["EAST"], X.U_MOVE_W: ["WEST"], X.U_WATER: ["WATER"],
@@ -210,8 +218,8 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
         target_cows = BY.TARGET_COWS
         target_sheep = BY.TARGET_SHEEP
         target_geese = BY.TARGET_GEESE
-    elif profile in {"industrial", "k01_state", "k01_commit", "k01_route",
-                     "k01_route_s34"}:
+    elif profile in {"industrial", "k01_state", "k01_commit",
+                     *_ROUTE_PROFILES}:
         plan_crop, plan_target, plan_last = (
             t.industrial_plan_crop, t.industrial_plan_target,
             t.industrial_plan_last)
@@ -227,22 +235,25 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     day = ep._step // ep.turns_per_day
     hour = ep._step % ep.turns_per_day
     endgame = day >= BY.LIQUIDATE_DAY
-    route_profiles = {
-        "k01_route", "k01_route_s34"}
+    route_profiles = _ROUTE_PROFILES
     state_guided = profile in {"k01_state", "k01_commit", *route_profiles}
     committed_crops = profile in {"k01_commit", *route_profiles}
     persistent_routes = profile in route_profiles
     effective_plan_target = plan_target
-    strawberry_target = {
-        "k01_route_s34": 34,
-    }.get(profile)
+    strawberry_target = (34 if profile in {
+        "k01_route_s34", "k01_route_s34_bulk6", "k01_route_s34_fert",
+        "k01_route_s34_logistics",
+    } else None)
     if strawberry_target is not None:
         effective_plan_target = plan_target.clone()
         effective_plan_target[1] = strawberry_target
     hand_cap = (_K01_HAND_CAP[min(day, len(_K01_HAND_CAP) - 1)]
                 if state_guided else BY.HAND_CAP)
     hire_budget_frac = 1.0 if state_guided else BY.HIRE_BUDGET_FRAC
-    wheat_per_trip = 1 if state_guided else BY.WHEAT_PER_TRIP
+    bulk_feed = profile in {
+        "k01_route_s34_bulk6", "k01_route_s34_logistics",
+    }
+    wheat_per_trip = 6 if bulk_feed else 1 if state_guided else BY.WHEAT_PER_TRIP
     wheat_buy_batch = 2 if state_guided else 10
     wheat_cash_reserve = 0 if state_guided else 150
     purchase_cap = 7 if state_guided else S_MKT
@@ -803,28 +814,43 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
         field_fert = inv[:, :, ET.FERT_I].clamp(max=4)
         produce_u = (produce_u - field_fert).clamp(min=0)
         carrying_u = (carrying_u - field_fert).clamp(min=0)
+    # Bulk-feed profiles must count wheat already carried or assigned for a
+    # pickup.  Otherwise every idle hand at the shed takes a full batch and the
+    # market loop immediately misreads the drained shed as a feed shortage.
+    cached_wheat = carried_wheat.clone() if not endgame else zeros.clone()
+    if bulk_feed and not endgame:
+        scheduled_wheat = torch.where(
+            (out_op == X.U_PICKUP) & (out_arg == _WHEAT),
+            out_qty, torch.zeros_like(out_qty)).sum(1)
+        cached_wheat = cached_wheat + scheduled_wheat
     for u in range(U):
         idle = active[:, u] & ~busy[:, u]
         if not bool(idle.any()):
             continue
         at = at_shed_u[:, u]
         drop = idle & at & (produce_u[:, u] > 0) & (shed_total < BY.SHED_CAPACITY)
+        cache_gap = (n_animals - cached_wheat).clamp(min=0)
         pick = idle & at & ~drop & (n_animals > 0) & (shed_wheat_left > 0) \
             & (inv[:, u, _WHEAT] < 2)
+        if bulk_feed:
+            pick = pick & (cache_gap > 0)
         if endgame:
             pick = torch.zeros_like(pick)
         walk = idle & ~at & ((produce_u[:, u] >= 6) | (carrying_u[:, u] >= 12))
         if endgame:
             walk = idle & ~at
         take = torch.minimum(
-            torch.full_like(shed_wheat_left, wheat_per_trip),
-            shed_wheat_left)
+            torch.full_like(shed_wheat_left, wheat_per_trip), shed_wheat_left)
+        if bulk_feed:
+            take = torch.minimum(take, cache_gap)
         out_op[drop, u] = X.U_DROP
         out_op[pick, u] = X.U_PICKUP
         out_arg[pick, u] = _WHEAT
         out_qty[pick, u] = take[pick]
         shed_wheat_left = torch.where(pick, shed_wheat_left - take,
                                       shed_wheat_left)
+        if bulk_feed:
+            cached_wheat = torch.where(pick, cached_wheat + take, cached_wheat)
         out_op[walk, u] = dir_to_shed_u[:, u][walk]
         out_task[drop, u] = X.U_DROP
         out_task[pick, u] = X.U_FEED     # wheat restock serves the feeding loop
@@ -946,12 +972,14 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
         need_wheat = torch.minimum(
             torch.full_like(n_animals, BY.WHEAT_RESERVE_CAP),
             n_animals * BY.WHEAT_RESERVE_PER_ANIMAL)
+        wheat_on_farm = (shed[:, _WHEAT] + carried_wheat
+                         if bulk_feed else shed[:, _WHEAT])
         wprice = ep._price_at(torch.full_like(mkt_inv[:, 0], _WHEAT),
                               mkt_inv[:, _WHEAT] - 1).to(f64)
         kw = torch.minimum(torch.full_like(need_wheat, wheat_buy_batch),
-                           need_wheat - shed[:, _WHEAT])
+                           need_wheat - wheat_on_farm)
         ok = ((ptr < purchase_cap) & (n_animals > 0)
-              & (shed[:, _WHEAT] < need_wheat)
+              & (wheat_on_farm < need_wheat)
               & (shed_total < BY.SHED_CAPACITY - 10)
               & (money - spend >= wprice * kw.to(f64) + wheat_cash_reserve))
         ok = push(ok, ET.OP_BUYP, _WHEAT, kw)
@@ -1169,7 +1197,7 @@ class BarnyardOpponent:
             self.fert_used.zero_()
             self.fert_day = day
         fert_remaining = None
-        if self.profile == "k01_state":
+        if self.profile in _FERT_PROFILES:
             cap = _K01_FERT_CAP[min(day, len(_K01_FERT_CAP) - 1)]
             fert_remaining = (cap - self.fert_used).clamp(min=0)
         ops = compute(ep, player, profile=self.profile,
@@ -1183,7 +1211,7 @@ class BarnyardOpponent:
             self.task_ops, ops["task"].detach(), lane_mask)
         self.task_args = self._merge_lane_state(
             self.task_args, ops["task_arg"].detach(), lane_mask)
-        if self.profile in {"k01_commit", "k01_route", "k01_route_s34"}:
+        if self.profile in {"k01_commit", *_ROUTE_PROFILES}:
             unit_ops = torch.stack([ops["f_op"], *ops["h_op"]], 1)
             unit_args = torch.stack([ops["f_arg"], *ops["h_arg"]], 1)
             for crop_i in range(len(ET.CROP_NAMES)):

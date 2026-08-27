@@ -69,6 +69,10 @@ def test_options():
     assert routed["profile"] == "k01_route"
     assert M._parse_option(
         "barnyard_prefix:k01_route_s34:720")["profile"] == "k01_route_s34"
+    for profile in ("k01_route_s34_bulk6", "k01_route_s34_fert",
+                    "k01_route_s34_logistics"):
+        parsed = M._parse_option(f"barnyard_prefix:{profile}:720")
+        assert parsed["profile"] == profile
     assert M._parse_option("expand_land")["kind"] == "expand_land"
     crop = M._parse_option("establish_crop:strawberry")
     assert crop["crop"] == "STRAWBERRY"
