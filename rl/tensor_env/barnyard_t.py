@@ -1101,20 +1101,69 @@ class BarnyardOpponent:
         self.task_ops = None
         self.task_args = None
 
-    def __call__(self, ep, player):
+    def reset(self, ep, player):
+        """Reset persistent option state for a new batched episode."""
+        self.task_tiles = None
+        self.task_ops = None
+        self.task_args = None
+        self.fert_used = torch.zeros((ep.B,), dtype=i64, device=ep.device)
+        self.fert_day = ep._step // ep.turns_per_day
+        current = ep.kind[:, player].reshape(ep.B, -1) == ET.K_PLANT
+        crop = ep.crop[:, player].reshape(ep.B, -1)
+        self.planted_total = torch.stack(
+            [(current & (crop == c)).sum(1)
+             for c in range(len(ET.CROP_NAMES))], 1).to(i64)
+
+    def sync_lanes_from(self, other, lane_mask):
+        """Carry cumulative commitments across a high-level profile switch.
+
+        Route identities are deliberately cleared at an Option boundary: an
+        old target can be stale after another controller ran, while completed
+        one-shot planting remains part of the same season's commitment.
+        """
+        if self.planted_total is None or other.planted_total is None:
+            raise RuntimeError("both Barnyard options must be reset before sync")
+        mask = torch.as_tensor(
+            lane_mask, dtype=torch.bool, device=self.planted_total.device)
+        self.planted_total[mask] = other.planted_total[mask]
+        for name in ("task_tiles", "task_ops", "task_args"):
+            value = getattr(self, name)
+            if value is not None:
+                value[mask] = -1
+
+    def sync_current_plants(self, ep, player, lane_mask):
+        """Seed a never-used mid-season Option from observable standing crops."""
+        if self.planted_total is None:
+            self.reset(ep, player)
+        mask = torch.as_tensor(
+            lane_mask, dtype=torch.bool, device=self.planted_total.device)
+        current = ep.kind[:, player].reshape(ep.B, -1) == ET.K_PLANT
+        crop = ep.crop[:, player].reshape(ep.B, -1)
+        standing = torch.stack(
+            [(current & (crop == c)).sum(1)
+             for c in range(len(ET.CROP_NAMES))], 1).to(i64)
+        self.planted_total[mask] = torch.maximum(
+            self.planted_total[mask], standing[mask])
+
+    @staticmethod
+    def _merge_lane_state(old, new, lane_mask, fill=-1):
+        merged = torch.full_like(new, fill)
+        if old is not None:
+            rows = min(old.shape[0], merged.shape[0])
+            cols = min(old.shape[1], merged.shape[1])
+            merged[:rows, :cols] = old[:rows, :cols]
+        merged[lane_mask] = new[lane_mask]
+        return merged
+
+    def __call__(self, ep, player, lane_mask=None):
         if (ep._step == 0 or self.fert_used is None
                 or self.fert_used.shape[0] != ep.B):
-            self.task_tiles = None
-            self.task_ops = None
-            self.task_args = None
-            self.fert_used = torch.zeros(
-                (ep.B,), dtype=i64, device=ep.device)
-            self.fert_day = ep._step // ep.turns_per_day
-            current = ep.kind[:, player].reshape(ep.B, -1) == ET.K_PLANT
-            crop = ep.crop[:, player].reshape(ep.B, -1)
-            self.planted_total = torch.stack(
-                [(current & (crop == c)).sum(1)
-                 for c in range(len(ET.CROP_NAMES))], 1).to(i64)
+            self.reset(ep, player)
+        if lane_mask is None:
+            lane_mask = torch.ones((ep.B,), dtype=torch.bool, device=ep.device)
+        else:
+            lane_mask = torch.as_tensor(
+                lane_mask, dtype=torch.bool, device=ep.device).view(ep.B)
         day = ep._step // ep.turns_per_day
         if day != self.fert_day:
             self.fert_used.zero_()
@@ -1128,18 +1177,22 @@ class BarnyardOpponent:
                       fert_remaining=fert_remaining,
                       planted_total=self.planted_total,
                       sticky_ops=self.task_ops, sticky_args=self.task_args)
-        self.task_tiles = ops["task_tile"].detach().clone()
-        self.task_ops = ops["task"].detach().clone()
-        self.task_args = ops["task_arg"].detach().clone()
+        self.task_tiles = self._merge_lane_state(
+            self.task_tiles, ops["task_tile"].detach(), lane_mask)
+        self.task_ops = self._merge_lane_state(
+            self.task_ops, ops["task"].detach(), lane_mask)
+        self.task_args = self._merge_lane_state(
+            self.task_args, ops["task_arg"].detach(), lane_mask)
         if self.profile in {"k01_commit", "k01_route", "k01_route_s34"}:
             unit_ops = torch.stack([ops["f_op"], *ops["h_op"]], 1)
             unit_args = torch.stack([ops["f_arg"], *ops["h_arg"]], 1)
             for crop_i in range(len(ET.CROP_NAMES)):
                 planted = ((unit_ops == X.U_PLANT)
-                           & (unit_args == crop_i)).sum(1)
+                           & (unit_args == crop_i)).sum(1) * lane_mask
                 self.planted_total[:, crop_i].add_(planted)
         if fert_remaining is not None:
             applied = (torch.stack(
                 [ops["f_op"], *ops["h_op"]], 1) == X.U_FERTILIZE).sum(1)
+            applied = applied * lane_mask
             self.fert_used.add_(applied)
         return ops

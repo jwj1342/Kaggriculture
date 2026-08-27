@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 import slurm_audit as audit  # noqa: E402
 import submit_rl             # noqa: E402
 import submit_macro_audit    # noqa: E402
+import submit_macro_rl       # noqa: E402
 import run_preflight         # noqa: E402
 
 
@@ -137,6 +138,26 @@ def test_macro_audit_submit():
         raise AssertionError("managed output flag was accepted")
 
 
+def test_macro_rl_submit():
+    args = SimpleNamespace(
+        run="macro-ppo", links=2, pilot_minutes=8, full_minutes=45,
+        cpus=8, mem_gb=16, resume=False)
+    run_dir = submit_macro_rl.ROOT / "rl" / "runs" / "macro-ppo"
+    manifest = run_dir / "submission.json"
+    jobs = submit_macro_rl.build_jobs(
+        args, ["--B", "32", "--iters", "1000"], run_dir, manifest)
+    assert "--time=00:13:00" in jobs[0]["command"]
+    assert "--cpus-per-task=8" in jobs[0]["command"]
+    assert "--dependency=afterok:JOB_1" in jobs[1]["command"]
+    assert "--resume" in jobs[1]["command"]
+    try:
+        submit_macro_rl._validate_train_args(["--device=cpu"])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("managed macro device flag was accepted")
+
+
 if __name__ == "__main__":
     test_duration()
     test_gpu_csv()
@@ -144,4 +165,5 @@ if __name__ == "__main__":
     test_submit_chain()
     test_input_hash()
     test_macro_audit_submit()
+    test_macro_rl_submit()
     print("infra tests passed")

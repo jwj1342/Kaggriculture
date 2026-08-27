@@ -71,6 +71,22 @@ python tools/submit_macro_audit.py --run macro-phase0 \
 阈值和 job ID 写入 `submission.json`。`slurm/rl_macro_audit.sh` 拒绝没有 manifest 的
 手工提交，避免评测作业绕过训练线已经执行的源码与输入哈希门。
 
+Phase 2 的 option-lite PPO 使用独立入口。它冻结 turn-level checkpoint，只训练每季约
+7 次决策的高层 categorical controller：
+
+```bash
+python tools/submit_macro_rl.py --run macro-ppo-v1 --links 2 \
+  --hypothesis "milestone-conditioned selector beats either fixed route" \
+  --acceptance "held-out paired margin CI > 0 and cleo has a win" -- \
+  --checkpoint rl/runs/anvil/latest.pt --B 32 --iters 1000 \
+  --eval-every 5 --eval-lanes 16
+```
+
+该路径当前固定 CPU（默认 8 核、16G）：route 执行器包含逐任务分派与 Python 标量分支，
+尚无 GPU 加速证据。`train.jsonl` 记录每季高层决策数、逐 Option 选择数/持续时间/熵贡献、
+终止原因和 terminal margin；checkpoint、对手 tape、argv、假设和门槛同样写入 manifest，
+后续 link 只通过 `afterok` 恢复。
+
 ## 每个 job 自动留下什么
 
 - stdout 的 `RUN-META`：commit、host、backend、CPU 数、run ID。
