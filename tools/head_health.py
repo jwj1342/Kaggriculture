@@ -101,6 +101,7 @@ def probe(d, opp, seed, every):
                configuration={"episodeSteps": 720, "seed": seed}, debug=False)
     env.run([os.path.join(d, "main.py"), opp])
 
+    plant_legal, plant_slots = [0], [0]
     fam_p = {k: [] for k, _ in FAMILIES}
     fam_legal = {k: 0 for k, _ in FAMILIES}
     n_states = 0
@@ -133,13 +134,21 @@ def probe(d, opp, seed, every):
                     hl2 = hl.reshape(hmk.shape)
                     es, ps = [], []
                     pi = HT.index("PLANT") if "PLANT" in HT else -1
+                    # 2026-08-28: this tool reported P(PLANT | legal) but never
+                    # how OFTEN plant is legal, so checklist (a) was only ever
+                    # verified for the market head. e0a90f8 raised BUY_SEED 20x
+                    # and PLANT fell 13x, which makes PLANT's legality the next
+                    # thing that has to be on the table.
                     for r in range(hmk.shape[0]):
                         if not hmk[r].any():
                             continue
                         q = _softmax_masked(hl2[r], hmk[r])
                         es.append(_entropy(q))
-                        if pi >= 0 and hmk[r, pi]:
-                            ps.append(float(q[pi]))
+                        if pi >= 0:
+                            plant_slots[0] += 1
+                            if hmk[r, pi]:
+                                plant_legal[0] += 1
+                                ps.append(float(q[pi]))
                     if es:
                         ent_h.append(float(np.mean(es)))
                     if ps:
@@ -147,7 +156,8 @@ def probe(d, opp, seed, every):
         except Exception:
             continue
     sys.path.pop(0)
-    return fam_p, ent_f, ent_m, ent_h, plant_p, n_legal, fam_legal, n_states
+    return (fam_p, ent_f, ent_m, ent_h, plant_p, n_legal, fam_legal, n_states,
+            plant_legal[0], plant_slots[0])
 
 
 def _med(v):
@@ -171,15 +181,16 @@ def main():
     # turns. "Dead" means both are ~0; "spiky but functional" means median ~0
     # with a real mean.
     hdr = (f"  {'agent':<20}{'H(mkt)':>7}{'ceil':>6}{'n_leg':>6}"
-           + "".join(f"{k[:11]:>21}" for k, _ in FAMILIES) + f"{'PLANT':>14}")
+           + "".join(f"{k[:11]:>21}" for k, _ in FAMILIES) + f"{'PLANT':>22}")
     print(hdr)
     print(f"  {'':<20}{'':>7}{'':>6}{'':>6}"
           + "".join(f"{'med/mean/legal%':>21}" for _ in FAMILIES)
-          + f"{'med / mean':>14}")
+          + f"{'med / mean / legal%':>22}")
     for d in a.dirs:
         name = os.path.basename(d.rstrip("/"))
         try:
-            fam, ef, em, eh, pp, nl, flg, ns = probe(d, a.opp, a.seed, a.every)
+            (fam, ef, em, eh, pp, nl, flg, ns,
+             pl_legal, pl_slots) = probe(d, a.opp, a.seed, a.every)
         except Exception as e:
             print(f"  {name:<22}  ERROR {e}")
             continue
@@ -192,7 +203,8 @@ def main():
             lg = flg[k] / max(ns, 1)
             row += f"{_med(v)*100:>6.2f}/{mn*100:>6.2f}/{lg*100:>5.0f}%"
         mnp = float(np.mean(pp)) if pp else float("nan")
-        row += f"{_med(pp)*100:>5.1f}/{mnp*100:>6.1f}%"
+        pl = pl_legal / max(pl_slots, 1)
+        row += f"{_med(pp)*100:>5.1f}/{mnp*100:>6.1f}/{pl*100:>5.0f}%"
         print(row)
     print(f"\n  reference (nn-d0-chisel, 2026-08-23): P(BUY_SEED|legal) median "
           f"0.02%, P(PLANT|legal) median 21.4%")
