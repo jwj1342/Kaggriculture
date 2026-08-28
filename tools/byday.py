@@ -57,6 +57,8 @@ def run_one(agent, opp, seed, steps=720):
                     ops[d]["_SEED"] += (o[2] if len(o) > 2 else 1)
                 elif o and o[0] == "SELL":
                     ops[d]["_SELL"] += (o[2] if len(o) > 2 else 1)
+        ops[d]["_TOTAL"] = sum(v for k, v in ops[d].items()
+                               if not k.startswith("_"))
         obs = st[0].observation
         farm = obs["farms"][0]
         if money[d] is None:
@@ -112,8 +114,18 @@ def main():
                       for n in names)
         print(f"  {d:>4}{row}")
 
+    # The full actor-turn mix, not just the four headline ops. ops[d] already
+    # counts every farmer AND hand action (see run_one), so this IS the per-day
+    # actor-turn accounting: 12 hands + 1 farmer x 24 turns = 312 actor-turns a
+    # day, and the point of printing MOVE/PICKUP against PLANT/HARVEST is that
+    # neither agent is anywhere near that ceiling -- so a throughput gap is a
+    # question of where the turns GO, not of running out of them.
     for key, label in (("WATER", "WATER actions"), ("_SEED", "seeds bought"),
-                       ("PLANT", "PLANT actions"), ("_SELL", "units sold")):
+                       ("PLANT", "PLANT actions"), ("_SELL", "units sold"),
+                       ("MOVE", "MOVE actions"), ("PICKUP", "PICKUP actions"),
+                       ("HARVEST", "HARVEST actions"),
+                       ("FERTILIZE", "FERTILIZE actions"), ("FEED", "FEED actions"),
+                       ("_TOTAL", "TOTAL actor-turns used")):
         print(f"\n{label}, by day:")
         print(f"  {'day':>4}" + "".join(f"{n[:16]:>18}" for n in names))
         for d in range(0, DAYS + 1, 3):
