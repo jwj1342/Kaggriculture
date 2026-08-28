@@ -299,14 +299,18 @@ def _filtered(cls, **kw):
     return cls(**{k: v for k, v in kw.items() if k in sig})
 
 
-def _kickstart_ce(actor_net, mb, multi, class_alpha=0.0):
+def _kickstart_ce(actor_net, mb, multi, class_alpha=0.0, outs=None):
     """Masked cross-entropy pulling the action heads toward the teacher's
     labels on visited states. Entries whose label is illegal under the mask
     are skipped -- the intent mapping is lossy by design -- as are dead hand
     slots (label -1). Optional inverse-frequency weighting is computed per
     minibatch and normalized to keep the overall CE scale stable."""
     NEG = -1e9
-    outs = actor_net(mb["observation"])
+    # `outs` may be shared with _market_entropy_floor: with both terms on, a
+    # separate forward each cost the pilot its throughput gate (3,164 sps
+    # against a 5,000 floor, job 20709092), so the caller computes it once.
+    if outs is None:
+        outs = actor_net(mb["observation"])
     fl, ml = outs[0], outs[1]
     total = None
     denom = None
@@ -348,7 +352,7 @@ def _kickstart_ce(actor_net, mb, multi, class_alpha=0.0):
     return total / denom.clamp(min=1)
 
 
-def _market_entropy_floor(actor_net, mb, frac):
+def _market_entropy_floor(actor_net, mb, frac, outs=None):
     """relu(frac * ln(n_legal) - H) on the MARKET head, averaged over samples.
 
     Why a floor and not a bonus: the market head is mis-allocated rather than
@@ -363,7 +367,9 @@ def _market_entropy_floor(actor_net, mb, frac):
     tools/head_health.py.
     """
     NEG = -1e9
-    ml = actor_net(mb["observation"])[1]
+    if outs is None:
+        outs = actor_net(mb["observation"])
+    ml = outs[1]
     mask = mb["market_mask"]
     lp = torch.log_softmax(ml.masked_fill(~mask, NEG), -1)
     ent = -(lp.exp() * lp).sum(-1)
@@ -656,15 +662,18 @@ def train(args, log_fn=None):
                 else:
                     loss = sum(v for k, v in loss_td.items()
                                if k.startswith("loss_"))
+                aux_outs = None
+                if ks_coef > 0.0 or args.mkt_entropy_floor > 0.0:
+                    aux_outs = actor_net(mb["observation"])
                 if ks_coef > 0.0:
                     ks = _kickstart_ce(
-                        actor_net, mb, args.multi_head, args.ks_class_alpha)
+                        actor_net, mb, args.multi_head, args.ks_class_alpha,
+                        outs=aux_outs)
                     loss = loss + ks_coef * ks
                     stats["ks"] += ks.item()
                 if args.mkt_entropy_floor > 0.0:
-                    # one extra forward, same pattern as the kickstart term
                     pen, hmkt = _market_entropy_floor(
-                        actor_net, mb, args.mkt_entropy_floor)
+                        actor_net, mb, args.mkt_entropy_floor, outs=aux_outs)
                     loss = loss + pen
                     stats["mktfloor"] += pen.item()
                     stats["hmkt"] += hmkt.item()
