@@ -246,6 +246,27 @@ def main():
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     sd = ck["model"]
+
+    # 2026-08-28 (docs/RUNS.md 79c98d4). trl_env.py and macro_audit.py both run
+    # the legacy adaptations here; this path did not, so any checkpoint predating
+    # the hand-vocabulary expansion (anvil, chisel, cropper, longcredit -- 10
+    # tasks against the runtime's 39) exported to an agent that answers PASS on
+    # the opening state. The assertion at the end of this file is what caught it.
+    #
+    # new_bias=NEG, matching trl_env.py rather than train.py's 0.0: the 29 added
+    # tasks were never trained in a legacy checkpoint, so at DEPLOYMENT they must
+    # be suppressed to reproduce the behaviour that was actually learned.
+    # train.py deliberately uses 0.0 instead, because it wants them learnable --
+    # which is exactly why a warm start is not a faithful continuation, and why
+    # attributing that arm's result to its own flag was not sound.
+    sys.path.insert(0, os.path.join(_RL, "tensor_env"))
+    from trl_policy import (NEG as _NEG, adapt_legacy_hand_head,
+                            adapt_legacy_observation)
+    sd, _obs_compat = adapt_legacy_observation(sd, O.OBS_DIM)
+    sd, _hand_compat = adapt_legacy_hand_head(sd, new_bias=_NEG)
+    if _obs_compat or _hand_compat:
+        print(f"export: adapted legacy checkpoint "
+              f"(obs={_obs_compat or 'ok'}, hands={_hand_compat or 'ok'})")
     if any(k.startswith(("base.", "hands.")) for k in sd):
         # residual and/or multi-head checkpoints: ship raw arrays; the
         # main.py template understands every combination (a plain-Policy
