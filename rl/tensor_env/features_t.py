@@ -58,8 +58,8 @@ from kg_rules import _fib
 
 N = 10
 C = O.C                                  # 24 board channels
-G = O.G                                  # 67 global features
-OBS_DIM = O.OBS_DIM                      # 2*C*N*N + G = 4867
+G = O.G                                  # globals + per-hand identity
+OBS_DIM = O.OBS_DIM                      # 2*C*N*N + G
 N_FARMER = A.N_FARMER                    # 23
 N_MARKET = A.N_MARKET                    # 22
 
@@ -273,6 +273,23 @@ def _globals(ep, player):
     cnt = (ep.shops_seq.unsqueeze(-1) == t.shop_ar).sum(1)   # (B, 8)
     g[:, 58:66] = cnt.to(f64) / 4.0
     g[:, 66] = (ep.shops_seq >= 0).sum(-1).to(f64) / 8.0
+    # Per-slot identity makes the multi-head action observable: the board's
+    # hand channel only contains aggregate occupancy, so it cannot tell head
+    # i where its own unit is or what that unit carries.
+    local = g[:, O.BASE_G:].view(B, A.MAX_HANDS, O.HAND_FEATURES)
+    local.zero_()
+    n_slots = min(A.MAX_HANDS, ep.H)
+    hxy = ep.hands_xy[:, player, :n_slots].to(i64)
+    alive = (torch.arange(n_slots, device=dev).view(1, -1)
+             < ep.hands_n[:, player].to(i64).view(B, 1))
+    local[:, :n_slots, 0] = alive.to(f64)
+    local[:, :n_slots, 1] = torch.where(
+        alive, hxy[..., 0].to(f64) / (N - 1), 0.0)
+    local[:, :n_slots, 2] = torch.where(
+        alive, hxy[..., 1].to(f64) / (N - 1), 0.0)
+    hand_inv = ep.unit_inv[:, player, 1:n_slots + 1].to(i64).clamp(max=8)
+    local[:, :n_slots, 3:] = (
+        hand_inv.to(f64) / 8.0) * alive.unsqueeze(-1).to(f64)
     return g
 
 

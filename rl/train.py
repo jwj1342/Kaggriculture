@@ -45,7 +45,9 @@ import torch
 import actions as A
 import obs as O
 from trl_env import KGTensorEnv
-from trl_policy import (build_actor_critic, load_merged_state_dict,
+from trl_policy import (adapt_legacy_hand_head, adapt_legacy_observation,
+                        build_actor_critic,
+                        load_merged_state_dict,
                         merged_state_dict)
 
 try:  # torchrl >= 0.12 name; SyncDataCollector is deprecated for removal in 0.13
@@ -130,16 +132,26 @@ def build_parser():
                          "(AlphaStar f_hard): dominated members drain out "
                          "of the sampling mass; 0 = uniform (legacy)")
     # -- kickstarting (Schmitt et al. 2018; the Lux-S1 winner's teacher-KL) --
-    ap.add_argument("--kickstart", default="", choices=("", "barnyard"),
+    ap.add_argument("--kickstart", default="",
                     help="teacher whose mapped decision labels every "
                          "learner state; adds an annealed CE pull on the "
                          "action heads ON TOP of the RL loss (never plain "
-                         "BC -- the RL term is on from step one)")
+                         "BC -- the RL term is on from step one). Use "
+                         "barnyard or barnyard:<state-closed-profile>")
     ap.add_argument("--ks-coef", type=float, default=0.5,
                     help="initial weight of the teacher CE term")
     ap.add_argument("--ks-anneal", type=float, default=80e6,
                     help="lane-steps over which ks-coef decays linearly "
                          "to zero (0 = constant)")
+    ap.add_argument("--kickstart-only-until", type=int, default=0,
+                    help="before this many lane-steps, update the actor only "
+                         "from kickstart CE while the critic still learns; "
+                         "PPO policy loss turns on after the warm-up")
+    ap.add_argument("--kickstart-on-policy", action="store_true",
+                    help="during kickstart-only warm-up, execute the learner's "
+                         "sampled actions while the state-closed teacher labels "
+                         "those visited states (online DAgger); by default the "
+                         "teacher labels are also forced into the environment")
     ap.add_argument("--fert-credit", type=float, default=0.0,
                     help="per-animal fertilizer-stream credit folded into "
                          "the potential: w x base x remaining days (the top "
@@ -153,6 +165,10 @@ def build_parser():
                     help="teacher labels every Nth step (profiler: the "
                          "teacher is 41%% of step time; 4 buys ~1.7x "
                          "collection throughput, CE skips the gaps)")
+    ap.add_argument("--ks-class-alpha", type=float, default=0.0,
+                    help="inverse-frequency exponent for kickstart labels; "
+                         "0 is ordinary CE, 0.5 protects rare build/place "
+                         "tasks from water/idle class collapse")
     ap.add_argument("--build-bonus", type=float, default=0.0,
                     help="weight of the curve-capped build credit folded "
                          "into the potential (targets measured from the "
@@ -187,6 +203,10 @@ def build_parser():
                          "[farmer, market, hand x12]; hand heads start "
                          "AUTO-biased, so iteration 0 plays the classic "
                          "scheduler and learns deviations")
+    ap.add_argument("--fixed-market-profile", default="",
+                    help="state-closed barnyard profile that owns the learner "
+                         "seat's market queue while PPO learns farmer/hand "
+                         "execution; the market head is masked to NOOP")
     ap.add_argument("--potential",
                     choices=("networth", "future", "future-mkt"),
                     default="networth",
@@ -257,22 +277,34 @@ def _filtered(cls, **kw):
     return cls(**{k: v for k, v in kw.items() if k in sig})
 
 
-def _kickstart_ce(actor_net, mb, multi):
+def _kickstart_ce(actor_net, mb, multi, class_alpha=0.0):
     """Masked cross-entropy pulling the action heads toward the teacher's
-    labels on the learner's OWN states (kickstarting, never plain BC: the
-    RL loss stays on and the coefficient anneals). Entries whose label is
-    illegal under the mask are skipped -- the intent mapping is lossy by
-    design -- as are dead hand slots (label -1)."""
+    labels on visited states. Entries whose label is illegal under the mask
+    are skipped -- the intent mapping is lossy by design -- as are dead hand
+    slots (label -1). Optional inverse-frequency weighting is computed per
+    minibatch and normalized to keep the overall CE scale stable."""
     NEG = -1e9
     outs = actor_net(mb["observation"])
     fl, ml = outs[0], outs[1]
     total = None
     denom = None
 
-    def acc(loss, cnt):
+    def acc(pick, legal, labels, n_classes):
         nonlocal total, denom
-        total = loss if total is None else total + loss
-        denom = cnt if denom is None else denom + cnt
+        if not bool(legal.any()):
+            return
+        loss = -pick[legal]
+        weight = torch.ones_like(loss)
+        if class_alpha > 0.0:
+            target = labels[legal]
+            counts = torch.bincount(target, minlength=n_classes).to(loss.dtype)
+            class_weight = (target.numel() / counts.clamp(min=1)).pow(class_alpha)
+            class_weight /= class_weight[counts > 0].mean()
+            weight = class_weight[target]
+        weighted = (loss * weight).sum()
+        count = weight.sum()
+        total = weighted if total is None else total + weighted
+        denom = count if denom is None else denom + count
 
     for logits, mask, lab in ((fl, mb["farmer_mask"], mb["teacher_f"]),
                               (ml, mb["market_mask"], mb["teacher_m"])):
@@ -281,7 +313,7 @@ def _kickstart_ce(actor_net, mb, multi):
         lp = torch.log_softmax(logits.masked_fill(~mask, NEG), -1)
         legal = mask.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1) & live
         pick = lp.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1)
-        acc(-(pick * legal.float()).sum(), legal.sum())
+        acc(pick, legal, lab_c, logits.shape[-1])
     if multi:
         hl = outs[2]                                     # (B, H, T)
         hm, lab = mb["hand_mask"], mb["teacher_h"]       # (B, H, T), (B, H)
@@ -290,7 +322,7 @@ def _kickstart_ce(actor_net, mb, multi):
         lp = torch.log_softmax(hl.masked_fill(~hm, NEG), -1)
         legal = hm.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1) & live
         pick = lp.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1)
-        acc(-(pick * legal.float()).sum(), legal.sum())
+        acc(pick, legal, lab_c, hl.shape[-1])
     return total / denom.clamp(min=1)
 
 
@@ -322,6 +354,20 @@ def train(args, log_fn=None):
         torch.set_num_threads(args.threads)
     dev = torch.device(args.device)
     torch.manual_seed(args.seed)
+    if args.kickstart_on_policy and (
+            not args.kickstart or args.kickstart_only_until <= 0):
+        raise ValueError(
+            "--kickstart-on-policy requires --kickstart and a positive "
+            "--kickstart-only-until")
+    if args.kickstart_only_until > 0:
+        profile = args.kickstart.split(":", 1)[1] \
+            if args.kickstart.startswith("barnyard:") else ""
+        if (not args.multi_head or args.ks_every != 1
+                or not args.fixed_market_profile
+                or profile != args.fixed_market_profile):
+            raise ValueError(
+                "--kickstart-only-until requires --multi-head, --ks-every 1, "
+                "and matching barnyard:<profile>/--fixed-market-profile")
 
     env = KGTensorEnv(
         args.B, device=dev,
@@ -336,7 +382,8 @@ def train(args, log_fn=None):
         kickstart=args.kickstart, build_bonus=args.build_bonus,
         bank=args.bank, bank_frac=args.bank_frac,
         shape_gamma=args.shape_gamma, ks_every=args.ks_every,
-        fert_credit=args.fert_credit, land_value=args.land_value)
+        fert_credit=args.fert_credit, land_value=args.land_value,
+        fixed_market_profile=args.fixed_market_profile)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
@@ -344,9 +391,19 @@ def train(args, log_fn=None):
         residual_base=args.residual_base, multi=args.multi_head)
     if args.init_from:
         ck = torch.load(args.init_from, map_location="cpu", weights_only=False)
-        load_merged_state_dict(actor_net, critic_net,
-                               ck.get("model") or ck.get("state_dict") or ck)
+        model = ck.get("model") or ck.get("state_dict") or ck
+        model, obs_compatibility = adapt_legacy_observation(model, O.OBS_DIM)
+        model, compatibility = adapt_legacy_hand_head(model, new_bias=0.0)
+        load_merged_state_dict(actor_net, critic_net, model)
         log_fn(f"initialised from {args.init_from}")
+        if obs_compatibility["adapted"]:
+            log_fn("adapted legacy observation: "
+                   f"{obs_compatibility['checkpoint_obs_dims']} -> {O.OBS_DIM}")
+        if compatibility["adapted"]:
+            log_fn("adapted legacy hand head: "
+                   f"{compatibility['checkpoint_hand_tasks']} -> "
+                   f"{compatibility['runtime_hand_tasks']} tasks "
+                   f"(new bias {compatibility['new_task_bias']})")
 
     pool = None
     if args.opponents:
@@ -404,6 +461,9 @@ def train(args, log_fn=None):
         log_fn(f"resumed {args.resume}: iter {start_it}, "
                f"episode_index {env._episode_index}"
                + (f", {pool.describe()}" if pool else ""))
+
+    env.kickstart_force = (not args.kickstart_on_policy
+                           and total_steps < args.kickstart_only_until)
 
     # the engine flags done while executing action index episode_steps - 2
     # (kaggle DONE semantics), so a complete episode is episode_steps - 1
@@ -470,6 +530,8 @@ def train(args, log_fn=None):
         collect_done = _stamp()
         t_col = collect_done - iter_ready
         frozen = total_steps < args.freeze_policy_until
+        kickstart_only = bool(
+            args.kickstart and total_steps < args.kickstart_only_until)
 
         def _mem(stage):
             """Peak CUDA bytes so far, for --mem-report. See --rb-free."""
@@ -543,11 +605,14 @@ def train(args, log_fn=None):
                 loss_td = loss_mod(mb)
                 if frozen:  # value warm-up: the policy must not move
                     loss = loss_td["loss_critic"]
+                elif kickstart_only:
+                    loss = loss_td["loss_critic"]
                 else:
                     loss = sum(v for k, v in loss_td.items()
                                if k.startswith("loss_"))
                 if ks_coef > 0.0:
-                    ks = _kickstart_ce(actor_net, mb, args.multi_head)
+                    ks = _kickstart_ce(
+                        actor_net, mb, args.multi_head, args.ks_class_alpha)
                     loss = loss + ks_coef * ks
                     stats["ks"] += ks.item()
                 optim.zero_grad(set_to_none=True)
@@ -585,10 +650,13 @@ def train(args, log_fn=None):
                + 0.5 * (money == omoney).float().mean()).item()
         n_steps = td.numel()
         total_steps += n_steps
+        env.kickstart_force = (not args.kickstart_on_policy
+                               and total_steps < args.kickstart_only_until)
         train_sec = update_done - iter_ready
         rec = {"iter": it, "steps": total_steps, "n_steps": n_steps,
                "sps": n_steps / train_sec, "win": win,
                "money": money.mean().item(), "opp_money": omoney.mean().item(),
+               "kickstart_only": kickstart_only,
                "stage": (pool.stage if pool is not None else None),
                "sec": train_sec, "t_collect": t_col,
                "t_gae": gae_done - collect_done,
@@ -672,10 +740,12 @@ def train(args, log_fn=None):
             rec["cuda_peak_gib"] = torch.cuda.max_memory_allocated() / 2**30
 
         ks_s = f"ks {stats['ks']:.3f}@{ks_coef:.2f}  " if args.kickstart else ""
+        mode_s = (("DAgger-warmup  " if args.kickstart_on_policy
+                   else "BC-warmup  ") if kickstart_only else "")
         log_fn(f"it {it:3d}  steps {total_steps:>9,}  sps {rec['sps']:>8,.0f}  "
                f"win {win:5.3f}  money {rec['money']:>9,.0f}  opp {rec['opp_money']:>8,.0f}  "
                f"pg {stats['pg']:+.4f}  vf {stats['vf']:.4f}  ent {stats['ent']:.3f}  "
-               f"{ks_s}{train_sec:5.1f}s (collect {t_col:4.1f}s)")
+               f"{ks_s}{mode_s}{train_sec:5.1f}s (collect {t_col:4.1f}s)")
         log_fn("PROFILE " + " ".join([
             f"iter={it}", f"startup_s={rec['startup_s']:.3f}",
             f"collect_s={rec['t_collect']:.3f}", f"gae_s={rec['t_gae']:.3f}",

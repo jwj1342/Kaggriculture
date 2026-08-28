@@ -48,7 +48,9 @@ ANIMAL_LIST = list(R.ANIMALS)
 PRODUCT_LIST = list(R.PRODUCTS)
 SHOP_LIST = sorted(R.SHOPS)
 _QUADS = ["NE", "SW", "SE"]
-G = 8 + 9 * 4 + 3 + 5 + 3 + 3 + 8 + 1
+BASE_G = 8 + 9 * 4 + 3 + 5 + 3 + 3 + 8 + 1
+HAND_FEATURES = 3 + len(PRODUCT_LIST) + len(ANIMAL_LIST)
+G = BASE_G + A.MAX_HANDS * HAND_FEATURES
 assert G == O.G and C == O.C, "layout constants drifted from obs.py"
 
 
@@ -136,6 +138,17 @@ def ref_global_features(obs):
     for s in SHOP_LIST:
         g.append(unlocked.count(s) / 4.0)
     g.append(len(unlocked) / 8.0)
+    hands = mine.get("hands", [])
+    inventories = priv["inventories"]
+    items = PRODUCT_LIST + ANIMAL_LIST
+    for slot in range(A.MAX_HANDS):
+        if slot < len(hands):
+            x, y = hands[slot]
+            hinv = inventories[slot + 1] if slot + 1 < len(inventories) else {}
+            g += [1.0, x / (N - 1), y / (N - 1)]
+            g += [min(hinv.get(item, 0), 8) / 8.0 for item in items]
+        else:
+            g += [0.0] * HAND_FEATURES
     return g
 
 
@@ -188,7 +201,8 @@ def ref_net_worth(obs):
                 a = R.ANIMALS[t["animal"]]
                 assets += a["cost"]
                 assets += t.get("yield_units", 0) * prices[a["product"]]
-    return farm["money"] + decay * assets
+    return (farm["money"] + 0.5 * min(farm["money"], 800.0)
+            + decay * assets)
 
 
 def ref_opp_visible_worth(obs):
@@ -333,6 +347,13 @@ def ref_market_mask(obs):
     allow("HIRE",
           len(farm.get("hands", [])) < A.MAX_HANDS
           and money >= _fib(farm.get("hires_today", 0)))
+    for p in PRODUCT_LIST:
+        allow(f"SELL_HALF_{p}", shed.get(p, 0) > 0)
+    if day >= R.LIQUIDATE_DAY:
+        sellable = [shed.get(p, 0) > 0 for p in PRODUCT_LIST]
+        if any(sellable):
+            m[:] = False
+            m[1:1 + len(PRODUCT_LIST)] = sellable
     return m
 
 
@@ -342,6 +363,15 @@ def ref_market_action(obs, name):
     day = obs.get("day", 0)
     if name == "NOOP":
         return []
+    if name.startswith("SELL_HALF_"):
+        p = name[len("SELL_HALF_"):]
+        if day >= R.LIQUIDATE_DAY:
+            first = [["SELL", p, shed[p]]] if shed.get(p, 0) > 0 else []
+            rest = [["SELL", q, shed[q]] for q in PRODUCT_LIST
+                    if q != p and shed.get(q, 0) > 0]
+            return (first + rest)[:R.MAX_ORDERS]
+        n = shed.get(p, 0)
+        return [["SELL", p, (n + 1) // 2]] if n > 0 else []
     if name.startswith("SELL_"):
         p = name[len("SELL_"):]
         if day >= R.LIQUIDATE_DAY:
@@ -365,9 +395,9 @@ def ref_market_action(obs, name):
         return [["BUY_LAND"]]
     if name == "HIRE":
         n_hands = len(farm.get("hands", []))
-        burst, cost_cap = [], max(4.0, 0.05 * farm["money"])
+        burst, cost_cap = [], 0.05 * farm["money"]
         hires = farm.get("hires_today", 0)
-        while (len(burst) < 4 and n_hands + len(burst) < A.MAX_HANDS
+        while (len(burst) < 10 and n_hands + len(burst) < A.MAX_HANDS
                and _fib(hires + len(burst)) <= cost_cap):
             burst.append(["HIRE"])
         return burst or [["HIRE"]]

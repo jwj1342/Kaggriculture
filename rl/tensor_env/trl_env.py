@@ -8,7 +8,7 @@ class runs on CPU and CUDA -- `device` is the only switch, which is what
 finally merges the rl-baseline (CPU) and tensorize (GPU) lines.
 
 Semantics are train_t.py's collect() verbatim:
-  * obs        = features_t.encode_t(ep, seat)            (B, 4867) float32
+  * obs        = features_t.encode_t(ep, seat)            (B, OBS_DIM) float32
   * masks      = features_t.masks_t(ep, seat)             (B, 23/22) bool
   * action     = (farmer, market) int64 head indices, stacked (B, 2)
   * opponent   = opponents_t.starter_indices (or a frozen ActorNet, argmax
@@ -68,7 +68,8 @@ def hand_task_mask_t(ep, player, n_hands=None):
     plant = kind == engine_t.K_PLANT
     yu = ep.yield_units[:, player].reshape(B, NN) > 0
     age8 = (day - ep.planted_day[:, player].reshape(B, NN)).to(torch.int8)
-    cf8 = X._tabs(dev).crop_first_i8[ep.crop[:, player].reshape(B, NN).int()]
+    tabs = X._tabs(dev)
+    cf8 = tabs.crop_first_i8[ep.crop[:, player].reshape(B, NN).int()]
     fams = torch.stack([
         ((plant & yu & (age8 >= cf8)) | (anim & yu)).any(-1),   # HARVEST
         (plant & ~ep.watered[:, player].reshape(B, NN)).any(-1),  # WATER
@@ -93,7 +94,7 @@ def hand_task_mask_t(ep, player, n_hands=None):
                      & unfed_any.view(B, 1))
     # PLANT: a viable farm seed (deadline not passed) plus an empty tile
     viable = ((ep.seeds_t[:, player] > 0)
-              & (day <= X._tabs(dev).plant_deadline).view(1, -1))
+              & (day <= tabs.plant_deadline).view(1, -1))
     plant_ok = viable.any(-1) & (kind == engine_t.K_EMPTY).any(-1)  # (B,)
     mask[:, :, 8] = alive & plant_ok.view(B, 1)
     # FERTILIZE: an unfert plant exists and fertilizer is reachable --
@@ -123,16 +124,67 @@ def hand_task_mask_t(ep, player, n_hands=None):
         -1, animal_item) > 0
     hand_place = (hand_animals & free.view(B, 1, 3)).any(-1)
     mask[:, :, 11] = alive & (shed_place.view(B, 1) | hand_place)
+
+    # Appended RAW_* classes execute one exact primitive at the hand's current
+    # tile.  Unlike persistent chores they are legal only when that primitive
+    # can mutate state; this keeps the wider imitation head mechanically dense.
+    hxy = ep.hands_xy[:, player, :n_hands].to(torch.int64)
+    hpos = hxy[..., 1] * ep.N + hxy[..., 0]
+
+    def at(plane):
+        return plane.gather(1, hpos)
+
+    hand_inv = ep.unit_inv[:, player, 1:n_hands + 1]
+    carry = hand_inv.to(torch.int64).sum(-1)
+    on_shed = tabs.shed100.index_select(0, hpos.reshape(-1)).view(B, n_hands)
+    kind_h = kind.gather(1, hpos)
+    anim_h = anim.gather(1, hpos)
+
+    def raw(name, legal):
+        mask[:, :, A.HAND_TASKS.index(name)] = alive & legal
+
+    raw("RAW_MOVE_N", hxy[..., 1] > 0)
+    raw("RAW_MOVE_S", hxy[..., 1] < ep.N - 1)
+    raw("RAW_MOVE_E", hxy[..., 0] < ep.N - 1)
+    raw("RAW_MOVE_W", hxy[..., 0] > 0)
+    raw("RAW_WATER", at(plant & ~ep.watered[:, player].reshape(B, NN)))
+    raw("RAW_HARVEST", at((plant & yu & (age8 >= cf8)) | (anim & yu)))
+    raw("RAW_FEED", at(anim & ~ep.fed[:, player].reshape(B, NN))
+        & (hand_inv[..., engine_t.WHEAT_I] > 0))
+    raw("RAW_CARE", at(anim & ~ep.cared[:, player].reshape(B, NN)))
+    raw("RAW_COLLECT_FERTILIZER",
+        at(anim & ep.fert_avail[:, player].reshape(B, NN)))
+    raw("RAW_FERTILIZE",
+        at(plant & ((ep.fert_until[:, player].reshape(B, NN) - day) < 0))
+        & (hand_inv[..., engine_t.FERT_I] > 0))
+    raw("RAW_DIG", at(kind == engine_t.K_WEED))
+    raw("RAW_BUILD_COOP", kind_h == engine_t.K_EMPTY)
+    raw("RAW_BUILD_PASTURE", kind_h == engine_t.K_EMPTY)
+    raw("RAW_DROP", on_shed & (carry > 0))
+    for crop_i, crop in enumerate(A.CROP_LIST):
+        raw(f"RAW_PLANT_{crop}",
+            (kind_h == engine_t.K_EMPTY)
+            & (ep.seeds_t[:, player, crop_i] > 0).view(B, 1)
+            & (day <= A.PLANT_DEADLINE[crop]))
+    for animal_i, animal in enumerate(A.ANIMAL_LIST):
+        structure = (engine_t.K_COOP if kg_rules.ANIMALS[animal]["structure"]
+                     == "COOP" else engine_t.K_PASTURE)
+        raw(f"RAW_PLACE_{animal}",
+            (kind_h == structure) & ~anim_h
+            & (hand_inv[..., engine_t.N_MKT + animal_i] > 0))
+    for item in A.HAND_PICKUP_ITEMS:
+        item_i = engine_t.ITEM_IDX[item]
+        raw(f"RAW_PICKUP_{item}",
+            on_shed & (ep.shed[:, player, item_i] > 0).view(B, 1))
     return mask
 
 
 # ---- kickstart teacher labels (Schmitt et al. 2018 / Lux-S1 recipe) --------
-# barnyard_t's per-unit INTENTS (ops["task"/"task_arg"]) mapped into the
+# barnyard_t's farmer intent and exact per-turn hand ops mapped into the
 # policy's head vocabulary, queried on the LEARNER's own states -- teacher
 # supervision without the distribution shift that killed the old line's BC.
-# Lossy by measurement, not accident: per-hand place/build fall back to
-# AUTO (hand PLANT has its own task index since the w49 anatomy), the
-# metered multi-order market collapses to one priority-picked head index.
+# The metered multi-order market still collapses to one priority-picked head
+# index, but every unit intent that has a hand-task action is preserved.
 
 _KS_LUTS = {}
 
@@ -142,16 +194,21 @@ def _ks_luts(device):
     key = str(device)
     if key not in _KS_LUTS:
         i64 = torch.int64
-        hand = [0] * 18                     # default AUTO
+        hand = [-1] * 18                    # unsupported raw op
         hand[X.U_PASS] = 1                  # unassigned unit: barnyard idles it
-        hand[X.U_HARVEST] = A.HAND_TASKS.index("HARVEST")
-        hand[X.U_WATER] = A.HAND_TASKS.index("WATER")
-        hand[X.U_CARE] = A.HAND_TASKS.index("CARE")
-        hand[X.U_COLLECT] = A.HAND_TASKS.index("COLLECT_FERTILIZER")
-        hand[X.U_DIG] = A.HAND_TASKS.index("DIG")
-        hand[X.U_FEED] = A.HAND_TASKS.index("FEED")
-        hand[X.U_PLANT] = A.HAND_TASKS.index("PLANT")
-        hand[X.U_FERTILIZE] = A.HAND_TASKS.index("FERTILIZE")
+        for op, name in (
+                (X.U_MOVE_N, "RAW_MOVE_N"), (X.U_MOVE_S, "RAW_MOVE_S"),
+                (X.U_MOVE_E, "RAW_MOVE_E"), (X.U_MOVE_W, "RAW_MOVE_W"),
+                (X.U_WATER, "RAW_WATER"),
+                (X.U_HARVEST, "RAW_HARVEST"),
+                (X.U_FEED, "RAW_FEED"), (X.U_CARE, "RAW_CARE"),
+                (X.U_COLLECT, "RAW_COLLECT_FERTILIZER"),
+                (X.U_FERTILIZE, "RAW_FERTILIZE"),
+                (X.U_DIG, "RAW_DIG"),
+                (X.U_BUILD_COOP, "RAW_BUILD_COOP"),
+                (X.U_BUILD_PASTURE, "RAW_BUILD_PASTURE"),
+                (X.U_DROP, "RAW_DROP")):
+            hand[op] = A.HAND_TASKS.index(name)
         farmer = [0] * 18                   # default PASS
         for op, name in ((X.U_WATER, "WATER"), (X.U_HARVEST, "HARVEST"),
                          (X.U_FEED, "FEED"), (X.U_CARE, "CARE"),
@@ -163,26 +220,49 @@ def _ks_luts(device):
             farmer[op] = A.FARMER_ACTIONS.index(name)
         farmer[X.U_PLANT] = 15              # + crop arg below
         farmer[X.U_PLACE] = 20              # + animal arg below
+        pickup = torch.full((len(engine_t.ITEMS),), -1, dtype=i64,
+                            device=device)
+        for item in A.HAND_PICKUP_ITEMS:
+            pickup[engine_t.ITEM_IDX[item]] = A.HAND_TASKS.index(
+                f"RAW_PICKUP_{item}")
         _KS_LUTS[key] = {
             "hand": torch.tensor(hand, dtype=i64, device=device),
-            "farmer": torch.tensor(farmer, dtype=i64, device=device)}
+            "farmer": torch.tensor(farmer, dtype=i64, device=device),
+            "pickup": pickup}
     return _KS_LUTS[key]
 
 
-def kickstart_labels(ep, player):
+def kickstart_labels(ep, player, ops=None):
     """(teacher_f (B,), teacher_m (B,), teacher_h (B, MAX_HANDS)) int64 --
     barnyard's decision on `player`'s seat in head-index vocabulary.
     Dead hand slots carry -1 (the CE loss skips them)."""
     import barnyard_t
     import engine_t_idx as X
     dev, B = ep.device, ep.B
-    ops = barnyard_t.compute(ep, player)
+    if ops is None:
+        ops = barnyard_t.compute(ep, player)
     task, targ = ops["task"], ops["task_arg"]                  # (B, U)
     luts = _ks_luts(dev)
     f = luts["farmer"][task[:, 0]]
     f = torch.where(task[:, 0] == X.U_PLANT, 15 + targ[:, 0], f)
     f = torch.where(task[:, 0] == X.U_PLACE, 20 + targ[:, 0], f)
-    h = luts["hand"][task[:, 1:]]                              # (B, U-1)
+    if ops["h_op"]:
+        hop = torch.stack(ops["h_op"], 1)
+        harg = torch.stack(ops["h_arg"], 1)
+    else:
+        hop = torch.empty((B, 0), dtype=torch.int64, device=dev)
+        harg = torch.empty_like(hop)
+    h = luts["hand"][hop]
+    for crop_i, crop in enumerate(A.CROP_LIST):
+        h = torch.where(
+            (hop == X.U_PLANT) & (harg == crop_i),
+            torch.full_like(h, A.HAND_TASKS.index(f"RAW_PLANT_{crop}")), h)
+    for animal_i, animal in enumerate(A.ANIMAL_LIST):
+        h = torch.where(
+            (hop == X.U_PLACE) & (harg == animal_i),
+            torch.full_like(h, A.HAND_TASKS.index(f"RAW_PLACE_{animal}")), h)
+    pickup_arg = harg.clamp(min=0, max=len(engine_t.ITEMS) - 1)
+    h = torch.where(hop == X.U_PICKUP, luts["pickup"][pickup_arg], h)
     hn = ep.hands_n[:, player].to(torch.int64)
     ar = torch.arange(h.shape[1], device=dev).view(1, -1)
     h = torch.where(ar < hn.view(B, 1), h, torch.full_like(h, -1))
@@ -261,6 +341,8 @@ class FrozenPolicyOpponent:
 
     @staticmethod
     def _net_from_sd(sd, device):
+        from trl_policy import adapt_legacy_observation
+        sd, _ = adapt_legacy_observation(sd, O.OBS_DIM)
         h1, obs_dim = sd["l1.weight"].shape
         h2 = sd["l2.weight"].shape[0]
         net = ActorNet(obs_dim, sd["farmer.weight"].shape[0],
@@ -286,9 +368,14 @@ class FrozenPolicyOpponent:
         self._hands = None
         for pfx, owner in (("", "net"), ("d_", "delta")):
             if f"{pfx}hw" in arrays:
-                self._hands = (owner,
-                               torch.as_tensor(arrays[f"{pfx}hw"]).to(device),
-                               torch.as_tensor(arrays[f"{pfx}hb"]).to(device))
+                from trl_policy import adapt_legacy_hand_head
+                hand_sd = {
+                    "hands.weight": torch.as_tensor(arrays[f"{pfx}hw"]),
+                    "hands.bias": torch.as_tensor(arrays[f"{pfx}hb"]),
+                }
+                hand_sd, _ = adapt_legacy_hand_head(hand_sd, new_bias=NEG)
+                self._hands = (owner, hand_sd["hands.weight"].to(device),
+                               hand_sd["hands.bias"].to(device))
 
     @property
     def provides_hands(self):
@@ -398,7 +485,7 @@ class KGTensorEnv(EnvBase):
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
                  shape_gamma=0.0, ks_every=1, fert_credit=0.0,
-                 land_value=0.0):
+                 land_value=0.0, fixed_market_profile=""):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -516,16 +603,31 @@ class KGTensorEnv(EnvBase):
                         torch.load(path.strip(), map_location=self.device,
                                    weights_only=False))
 
-        # kickstart teacher: "" (off) or "barnyard" -- every learner-seat
-        # state gets barnyard's mapped decision alongside the observation
-        if kickstart not in ("", "barnyard"):
+        # A named barnyard profile is a state-closed teacher on the learner's
+        # own states.  It is separate from fixed_market_profile so the target
+        # labels cannot mutate the executor that supplies real market orders.
+        if kickstart and not (kickstart == "barnyard"
+                              or kickstart.startswith("barnyard:")):
             raise ValueError(f"unknown kickstart teacher {kickstart!r}")
         self.kickstart = kickstart
+        self._kickstart_executor = None
+        self._kickstart_profile = ""
+        if kickstart.startswith("barnyard:"):
+            import barnyard_t
+            profile = kickstart.split(":", 1)[1]
+            if not profile:
+                raise ValueError("barnyard kickstart profile must not be empty")
+            self._kickstart_profile = profile
+            self._kickstart_executor = barnyard_t.BarnyardOpponent(profile)
         # label every Nth step only: the profiler puts the teacher at 41%
         # of step time (a full barnyard compute per step); -1-filled steps
         # are skipped by the CE, so this trades label density for ~1.7x
         # collection throughput at ks_every=4
         self.ks_every = max(1, int(ks_every))
+        self.fixed_market_profile = str(fixed_market_profile)
+        self._fixed_market_planted = None
+        self._pending_teacher_ops = None
+        self.kickstart_force = False
         # multi-head action space (rl/TODO.md #0): [farmer, market, hand x12]
         self.multi_head = bool(multi_head)
         bs, dev = self.batch_size, self.device
@@ -573,9 +675,23 @@ class KGTensorEnv(EnvBase):
                "opp_money": ep.money[:, 1 - seat].clone()}
         if self.multi_head:
             out["hand_mask"] = hand_task_mask_t(ep, seat, A.MAX_HANDS)
+        if self.fixed_market_profile:
+            # The route owns every market order, including compound baskets.
+            # Give PPO a one-action market distribution so its entropy and
+            # policy gradient are spent only on the learned execution heads.
+            out["market_mask"].zero_()
+            out["market_mask"][:, 0] = True
         if self.kickstart:
+            teacher_ops = None
+            if self._kickstart_executor is not None:
+                if (self._kickstart_profile == self.fixed_market_profile
+                        and self._fixed_market_planted is not None):
+                    self._kickstart_executor.planted_total.copy_(
+                        self._fixed_market_planted)
+                teacher_ops = self._kickstart_executor(ep, seat)
+                self._pending_teacher_ops = teacher_ops
             if ep._step % self.ks_every == 0:
-                tf, tm, th = kickstart_labels(ep, seat)
+                tf, tm, th = kickstart_labels(ep, seat, teacher_ops)
             else:
                 tf = torch.full((self.B,), -1, dtype=torch.int64,
                                 device=self.device)
@@ -605,6 +721,7 @@ class KGTensorEnv(EnvBase):
         self._ep = engine_t.EpisodeT(seeds, episode_steps=self.episode_steps,
                                      device=self.device)
         self._step_overrides.clear()
+        self._pending_teacher_ops = None
         if self._banks:
             r = ((self._episode_index * 40503 + self.base_seed) % 997) / 997.0
             if r < self.bank_frac:
@@ -617,6 +734,15 @@ class KGTensorEnv(EnvBase):
                 self._bank_mod.restore_lanes(self._ep, bk["state"], src)
         if self.handicap:
             self._ep.money[:, self.seat] += float(self.handicap)
+        if self.fixed_market_profile:
+            current = self._ep.kind[:, self.seat].reshape(self.B, -1) \
+                == engine_t.K_PLANT
+            crop = self._ep.crop[:, self.seat].reshape(self.B, -1)
+            self._fixed_market_planted = torch.stack(
+                [(current & (crop == c)).sum(1)
+                 for c in range(len(engine_t.CROP_NAMES))], 1).to(torch.int64)
+        if self._kickstart_executor is not None:
+            self._kickstart_executor.reset(self._ep, self.seat)
         self._prev_w = self._pot(self._ep, self.seat)
         if self.opp_lambda:
             self._prev_wo = self._pot(self._ep, 1 - self.seat)
@@ -634,6 +760,37 @@ class KGTensorEnv(EnvBase):
             h_idx = torch.zeros((self.B, 2, A.MAX_HANDS), dtype=torch.int64,
                                 device=self.device)
             h_idx[:, seat] = action[..., 2:]
+        if self.kickstart_force:
+            tf = tensordict["teacher_f"]
+            tf_safe = tf.clamp(min=0)
+            f_legal = ((tf >= 0)
+                       & tensordict["farmer_mask"].gather(
+                           -1, tf_safe.unsqueeze(-1)).squeeze(-1))
+            fa = torch.where(f_legal, tf_safe, fa)
+            th = tensordict["teacher_h"]
+            th_safe = th.clamp(min=0)
+            h_legal = ((th >= 0)
+                       & tensordict["hand_mask"].gather(
+                           -1, th_safe.unsqueeze(-1)).squeeze(-1))
+            h_idx[:, seat] = torch.where(
+                h_legal, th_safe, h_idx[:, seat])
+        if self.fixed_market_profile:
+            import barnyard_t
+            before_kind = ep.kind[:, seat].clone()
+            before_crop = ep.crop[:, seat].clone()
+            before_planted = ep.planted_day[:, seat].clone()
+            if (self._kickstart_profile == self.fixed_market_profile
+                    and self._pending_teacher_ops is not None):
+                market_plan = self._pending_teacher_ops
+            else:
+                market_plan = barnyard_t.compute(
+                    ep, seat, profile=self.fixed_market_profile,
+                    planted_total=self._fixed_market_planted)
+            self._pending_teacher_ops = None
+            step_overrides.append((seat, {
+                key: market_plan[key]
+                for key in ("m_op", "m_item", "m_rem")
+            }))
         if getattr(self.opp_fn, "provides_ops", False):
             # raw-encoding opponent (barnyard_t): its seat bypasses the
             # macro decode via the step_idx override. --opp-noise here is
@@ -665,6 +822,9 @@ class KGTensorEnv(EnvBase):
             m_idx[:, seat] = ma
             overrides = [(opp, ops), *step_overrides]
             ep.step_idx(f_idx, m_idx, override=overrides, h_idx=h_idx)
+            if self.fixed_market_profile:
+                self._record_fixed_market_plants(
+                    before_kind, before_crop, before_planted)
             return self._finish_step(ep, seat, opp)
         res = self.opp_fn(ep, opp)
         if len(res) == 3:
@@ -691,7 +851,24 @@ class KGTensorEnv(EnvBase):
             f_idx = torch.stack([ofa, fa], 1)
             m_idx = torch.stack([oma, ma], 1)
         ep.step_idx(f_idx, m_idx, override=step_overrides or None, h_idx=h_idx)
+        if self.fixed_market_profile:
+            self._record_fixed_market_plants(
+                before_kind, before_crop, before_planted)
         return self._finish_step(ep, seat, opp)
+
+    def _record_fixed_market_plants(self, before_kind, before_crop,
+                                    before_planted):
+        """Advance the market plan from plants that actually reached state."""
+        kind = self._ep.kind[:, self.seat]
+        crop = self._ep.crop[:, self.seat]
+        planted = self._ep.planted_day[:, self.seat]
+        is_plant = kind == engine_t.K_PLANT
+        new = (is_plant & ((before_kind != engine_t.K_PLANT)
+                           | (crop != before_crop)
+                           | (planted != before_planted)))
+        for crop_i in range(len(engine_t.CROP_NAMES)):
+            self._fixed_market_planted[:, crop_i].add_(
+                (new & (crop == crop_i)).sum((-1, -2)))
 
     def _finish_step(self, ep, seat, opp):
         g = self.shape_gamma if self.shape_gamma > 0.0 else 1.0

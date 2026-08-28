@@ -418,6 +418,74 @@ def merged_state_dict(actor_net, critic_net):
     return {**actor_net.state_dict(), **critic_net.state_dict()}
 
 
+def adapt_legacy_hand_head(model, new_bias=NEG):
+    """Pad an append-only legacy hand vocabulary to the runtime width.
+
+    ``new_bias=NEG`` preserves the old policy for evaluation.  Training may
+    use a finite negative bias so supervised gradients can grow new tasks.
+    """
+    import actions as A
+
+    if "hands.weight" not in model:
+        return model, {"checkpoint_hand_tasks": None,
+                       "runtime_hand_tasks": A.N_HAND_TASK,
+                       "adapted": False}
+    rows, hidden = model["hands.weight"].shape
+    if rows % A.MAX_HANDS:
+        raise ValueError(
+            f"hand head has {rows} rows, not divisible by {A.MAX_HANDS} hands")
+    old_tasks = rows // A.MAX_HANDS
+    info = {"checkpoint_hand_tasks": old_tasks,
+            "runtime_hand_tasks": A.N_HAND_TASK,
+            "adapted": old_tasks != A.N_HAND_TASK}
+    if old_tasks == A.N_HAND_TASK:
+        return model, info
+    if old_tasks > A.N_HAND_TASK:
+        raise ValueError(
+            f"checkpoint has {old_tasks} hand tasks but runtime has "
+            f"{A.N_HAND_TASK}; shrinking is not safe")
+
+    out = dict(model)
+    weight, bias = model["hands.weight"], model["hands.bias"]
+    new_weight = weight.new_zeros((A.MAX_HANDS * A.N_HAND_TASK, hidden))
+    new_biases = bias.new_full(
+        (A.MAX_HANDS * A.N_HAND_TASK,), float(new_bias))
+    for hand in range(A.MAX_HANDS):
+        old = slice(hand * old_tasks, (hand + 1) * old_tasks)
+        new = slice(hand * A.N_HAND_TASK,
+                    hand * A.N_HAND_TASK + old_tasks)
+        new_weight[new] = weight[old]
+        new_biases[new] = bias[old]
+    out["hands.weight"], out["hands.bias"] = new_weight, new_biases
+    info["new_task_bias"] = float(new_bias)
+    return out, info
+
+
+def adapt_legacy_observation(model, runtime_obs_dim):
+    """Zero-pad append-only observation inputs, preserving old logits."""
+    out = dict(model)
+    widths = set()
+    adapted = []
+    for key, weight in model.items():
+        if not (key.endswith("l1.weight") or key.endswith("v1.weight")):
+            continue
+        old_dim = weight.shape[1]
+        widths.add(old_dim)
+        if old_dim > runtime_obs_dim:
+            raise ValueError(
+                f"checkpoint {key} input {old_dim} exceeds runtime "
+                f"observation width {runtime_obs_dim}")
+        if old_dim == runtime_obs_dim:
+            continue
+        padded = weight.new_zeros((weight.shape[0], runtime_obs_dim))
+        padded[:, :old_dim] = weight
+        out[key] = padded
+        adapted.append(key)
+    return out, {"checkpoint_obs_dims": sorted(widths),
+                 "runtime_obs_dim": int(runtime_obs_dim),
+                 "adapted": bool(adapted), "adapted_keys": adapted}
+
+
 def load_merged_state_dict(actor_net, critic_net, sd):
     """Load a PolicyT / train_t / rl-baseline Policy state_dict pair-wise.
     Tolerates rl/policy.py's `value` name for the critic output layer."""

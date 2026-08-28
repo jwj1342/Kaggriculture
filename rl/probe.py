@@ -33,6 +33,11 @@ resume model updates after an early-stop marker.
 import torch
 
 
+def _probe_opponent(pool, args):
+    """Use the configured single opponent; pools replace this after init."""
+    return "starter" if pool is not None else getattr(args, "opponent", "starter")
+
+
 def run_probe(actor_net, pool, args, device):
     """One deterministic episode batch vs the current stage anchor.
 
@@ -47,9 +52,10 @@ def run_probe(actor_net, pool, args, device):
     env = KGTensorEnv(
         args.probe_lanes, device=device, seat=0,
         episode_steps=args.steps, base_seed=args.seed + 991,
-        opponent="starter", win_bonus=0.0,
+        opponent=_probe_opponent(pool, args), win_bonus=0.0,
         potential=args.potential, shape_scale=args.shape_scale,
-        multi_head=multi)
+        multi_head=multi,
+        fixed_market_profile=getattr(args, "fixed_market_profile", ""))
     if pool is not None:
         env.opp_fn = pool.anchors[pool.stage][1]
     td = env.reset()

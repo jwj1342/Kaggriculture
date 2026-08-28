@@ -81,6 +81,9 @@ def _check_mixed(obs, s, rng):
                 assert act[1] in A.ANIMAL_LIST and act[2] == 1, (task, act)
             if op == "PLACE":
                 assert act[1] in A.ANIMAL_LIST, (task, act)
+        elif task.startswith("RAW_"):
+            assert act == A._direct_hand_action(
+                tasks[i], obs["private"]["shed"]), (task, act)
         else:
             assert op in _MOVES | {"PASS", "DROP", task}, (task, act)
             if op == "PASS":
@@ -97,6 +100,10 @@ def _check_mixed(obs, s, rng):
         assert mask[i][0] == (i < n_hands)          # AUTO for live hands
         assert mask[i][1] is True                    # IDLE always
         for k, name in enumerate(A.HAND_TASKS[2:], start=2):
+            if k >= A.HAND_DIRECT_START:
+                # Exact RAW_* semantics are covered by CPU/device mask parity
+                # in M4 and raw decode parity in M2.
+                continue
             if name == "FEED":
                 hinv = invs[i + 1] if i + 1 < len(invs) else {}
                 want = ((i < n_hands) and bool(s["unfed"])

@@ -156,6 +156,7 @@ class _Tabs:
                  # _tabs for the exact definitions.
                  "dir_lut", "key100_lut", "key1024_lut", "shed_dir",
                  "crop_first_i8", "u_arange", "hand_op_lut", "mfk_lut",
+                 "hand_direct_op", "hand_direct_arg", "hand_direct_qty",
                  "pack_clear", "mop_lut", "mitem_lut", "mrem_lut", "move_lut",
                  "move_code", "plant_deadline", "animal_item")
 
@@ -250,6 +251,42 @@ def _tabs(device):
                     hol[fp * 1024 + f * 100 + tp] = (
                         _POOL_OPS[f] if fp == tp else dir_lut[fp * N * N + tp])
         t.hand_op_lut = mk(hol)
+        # Appended RAW_* hand classes map one-to-one to an engine primitive.
+        # The first 12 persistent task indices remain PASS here and continue
+        # through _idx_decode_hands' target dispatcher.
+        hd_op = [U_PASS] * A.N_HAND_TASK
+        hd_arg = [0] * A.N_HAND_TASK
+        hd_qty = [0] * A.N_HAND_TASK
+        simple = {
+            "RAW_MOVE_N": U_MOVE_N, "RAW_MOVE_S": U_MOVE_S,
+            "RAW_MOVE_E": U_MOVE_E, "RAW_MOVE_W": U_MOVE_W,
+            "RAW_WATER": U_WATER, "RAW_HARVEST": U_HARVEST,
+            "RAW_FEED": U_FEED, "RAW_CARE": U_CARE,
+            "RAW_COLLECT_FERTILIZER": U_COLLECT,
+            "RAW_FERTILIZE": U_FERTILIZE, "RAW_DIG": U_DIG,
+            "RAW_BUILD_COOP": U_BUILD_COOP,
+            "RAW_BUILD_PASTURE": U_BUILD_PASTURE, "RAW_DROP": U_DROP,
+        }
+        for hi, name in enumerate(A.HAND_TASKS[A.HAND_DIRECT_START:],
+                                  A.HAND_DIRECT_START):
+            if name in simple:
+                hd_op[hi] = simple[name]
+            elif name.startswith("RAW_PLANT_"):
+                hd_op[hi] = U_PLANT
+                hd_arg[hi] = A.CROP_LIST.index(name[len("RAW_PLANT_"):])
+            elif name.startswith("RAW_PLACE_"):
+                hd_op[hi] = U_PLACE
+                hd_arg[hi] = A.ANIMAL_LIST.index(name[len("RAW_PLACE_"):])
+            elif name.startswith("RAW_PICKUP_"):
+                item = name[len("RAW_PICKUP_"):]
+                hd_op[hi] = U_PICKUP
+                hd_arg[hi] = ET.ITEM_IDX[item]
+                hd_qty[hi] = A.HAND_PICKUP_WANT[item]
+            else:
+                raise AssertionError(f"unmapped direct hand task {name}")
+        t.hand_direct_op = mk(hd_op)
+        t.hand_direct_arg = mk(hd_arg)
+        t.hand_direct_qty = mk(hd_qty)
         # packed pool code (bit 4-f set <=> family f available) -> mfk =
         # 100 * (lowest available family), BIG when none.
         mfk_lut = []
@@ -427,7 +464,8 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
     tensor ops within each.
 
     h_tasks (B, P, >=max_h) int64 or None: per-hand task indices into
-    actions.HAND_TASKS (0 AUTO, 1 IDLE, 2.. one chore family). AUTO slots
+    actions.HAND_TASKS (0 AUTO, 1 IDLE, 2..11 one chore family, then exact
+    RAW_* primitives). AUTO slots
     keep the classic cascade (the mfk minimum over available families);
     a task slot's per-tile key component becomes "family f if its bit is
     still set at that tile, else BIG" -- same claims, same op LUT, so the
@@ -479,7 +517,7 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
     (B, P, 100) bool planes in dispatch priority order.
 
     Returns (ops, args, qtys): per hand slot (B, P) tensors; args/qtys are
-    all-zero except FEED's PICKUP leg (arg = WHEAT item, its qty)."""
+    all-zero except consumable fetch legs and typed RAW_* primitives."""
     B, P = self.B, self.NUM_PLAYERS
     i64, i32, i8 = torch.int64, torch.int32, torch.int8
     max_h = int(self.hands_n.max())
@@ -503,7 +541,7 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
     act = hn > t.u_arange[:max_h]
     loaded = act & (self._idx_carry[:, :, 1:max_h + 1] >= 8)
     seek = act & ~loaded
-    idle = None
+    idle = direct = None
     use_feed = False
     use_plant = False
     use_fert = False
@@ -512,13 +550,14 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
     if h_tasks is not None:
         ht = h_tasks[:, :, :max_h]
         idle = ht == 1
+        direct = ht >= A.HAND_DIRECT_START
         is_auto = (ht == 0).unsqueeze(-1)                    # (B, P, U, 1)
         # clamp keeps FEED's shift in range; its famk is never used (seek
         # excludes FEED slots from the packed-pool path below)
         fam_t = (ht - 2).clamp(min=0, max=4)                 # 0..4 on task slots
         shift_t = (4 - fam_t).to(i8)
         pk3 = packed[:BP * NN].view(B, P, NN)                # live view: claims show
-        seek = seek & ~idle
+        seek = seek & ~idle & ~direct
         is_feed = ht == 7
         use_feed = feed_plane is not None and bool(is_feed.any())
         if use_feed:
@@ -770,6 +809,26 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
             arg_u = torch.where(pickf, torch.full_like(base_arg, ET.FERT_I),
                                 base_arg).view(B, P)
             qty_u = torch.where(pickf, qtyf, base_qty).view(B, P)
+        if direct is not None:
+            du = direct[:, :, u].reshape(-1)
+            hi = ht[:, :, u].reshape(-1)
+            raw_op = t.hand_direct_op.index_select(0, hi)
+            raw_arg = t.hand_direct_arg.index_select(0, hi)
+            raw_qty = t.hand_direct_qty.index_select(0, hi)
+            # CPU decode fixes PICKUP quantity from the pre-step shed.  Do the
+            # same here so an earlier hand's same-turn DROP cannot create
+            # stock that a later RAW_PICKUP unexpectedly consumes.
+            raw_stock = self.shed.to(i64).view(B * P, NI).gather(
+                1, raw_arg.view(B * P, 1)).squeeze(1)
+            raw_qty = torch.where(
+                raw_op == U_PICKUP, torch.minimum(raw_qty, raw_stock), raw_qty)
+            op_u = torch.where(du, raw_op, op_u)
+            base_arg = (arg_u.reshape(-1) if arg_u is not None
+                        else torch.zeros_like(op_u))
+            base_qty = (qty_u.reshape(-1) if qty_u is not None
+                        else torch.zeros_like(op_u))
+            arg_u = torch.where(du, raw_arg, base_arg).view(B, P)
+            qty_u = torch.where(du, raw_qty, base_qty).view(B, P)
         if idle is not None:  # IDLE beats the DROP leg (reference order)
             op_u = torch.where(idle[:, :, u].reshape(-1), t.c_pass, op_u)
         ops.append(op_u.view(B, P))

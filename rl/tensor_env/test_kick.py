@@ -27,8 +27,13 @@ for p in (_HERE, _RL):
 import torch
 
 import actions as A
+import barnyard_t
+import engine_t
+import engine_t_idx  # noqa: F401
 import kg_rules as R
-from trl_env import KGTensorEnv
+import opponents_t
+import verify
+from trl_env import KGTensorEnv, hand_task_mask_t, kickstart_labels
 from verify_t import lane_obs
 
 
@@ -87,7 +92,12 @@ def gate_k2():
     m_wheat = A.MARKET_ACTIONS.index("BUY_WHEAT")
     m_buy = A.MARKET_ACTIONS.index(f"BUY_{animal}")
     m_seed = A.MARKET_ACTIONS.index("BUY_SEED_MELON")
-    feed_idx = A.HAND_TASKS.index("FEED")
+    feed_idx = A.HAND_TASKS.index("RAW_FEED")
+    feed_task_idx = A.HAND_TASKS.index("FEED")
+    move_idxs = {A.HAND_TASKS.index(f"RAW_MOVE_{d}")
+                 for d in ("N", "S", "E", "W")}
+    pickup_idxs = {A.HAND_TASKS.index(f"RAW_PICKUP_{item}")
+                   for item in A.HAND_PICKUP_ITEMS}
 
     B, steps = 1, 8 * 24
     env = KGTensorEnv(B, device="cpu", episode_steps=steps, base_seed=77,
@@ -127,7 +137,7 @@ def gate_k2():
         m_seen.add(int(td["teacher_m"][0]))
         h_seen.update(int(x) for x in td["teacher_h"][0] if int(x) >= 0)
         ha = torch.full((1, A.MAX_HANDS), 0, dtype=torch.int64)
-        ha[0, :n_hands] = feed_idx
+        ha[0, :n_hands] = feed_task_idx
         td["action"] = torch.tensor([[fi, mi]], dtype=torch.int64)
         td["action"] = torch.cat([td["action"], ha], -1)
         td = env.step(td)
@@ -139,10 +149,14 @@ def gate_k2():
     feed_ok = feed_idx in h_seen
     hire_ok = 21 in m_seen
     buy_ok = any(10 <= m <= 19 for m in m_seen)
-    if not (plant_ok and feed_ok and hire_ok and buy_ok):
+    hand_move_ok = bool(move_idxs & h_seen)
+    hand_pickup_ok = bool(pickup_idxs & h_seen)
+    if not (plant_ok and feed_ok and hire_ok and buy_ok
+            and hand_move_ok and hand_pickup_ok):
         print(f"K2 coverage: f={sorted(f_seen)} m={sorted(m_seen)} "
               f"h={sorted(h_seen)} (plant {plant_ok} build {build_ok} "
-              f"feed {feed_ok} hire {hire_ok} buy {buy_ok})")
+              f"feed {feed_ok} hand_move {hand_move_ok} "
+              f"hand_pickup {hand_pickup_ok} hire {hire_ok} buy {buy_ok})")
         return False
     print(f"K2: teacher exercises the build loop -- farmer labels "
           f"{sorted(f_seen)}, market {sorted(m_seen)}, hand {sorted(h_seen)} "
@@ -150,12 +164,97 @@ def gate_k2():
     return True
 
 
+def gate_k4():
+    """A fixed route can own compound market orders while PPO owns labour."""
+    B = 2
+    env = KGTensorEnv(
+        B, device="cpu", episode_steps=26, base_seed=91,
+        opponent="starter", multi_head=True,
+        fixed_market_profile="k01_route_s34_fert_latewheat",
+        kickstart="barnyard:k01_route_s34_fert_latewheat")
+    td = env.reset()
+    assert torch.equal(td["market_mask"].sum(-1), torch.ones(B, dtype=torch.int64))
+    assert bool(td["market_mask"][:, 0].all())
+    action = torch.zeros((B, 2 + A.MAX_HANDS), dtype=torch.int64)
+    action[:, 2:] = A.HAND_TASKS.index("IDLE")
+    td["action"] = action
+    td = env.step(td)
+    # The atomic opening basket leaves $25; the route's usual farmer build
+    # spends another $14, but this boundary test deliberately passes.
+    assert bool((td["next", "money"] == 25).all()), td["next", "money"]
+    assert bool((env._ep.hands_n[:, env.seat] == 5).all())
+    assert bool((env._ep.seeds_t[:, env.seat].sum(-1) == 19).all())
+    print("K4: fixed compound market + learned labour boundary  PASS")
+    return True
+
+
+def gate_k5():
+    """Teacher-forced warm-up executes legal low-level labels, not samples."""
+    profile = "k01_route_s34_fert_latewheat"
+    env = KGTensorEnv(
+        2, device="cpu", episode_steps=26, base_seed=93,
+        opponent="starter", multi_head=True,
+        fixed_market_profile=profile, kickstart="barnyard:" + profile)
+    env.kickstart_force = True
+    td = env.reset()
+    action = torch.zeros((2, 2 + A.MAX_HANDS), dtype=torch.int64)
+    action[:, 2:] = A.HAND_TASKS.index("IDLE")
+    td["action"] = action
+    td = env.step(td)
+    assert bool((env._ep.kind[:, env.seat, 4, 4] == engine_t.K_PASTURE).all())
+    print("K5: teacher-forced low-level warm-up boundary  PASS")
+    return True
+
+
+def gate_k6():
+    """Exact RAW hand labels reproduce the teacher's unit-state transition."""
+    profile = "k01_route_s34_fert_latewheat"
+    steps = 72
+    indexed = engine_t.EpisodeT([104729], episode_steps=steps, device="cpu")
+    raw = engine_t.EpisodeT([104729], episode_steps=steps, device="cpu")
+    teacher = barnyard_t.BarnyardOpponent(profile)
+    teacher.reset(indexed, 0)
+    labelled = illegal = 0
+    seen = set()
+    while not indexed.done:
+        ops = teacher(indexed, 0)
+        _, _, th = kickstart_labels(indexed, 0, ops)
+        live = th >= 0
+        hm = hand_task_mask_t(indexed, 0, A.MAX_HANDS)
+        legal = hm.gather(-1, th.clamp(min=0).unsqueeze(-1)).squeeze(-1)
+        illegal += int((live & ~legal).sum())
+        labelled += int(live.sum())
+        seen.update(int(x) for x in th[live])
+
+        fi = torch.zeros((1, 2), dtype=torch.int64)
+        mi = torch.zeros_like(fi)
+        hi = torch.zeros((1, 2, A.MAX_HANDS), dtype=torch.int64)
+        of, om = opponents_t.starter_indices(indexed, 1)
+        fi[:, 1], mi[:, 1] = of, om
+        hi[:, 0] = th.clamp(min=1)
+        keep = ("f_op", "f_arg", "f_qty", "m_op", "m_item", "m_rem")
+        indexed.step_idx(fi, mi, override=[
+            (0, {key: ops[key] for key in keep})], h_idx=hi)
+        raw.step_idx(fi, mi, override=[(0, ops)], h_idx=torch.zeros_like(hi))
+        diff = verify.first_diff(indexed.snapshot(0), raw.snapshot(0))
+        assert not diff, diff
+    assert labelled > 0 and illegal == 0
+    assert any(i >= A.HAND_DIRECT_START for i in seen)
+    print(f"K6: {labelled} exact RAW hand labels, zero illegal, "
+          f"{steps - 1} state transitions byte-identical  PASS")
+    return True
+
+
 def gate_k3():
     import train as T
+    profile = "k01_route_s34_fert_latewheat"
     args = T.parse_args([
         "--device", "cpu", "--B", "4", "--iters", "3", "--steps", "24",
-        "--multi-head", "--opponents", "starter", "--kickstart", "barnyard",
-        "--ks-coef", "2.0", "--ks-anneal", "0", "--quiet"])
+        "--multi-head", "--opponents", "starter",
+        "--fixed-market-profile", profile, "--kickstart", "barnyard:" + profile,
+        "--ks-coef", "2.0", "--ks-anneal", "0",
+        "--ks-class-alpha", "0.5",
+        "--kickstart-only-until", "100000", "--quiet"])
     lines = []
     _, records = T.train(args, log_fn=lines.append)
     ks = [r.get("ks") for r in records if r.get("ks") is not None]
@@ -165,13 +264,16 @@ def gate_k3():
     if not ks[-1] < ks[0]:
         print(f"K3 CE did not fall: {ks}")
         return False
+    if not all(r["kickstart_only"] for r in records):
+        print("K3 kickstart-only warm-up did not remain active")
+        return False
     print(f"K3: train.py --kickstart smoke, CE {ks[0]:.3f} -> {ks[-1]:.3f} "
           f"over {len(ks)} iters")
     return True
 
 
 def main():
-    for gate in (gate_k1, gate_k2, gate_k3):
+    for gate in (gate_k1, gate_k2, gate_k3, gate_k4, gate_k5, gate_k6):
         if not gate():
             print("KICK-FAIL")
             return 1

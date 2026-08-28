@@ -2,7 +2,7 @@
 """B3 (first half) acceptance gate: device featurization + masks (DESIGN.md D5).
 
 Contract under test -- features_t:
-    encode_t(ep, player) -> (B, 4867) float32 on ep.device
+    encode_t(ep, player) -> (B, OBS_DIM) float32 on ep.device
     masks_t(ep, player)  -> ((B, 23) bool, (B, 22) bool) on ep.device
 
 Recorded engine_np-oracle action streams (verify_t's generators: >=2

@@ -484,7 +484,13 @@ def gate_early_stop():
     import tempfile
 
     sys.path.insert(0, _RL)
-    from probe import EarlyStopper
+    from probe import EarlyStopper, _probe_opponent
+
+    class _Args:
+        opponent = "barnyard"
+
+    assert _probe_opponent(None, _Args()) == "barnyard"
+    assert _probe_opponent(object(), _Args()) == "starter"
 
     es = EarlyStopper(n_stages=3, advance_at=0.85, patience=2,
                       delta_win=0.01, delta_margin=500.0)

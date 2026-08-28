@@ -489,11 +489,69 @@ def decode(obs, f_idx, m_idx):
 # task -- a wheat-less FEED hand runs a shed PICKUP leg first (measured:
 # barnyard's hands do 83% of its feeding, 181 FEEDs/episode; without this
 # task the animal engine is capped by the farmer's 24 turns/day).
-HAND_TASKS = ["AUTO", "IDLE", "HARVEST", "WATER", "CARE",
-              "COLLECT_FERTILIZER", "DIG", "FEED", "PLANT", "FERTILIZE",
-              "BUILD", "PLACE"]
+# Keep this prefix append-only: historical checkpoints store one row per hand
+# and task, so changing an old index silently changes the exported policy.
+PERSISTENT_HAND_TASKS = [
+    "AUTO", "IDLE", "HARVEST", "WATER", "CARE", "COLLECT_FERTILIZER",
+    "DIG", "FEED", "PLANT", "FERTILIZE", "BUILD", "PLACE",
+]
+N_PERSISTENT_HAND_TASK = len(PERSISTENT_HAND_TASKS)
+
+# Exact one-turn actions for imitation and a future execution Option.  The
+# persistent tasks above remain useful strategic intents (walk to the nearest
+# target, fetch stock, then work); these primitives preserve the teacher's
+# actual op and typed argument instead of collapsing BUILD/PLANT/PLACE and
+# every movement into an under-specified family label.
+DIRECT_HAND_TASKS = (
+    ["RAW_MOVE_N", "RAW_MOVE_S", "RAW_MOVE_E", "RAW_MOVE_W",
+     "RAW_WATER", "RAW_HARVEST", "RAW_FEED", "RAW_CARE",
+     "RAW_COLLECT_FERTILIZER", "RAW_FERTILIZE", "RAW_DIG",
+     "RAW_BUILD_COOP", "RAW_BUILD_PASTURE", "RAW_DROP"]
+    + [f"RAW_PLANT_{c}" for c in CROP_LIST]
+    + [f"RAW_PLACE_{a}" for a in ANIMAL_LIST]
+    + [f"RAW_PICKUP_{item}"
+       for item in ["WHEAT", "FERTILIZER", *ANIMAL_LIST]]
+)
+HAND_TASKS = PERSISTENT_HAND_TASKS + DIRECT_HAND_TASKS
 N_HAND_TASK = len(HAND_TASKS)
 _TASK_IDX = {n: i for i, n in enumerate(HAND_TASKS)}
+HAND_DIRECT_START = N_PERSISTENT_HAND_TASK
+HAND_PICKUP_ITEMS = ["WHEAT", "FERTILIZER", *ANIMAL_LIST]
+HAND_PICKUP_WANT = {"WHEAT": 1, "FERTILIZER": 4,
+                    **{a: 1 for a in ANIMAL_LIST}}
+
+_DIRECT_SIMPLE = {
+    "RAW_MOVE_N": "NORTH", "RAW_MOVE_S": "SOUTH",
+    "RAW_MOVE_E": "EAST", "RAW_MOVE_W": "WEST",
+    "RAW_WATER": "WATER", "RAW_HARVEST": "HARVEST",
+    "RAW_FEED": "FEED", "RAW_CARE": "CARE",
+    "RAW_COLLECT_FERTILIZER": "COLLECT_FERTILIZER",
+    "RAW_FERTILIZE": "FERTILIZE", "RAW_DIG": "DIG",
+    "RAW_BUILD_COOP": "BUILD_COOP",
+    "RAW_BUILD_PASTURE": "BUILD_PASTURE", "RAW_DROP": "DROP",
+}
+
+
+def _direct_hand_action(task_idx, shed):
+    """Decode an appended one-turn hand primitive without target inference."""
+    name = HAND_TASKS[task_idx]
+    op = _DIRECT_SIMPLE.get(name)
+    if op is not None:
+        return [op]
+    for prefix, values, raw_op in (
+            ("RAW_PLANT_", CROP_LIST, "PLANT"),
+            ("RAW_PLACE_", ANIMAL_LIST, "PLACE")):
+        if name.startswith(prefix):
+            arg = name[len(prefix):]
+            assert arg in values
+            return [raw_op, arg]
+    prefix = "RAW_PICKUP_"
+    if name.startswith(prefix):
+        item = name[len(prefix):]
+        assert item in HAND_PICKUP_ITEMS
+        return ["PICKUP", item,
+                min(HAND_PICKUP_WANT[item], shed.get(item, 0))]
+    raise ValueError(f"unknown direct hand task {name!r}")
 
 
 def _hands_actions_multi(obs, s, tasks, farmer=None):
@@ -565,9 +623,13 @@ def _hands_actions_multi(obs, s, tasks, farmer=None):
     if farmer and farmer[0] == "PLANT" and farmer[1] == plant_crop:
         plant_left -= 1
     for i, hpos in enumerate(hands):
-        task = HAND_TASKS[tasks[i]] if i < len(tasks) else "AUTO"
+        task_idx = tasks[i] if i < len(tasks) else 0
+        task = HAND_TASKS[task_idx]
         if task == "IDLE":
             acts.append(["PASS"])
+            continue
+        if task_idx >= HAND_DIRECT_START:
+            acts.append(_direct_hand_action(task_idx, shed))
             continue
         hx, hy = hpos[0], hpos[1]
         hinv = invs[i + 1] if i + 1 < len(invs) else {}
@@ -689,8 +751,10 @@ def hand_task_mask(obs):
     PLACE needs a reachable animal and a free matching structure. Slots beyond
     the live hand count are IDLE-only (zero entropy, zero gradient)."""
     farm, priv, _inv, _pos = _me(obs)
-    n_hands = len(farm.get("hands", []))
+    hands = farm.get("hands", [])
+    n_hands = len(hands)
     s = _scan(obs)
+    shed = priv["shed"]
     fam_has = {"HARVEST": bool(s["harvest"]), "WATER": bool(s["unwatered"]),
                "CARE": bool(s["uncared"]),
                "COLLECT_FERTILIZER": bool(s["fert_ready"]),
@@ -700,8 +764,8 @@ def hand_task_mask(obs):
     plant_ok = (bool(s["empty"])
                 and any(priv["seeds"].get(c, 0) > 0
                         and day <= PLANT_DEADLINE[c] for c in CROP_LIST))
-    shed_wheat = priv["shed"].get("WHEAT", 0) > 0
-    shed_fert = priv["shed"].get("FERTILIZER", 0) > 0
+    shed_wheat = shed.get("WHEAT", 0) > 0
+    shed_fert = shed.get("FERTILIZER", 0) > 0
     unfert_any = bool(s["unfert"])
     min_animal = min(R.ANIMALS[a]["cost"] for a in ANIMAL_LIST)
     build_ok = bool(s["empty"]) and (
@@ -727,9 +791,36 @@ def hand_task_mask(obs):
         place_ok = shed_place or any(
             hinv.get(a, 0) > 0 and free[R.ANIMALS[a]["structure"]]
             for a in ANIMAL_LIST)
+        pos = tuple(hands[i])
+        hx, hy = pos
+        empty_here = pos in set(s["empty"])
+        on_shed = pos in set(_SHED)
+        direct = [
+            hy > 0, hy < N - 1, hx < N - 1, hx > 0,
+            pos in set(s["unwatered"]),
+            pos in set(s["harvest"]),
+            pos in set(s["unfed"]) and hinv.get("WHEAT", 0) > 0,
+            pos in set(s["uncared"]),
+            pos in set(s["fert_ready"]),
+            pos in set(s["unfert"]) and hinv.get("FERTILIZER", 0) > 0,
+            pos in set(s["weeds"]),
+            empty_here, empty_here,
+            on_shed and sum(hinv.values()) > 0,
+        ]
+        direct += [empty_here and priv["seeds"].get(c, 0) > 0
+                   and day <= PLANT_DEADLINE[c] for c in CROP_LIST]
+        direct += [
+            pos in set(s["coop_free"] if R.ANIMALS[a]["structure"] == "COOP"
+                       else s["pasture_free"])
+            and hinv.get(a, 0) > 0
+            for a in ANIMAL_LIST
+        ]
+        direct += [on_shed and shed.get(item, 0) > 0
+                   for item in HAND_PICKUP_ITEMS]
+        assert len(direct) == len(DIRECT_HAND_TASKS)
         rows.append([True, True] + list(chores) + [feed_ok, plant_ok,
                                                    fert_ok, build_ok,
-                                                   place_ok])
+                                                   place_ok] + direct)
     return rows
 
 

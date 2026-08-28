@@ -4,7 +4,8 @@ Layout (all indices computed at import, OBS_DIM is the single source of truth):
 
     [ own board  C*N*N ]  channel-major (C, y, x), flattened
     [ opp board  C*N*N ]  same channels, opponent's farm
-    [ global     G     ]  money, clock, market, own private stocks, town
+    [ global     G     ]  money, clock, market, own private stocks, town,
+                         per-hand identity (active, x/y, carried items)
 
 The board section keeps its (C, y, x) structure so a CNN can reshape it for
 free later; the MLP just eats the flat vector.
@@ -108,9 +109,22 @@ def _global_features(obs):
         cnt[s] = cnt.get(s, 0) + 1
     g += [cnt.get(s, 0) / 4.0 for s in SHOP_LIST]
     g.append(len(unlocked) / 8.0)
+    hands = mine.get("hands", [])
+    inventories = priv["inventories"]
+    items = PRODUCT_LIST + ANIMAL_LIST
+    for slot in range(_ACT.MAX_HANDS):
+        if slot < len(hands):
+            x, y = hands[slot]
+            hinv = inventories[slot + 1] if slot + 1 < len(inventories) else {}
+            g += [1.0, x / (N - 1), y / (N - 1)]
+            g += [min(hinv.get(item, 0), 8) / 8.0 for item in items]
+        else:
+            g += [0.0] * HAND_FEATURES
     return g
 
-G = 8 + 9 * 4 + 3 + 5 + 3 + 3 + 8 + 1
+BASE_G = 8 + 9 * 4 + 3 + 5 + 3 + 3 + 8 + 1
+HAND_FEATURES = 3 + len(PRODUCT_LIST) + len(ANIMAL_LIST)
+G = BASE_G + _ACT.MAX_HANDS * HAND_FEATURES
 OBS_DIM = 2 * C * N * N + G
 
 

@@ -173,9 +173,29 @@ def test_legacy_hand_head_adaptation():
     assert torch.equal(got_b[:, old_tasks:],
                        torch.full_like(got_b[:, old_tasks:], -1e9))
 
+    trainable, train_info = M.adapt_legacy_hand_head(
+        {"hands.weight": weight, "hands.bias": bias}, new_bias=-4.0)
+    train_b = trainable["hands.bias"].view(M.A.MAX_HANDS, M.A.N_HAND_TASK)
+    assert torch.equal(train_b[:, old_tasks:],
+                       torch.full_like(train_b[:, old_tasks:], -4.0))
+    assert train_info["new_task_bias"] == -4.0
+
     current, current_info = M.adapt_legacy_hand_head(adapted)
     assert current is adapted
     assert not current_info["adapted"]
+
+    old_obs = 7
+    new_obs = 11
+    l1 = torch.arange(3 * old_obs, dtype=torch.float32).view(3, old_obs)
+    v1 = torch.arange(2 * old_obs, dtype=torch.float32).view(2, old_obs)
+    obs_adapted, obs_info = M.adapt_legacy_observation(
+        {"l1.weight": l1, "v1.weight": v1, "l1.bias": torch.ones(3)},
+        new_obs)
+    assert obs_info["adapted"]
+    assert torch.equal(obs_adapted["l1.weight"][:, :old_obs], l1)
+    assert torch.equal(obs_adapted["v1.weight"][:, :old_obs], v1)
+    assert not bool(obs_adapted["l1.weight"][:, old_obs:].any())
+    assert not bool(obs_adapted["v1.weight"][:, old_obs:].any())
 
 
 def test_cash_reserve():
