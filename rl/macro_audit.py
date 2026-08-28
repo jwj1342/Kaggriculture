@@ -582,7 +582,13 @@ def _parse_option(text):
                           "k01_route_s34_latewheat",
                           "k01_route_s34_fert_latewheat",
                           }
-        if (profile not in known_profiles
+        # A profile may carry ";key=value" knob overrides (barnyard_t's
+        # parse_profile). Validate the base against the known set and let
+        # parse_profile reject unknown keys, so a sweep over the axes does not
+        # need a new name registered here per candidate.
+        import barnyard_t as _bt_mod
+        base_profile, _over = _bt_mod.parse_profile(profile)
+        if (base_profile not in known_profiles
                 or scope not in {"all", "farm", "market"} or steps <= 0):
             raise ValueError("barnyard_prefix requires a known profile and "
                              "scope, plus positive steps")

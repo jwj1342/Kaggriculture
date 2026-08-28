@@ -122,6 +122,70 @@ _LATE_WHEAT_PROFILES = {
     "k01_route_s34_latewheat", "k01_route_s34_fert_latewheat",
 }
 
+# ---------------------------------------------------------------------------
+# parameterised profiles
+# ---------------------------------------------------------------------------
+# Stage 2 of the G1 plan screens 60-100 executor candidates. One hard-coded
+# profile name per candidate is the hand-written-strategy pattern this project
+# bans, so a profile string may carry ";key=value" overrides on top of a base
+# name: "k01_route_s34_fert;straw=38;wheatlast=27;trip=6". Every membership test
+# below runs on the BASE name, so an existing profile string keeps its exact old
+# meaning and a spec with no ';' takes a byte-identical path -- test_barn.py's
+# parity gate covers the default one.
+_OVERRIDES = {
+    "melon": int,       # MELON plan target tiles
+    "straw": int,       # STRAWBERRY plan target (30 base, 34 in _S34_PROFILES)
+    "wheat": int,       # WHEAT plan target tiles
+    "melonlast": int,   # last day MELON may still be planted
+    "strawlast": int,   # ... STRAWBERRY
+    "wheatlast": int,   # ... WHEAT (24 base, 27 in _LATE_WHEAT_PROFILES)
+    "trip": int,        # WHEAT units carried per feed trip (PICKUP batching)
+    "batch": int,       # WHEAT units per market buy order
+    "reserve": int,     # cash held back from wheat purchases
+    "pcap": int,        # market purchase actions per turn
+    "handmul": float,   # multiplier on the per-day crew cap table
+    "fertmul": float,   # multiplier on the per-day fertiliser cap table
+    "fert": int,        # 1 forces selective fertilise on, 0 off
+}
+_TARGET_KEYS = {"melon": "MELON", "straw": "STRAWBERRY", "wheat": "WHEAT"}
+_LAST_KEYS = {"melonlast": "MELON", "strawlast": "STRAWBERRY",
+              "wheatlast": "WHEAT"}
+# Positions within each plan, by name, so a reordered plan raises instead of
+# silently retargeting a different crop.
+_PLAN_POS = {c: i for i, (c, _, _) in enumerate(BY.CROP_PLAN)}
+_IND_POS = {c: i for i, (c, _, _) in enumerate(_INDUSTRIAL_CROP_PLAN)}
+_SPEC_CACHE = {}
+
+
+def parse_profile(profile):
+    """'k01_route_s34;straw=38' -> ('k01_route_s34', {'straw': 38}).
+
+    An unknown key or unparseable value raises. A silently dropped knob would
+    make two arms of a sweep identical, and the sweep would then report a
+    genuine difference of exactly zero -- the failure mode that is hardest to
+    notice in a table of 60 rows.
+    """
+    if profile is None or ";" not in profile:
+        return profile, {}
+    hit = _SPEC_CACHE.get(profile)
+    if hit is not None:
+        return hit
+    base, *rest = profile.split(";")
+    over = {}
+    for item in rest:
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(f"profile override {item!r} is not key=value")
+        key, text = item.split("=", 1)
+        if key not in _OVERRIDES:
+            raise ValueError(f"unknown profile override {key!r}; known: "
+                             f"{sorted(_OVERRIDES)}")
+        over[key] = _OVERRIDES[key](text)
+    hit = (base, over)
+    _SPEC_CACHE[profile] = hit
+    return hit
+
 # unit-op string forms (dict conversion for the gate / step_raw parity)
 _OP_STR = {X.U_PASS: ["PASS"], X.U_MOVE_N: ["NORTH"], X.U_MOVE_S: ["SOUTH"],
            X.U_MOVE_E: ["EAST"], X.U_MOVE_W: ["WEST"], X.U_WATER: ["WATER"],
@@ -218,6 +282,7 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     (the gate compares them against agents/barnyard.py verbatim)."""
     dev = ep.device
     t = _bt(dev)
+    profile, over = parse_profile(profile)
     if profile in (None, "default"):
         plan_crop, plan_target, plan_last = (
             t.plan_crop, t.plan_target, t.plan_last)
@@ -245,24 +310,39 @@ def compute(ep, player, want_dicts=False, profile=None, sticky_tiles=None,
     state_guided = profile in {"k01_state", "k01_commit", *route_profiles}
     committed_crops = profile in {"k01_commit", *route_profiles}
     persistent_routes = profile in route_profiles
+    pos = _IND_POS if plan_crop is t.industrial_plan_crop else _PLAN_POS
     effective_plan_target = plan_target
-    strawberry_target = 34 if profile in _S34_PROFILES else None
-    if strawberry_target is not None:
+    strawberry_target = over.get(
+        "straw", 34 if profile in _S34_PROFILES else None)
+    tgt = {name: over.get(key) for key, name in _TARGET_KEYS.items()}
+    tgt["STRAWBERRY"] = strawberry_target
+    if any(v is not None for v in tgt.values()):
         effective_plan_target = plan_target.clone()
-        effective_plan_target[1] = strawberry_target
-    if profile in _LATE_WHEAT_PROFILES:
+        for name, value in tgt.items():
+            if value is not None:
+                effective_plan_target[pos[name]] = value
+    last = {name: over.get(key) for key, name in _LAST_KEYS.items()}
+    if last["WHEAT"] is None and profile in _LATE_WHEAT_PROFILES:
+        last["WHEAT"] = 27
+    if any(v is not None for v in last.values()):
         plan_last = plan_last.clone()
-        plan_last[2] = 27
+        for name, value in last.items():
+            if value is not None:
+                plan_last[pos[name]] = value
     hand_cap = (_K01_HAND_CAP[min(day, len(_K01_HAND_CAP) - 1)]
                 if state_guided else BY.HAND_CAP)
+    if "handmul" in over:
+        hand_cap = int(min(BY.HAND_CAP,
+                           max(0, round(hand_cap * over["handmul"]))))
     hire_budget_frac = 1.0 if state_guided else BY.HIRE_BUDGET_FRAC
     bulk_feed = profile in {
         "k01_route_s34_bulk6", "k01_route_s34_logistics",
     }
-    wheat_per_trip = 6 if bulk_feed else 1 if state_guided else BY.WHEAT_PER_TRIP
-    wheat_buy_batch = 2 if state_guided else 10
-    wheat_cash_reserve = 0 if state_guided else 150
-    purchase_cap = 7 if state_guided else S_MKT
+    wheat_per_trip = over.get(
+        "trip", 6 if bulk_feed else 1 if state_guided else BY.WHEAT_PER_TRIP)
+    wheat_buy_batch = over.get("batch", 2 if state_guided else 10)
+    wheat_cash_reserve = over.get("reserve", 0 if state_guided else 150)
+    purchase_cap = over.get("pcap", 7 if state_guided else S_MKT)
 
     # ---- survey (all (B, 100) unless noted) --------------------------------
     kind = ep.kind[:, p].reshape(B, N * N).long()
@@ -1202,9 +1282,13 @@ class BarnyardOpponent:
         if day != self.fert_day:
             self.fert_used.zero_()
             self.fert_day = day
+        base, over = parse_profile(self.profile)
         fert_remaining = None
-        if self.profile in _FERT_PROFILES:
+        fert_on = bool(over.get("fert", base in _FERT_PROFILES))
+        if fert_on:
             cap = _K01_FERT_CAP[min(day, len(_K01_FERT_CAP) - 1)]
+            if "fertmul" in over:
+                cap = int(max(0, round(cap * over["fertmul"])))
             fert_remaining = (cap - self.fert_used).clamp(min=0)
         ops = compute(ep, player, profile=self.profile,
                       sticky_tiles=self.task_tiles,
@@ -1217,7 +1301,7 @@ class BarnyardOpponent:
             self.task_ops, ops["task"].detach(), lane_mask)
         self.task_args = self._merge_lane_state(
             self.task_args, ops["task_arg"].detach(), lane_mask)
-        if self.profile in {"k01_commit", *_ROUTE_PROFILES}:
+        if base in {"k01_commit", *_ROUTE_PROFILES}:
             unit_ops = torch.stack([ops["f_op"], *ops["h_op"]], 1)
             unit_args = torch.stack([ops["f_arg"], *ops["h_arg"]], 1)
             for crop_i in range(len(ET.CROP_NAMES)):
