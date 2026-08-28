@@ -45,7 +45,7 @@ import torch
 import actions as A
 import obs as O
 from trl_env import KGTensorEnv
-from trl_policy import (adapt_legacy_hand_head, adapt_legacy_observation,
+from trl_policy import (NEG, adapt_legacy_hand_head, adapt_legacy_observation,
                         build_actor_critic,
                         load_merged_state_dict,
                         merged_state_dict)
@@ -187,6 +187,19 @@ def build_parser():
                     help="floor the MARKET head's entropy at this fraction of "
                          "ln(n_legal); 0 disables. Penalty is "
                          "relu(frac*ceiling - H) so it is inert above the floor")
+    # 2026-08-28 (docs/RUNS.md, the mktfloor-ctrl verdict). Loading a
+    # pre-expansion checkpoint widens the hand head from 10 tasks to 39, and
+    # this bias is what the 29 added tasks get. `zero` -- the behaviour every
+    # arm before this flag used -- makes them immediately samplable although
+    # they have never been trained, and that alone costs money 40,682 -> 25,708
+    # and win 0.1553 -> 0.000 in ONE PPO iteration, with no recovery in ten.
+    # `neg` suppresses them, matching trl_policy's own default and the export
+    # path. Default stays `zero` so this flag changes no existing arm.
+    ap.add_argument("--legacy-new-bias", choices=("zero", "neg"),
+                    default="zero",
+                    help="bias given to hand tasks that a legacy --init-from "
+                         "checkpoint has never trained: zero makes them "
+                         "immediately samplable, neg suppresses them")
     ap.add_argument("--ks-class-alpha", type=float, default=0.0,
                     help="inverse-frequency exponent for kickstart labels; "
                          "0 is ordinary CE, 0.5 protects rare build/place "
@@ -444,7 +457,8 @@ def train(args, log_fn=None):
         ck = torch.load(args.init_from, map_location="cpu", weights_only=False)
         model = ck.get("model") or ck.get("state_dict") or ck
         model, obs_compatibility = adapt_legacy_observation(model, O.OBS_DIM)
-        model, compatibility = adapt_legacy_hand_head(model, new_bias=0.0)
+        model, compatibility = adapt_legacy_hand_head(
+            model, new_bias=0.0 if args.legacy_new_bias == "zero" else NEG)
         load_merged_state_dict(actor_net, critic_net, model)
         log_fn(f"initialised from {args.init_from}")
         if obs_compatibility["adapted"]:
