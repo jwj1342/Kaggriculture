@@ -165,6 +165,28 @@ def build_parser():
                     help="teacher labels every Nth step (profiler: the "
                          "teacher is 41%% of step time; 4 buys ~1.7x "
                          "collection throughput, CE skips the gaps)")
+    # 2026-08-28 (docs/RUNS.md 0a29c02). The whole G1 chain collapses onto one
+    # head: BUY_SEED is legal on 93% of turns and taken at a 0.79% median, so
+    # PLANT is 0.09x, so 24 crops against cleo's 57, and every other deficit
+    # measured that day is downstream of it. The head is NOT collapsed and NOT
+    # masked -- it holds mass, just on the wrong families (SELL_any 26%,
+    # BUY_WHEAT 11.6%, BUY_SEED 0.79%). The reason nothing corrects it is that
+    # ClipPPOLoss puts ONE scalar entropy_coeff on the SUMMED entropy of 14
+    # heads (farmer 23 + market 31 + twelve hand heads of 10, ceiling ~34), so
+    # the twelve hand heads satisfy the bonus by themselves and a starved market
+    # head is neither penalised in the loss nor visible in the log's `ent`.
+    #
+    # This adds a FLOOR on the market head only -- one variable, the head the
+    # diagnosis names -- as relu(frac * ln(n_legal) - H_market). A floor rather
+    # than a bonus, so it is silent once the head is healthy and the RL term
+    # decides from there; and market-only, because the hand heads are the ones
+    # already carrying entropy and a broad push toward uniform has side effects
+    # this measurement cannot predict. Observed ratio is 1.18/2.64 = 0.45, so a
+    # frac of 0.6 bites and 0.4 does not.
+    ap.add_argument("--mkt-entropy-floor", type=float, default=0.0,
+                    help="floor the MARKET head's entropy at this fraction of "
+                         "ln(n_legal); 0 disables. Penalty is "
+                         "relu(frac*ceiling - H) so it is inert above the floor")
     ap.add_argument("--ks-class-alpha", type=float, default=0.0,
                     help="inverse-frequency exponent for kickstart labels; "
                          "0 is ordinary CE, 0.5 protects rare build/place "
@@ -324,6 +346,29 @@ def _kickstart_ce(actor_net, mb, multi, class_alpha=0.0):
         pick = lp.gather(-1, lab_c.unsqueeze(-1)).squeeze(-1)
         acc(pick, legal, lab_c, hl.shape[-1])
     return total / denom.clamp(min=1)
+
+
+def _market_entropy_floor(actor_net, mb, frac):
+    """relu(frac * ln(n_legal) - H) on the MARKET head, averaged over samples.
+
+    Why a floor and not a bonus: the market head is mis-allocated rather than
+    dead (docs/RUNS.md 0a29c02 -- 26% on SELL_any, 11.6% on BUY_WHEAT, 0.79% on
+    BUY_SEED, all conditioned on legal, with H 1.18 against a 2.64 ceiling). A
+    bonus would keep pushing a healthy head toward uniform, which is how the
+    already-refuted forcings behaved; a floor is inert once the head clears it,
+    so the RL term is what decides which family the recovered mass goes to.
+
+    Rows with at most one legal action have ln(n_legal) = 0 and so contribute
+    nothing, which is the same guard the entropy ceiling uses in
+    tools/head_health.py.
+    """
+    NEG = -1e9
+    ml = actor_net(mb["observation"])[1]
+    mask = mb["market_mask"]
+    lp = torch.log_softmax(ml.masked_fill(~mask, NEG), -1)
+    ent = -(lp.exp() * lp).sum(-1)
+    ceiling = mask.sum(-1).clamp(min=1).to(ent.dtype).log()
+    return torch.relu(frac * ceiling - ent).mean(), ent.detach().mean()
 
 
 def make_loss(algo, actor, critic, args):
@@ -581,7 +626,8 @@ def train(args, log_fn=None):
                 max(0.0, 1.0 - total_steps / args.ks_anneal)
                 if args.ks_anneal > 0 else 1.0)
         prepare_done = _stamp()
-        stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0, "ks": 0.0}
+        stats = {"pg": 0.0, "vf": 0.0, "ent": 0.0, "ks": 0.0,
+                 "mktfloor": 0.0, "hmkt": 0.0}
         n_mb = 0
         # SamplerWithoutReplacement over `minibatches` draws of
         # frames // minibatches is exactly a random partition of `flat`, and
@@ -615,6 +661,13 @@ def train(args, log_fn=None):
                         actor_net, mb, args.multi_head, args.ks_class_alpha)
                     loss = loss + ks_coef * ks
                     stats["ks"] += ks.item()
+                if args.mkt_entropy_floor > 0.0:
+                    # one extra forward, same pattern as the kickstart term
+                    pen, hmkt = _market_entropy_floor(
+                        actor_net, mb, args.mkt_entropy_floor)
+                    loss = loss + pen
+                    stats["mktfloor"] += pen.item()
+                    stats["hmkt"] += hmkt.item()
                 optim.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(loss_mod.parameters(), 0.5)
@@ -740,11 +793,18 @@ def train(args, log_fn=None):
             rec["cuda_peak_gib"] = torch.cuda.max_memory_allocated() / 2**30
 
         ks_s = f"ks {stats['ks']:.3f}@{ks_coef:.2f}  " if args.kickstart else ""
+        # H(mkt) must be VISIBLE. The pathology this floor addresses is a
+        # mis-allocated market head that the summed `ent` column hides
+        # (docs/RUNS.md 2026-08-23 root cause, 0a29c02); adding the penalty
+        # without logging the head would reproduce exactly that blindness.
+        mkt_s = (f"Hmkt {stats['hmkt']:.3f} floor {stats['mktfloor']:.4f}  "
+                 if args.mkt_entropy_floor > 0.0 else "")
         mode_s = (("DAgger-warmup  " if args.kickstart_on_policy
                    else "BC-warmup  ") if kickstart_only else "")
         log_fn(f"it {it:3d}  steps {total_steps:>9,}  sps {rec['sps']:>8,.0f}  "
                f"win {win:5.3f}  money {rec['money']:>9,.0f}  opp {rec['opp_money']:>8,.0f}  "
                f"pg {stats['pg']:+.4f}  vf {stats['vf']:.4f}  ent {stats['ent']:.3f}  "
+               f"{mkt_s}"
                f"{ks_s}{mode_s}{train_sec:5.1f}s (collect {t_col:4.1f}s)")
         log_fn("PROFILE " + " ".join([
             f"iter={it}", f"startup_s={rec['startup_s']:.3f}",
