@@ -164,6 +164,65 @@ def _med(v):
     return float(np.median(v)) if v else float("nan")
 
 
+def by_task(d, opp, seed, every, lo, hi):
+    """Per-hand-task probability mass, over live hand slots, in a day window.
+
+    Why (2026-08-29, verdict 8db606f): two independent interventions that
+    GUARANTEED the seed supply both pushed P(PLANT|legal) DOWN -- the market
+    entropy floor (BUY_SEED 20x up, PLANT 13x down) and the fixed market program
+    (10.6% -> 7.0%). So planting is not seed-limited, and the question is which
+    tasks hold the mass instead. One number for PLANT cannot answer that.
+
+    Two things this exposes that the PLANT column alone cannot:
+      - HAND_TASKS carries BOTH a semantic `PLANT` (which picks the crop itself)
+        AND `RAW_PLANT_<crop>` cells. P(PLANT|legal) only ever measured the
+        semantic one, so a policy that plants via the RAW cells -- or that has
+        them suppressed -- reads identically.
+      - `RAW_*` are 27 of the 39 tasks, i.e. the bulk of the 10->39 vocabulary
+        expansion whose new rows are exactly what --legacy-new-bias sets. Their
+        mass is therefore load-path-sensitive and has to be read, not assumed.
+
+    Restricted to slots where the task is LEGAL, and averaged over live hands
+    only, so a small crew does not dilute every number the way head_health's
+    MAX_HANDS denominator did (the 9-10% vs 14-27% correction, 9080478).
+    """
+    from kaggle_environments import make
+    obs_mod, act_mod, fwd = _load(d)
+    HT = [str(t) for t in getattr(act_mod, "HAND_TASKS", [])]
+    env = make("kaggriculture",
+               configuration={"episodeSteps": 720, "seed": seed}, debug=False)
+    env.run([os.path.join(d, "main.py"), opp])
+
+    p = {t: [] for t in HT}
+    legal = {t: 0 for t in HT}
+    rows = 0
+    for step in range(0, len(env.steps) - 1, every):
+        o = env.steps[step][0].observation
+        if not (lo <= o.get("day", step // 24) <= hi):
+            continue
+        try:
+            hl = fwd(obs_mod.encode(o))[2]
+            if hl is None:
+                break
+            hmk = np.asarray(act_mod.hand_task_mask(o), dtype=bool)
+            if not (hmk.size and hmk.ndim == 2):
+                continue
+            hl2 = hl.reshape(hmk.shape)
+            for r in range(hmk.shape[0]):
+                if not hmk[r].any():
+                    continue
+                q = _softmax_masked(hl2[r], hmk[r])
+                rows += 1
+                for i, t in enumerate(HT):
+                    if hmk[r, i]:
+                        legal[t] += 1
+                        p[t].append(float(q[i]))
+        except Exception:
+            continue
+    sys.path.pop(0)
+    return HT, p, legal, rows
+
+
 def by_crop(d, opp, seed, every, lo, hi):
     """P(BUY_SEED_<crop> | that crop's seed is legal), per crop, in a day window.
 
@@ -222,6 +281,11 @@ def main():
     ap.add_argument("--opp", default=f"{ROOT}/agents/champ/k06.py")
     ap.add_argument("--seed", type=int, default=10000)
     ap.add_argument("--every", type=int, default=7)
+    ap.add_argument("--by-task", metavar="LO-HI", default=None,
+                    help="also print per-hand-task probability mass over this "
+                         "day window; the PLANT column alone cannot say which "
+                         "tasks hold the mass instead, nor separate semantic "
+                         "PLANT from the RAW_PLANT_<crop> cells")
     ap.add_argument("--by-crop", metavar="LO-HI", default=None,
                     help="also split P(BUY_SEED|legal) per crop over this day "
                          "window, e.g. 18-24. The family aggregate cannot "
@@ -262,6 +326,42 @@ def main():
         pl = pl_legal / max(pl_slots, 1)
         row += f"{_med(pp)*100:>5.1f}/{mnp*100:>6.1f}/{pl*100:>5.0f}%"
         print(row)
+    if a.by_task:
+        lo, hi = (int(v) for v in a.by_task.split("-"))
+        print(f"\n  per-hand-task mass over LIVE hand slots, day {lo}-{hi}")
+        got = {}
+        for d in a.dirs:
+            name = os.path.basename(d.rstrip("/"))
+            try:
+                HT, p, legal, rows = by_task(d, a.opp, a.seed, a.every, lo, hi)
+            except Exception as e:
+                print(f"  {name:<22}  ERROR {e}")
+                continue
+            got[name] = (HT, p, legal, rows)
+        if got:
+            names = list(got)
+            HT = got[names[0]][0]
+            print(f"  {'task':<24}" + "".join(f"{n[:18]:>26}" for n in names))
+            print(f"  {'':<24}" + "".join(f"{'mean% / legal%':>26}"
+                                         for _ in names))
+            # Ordered by the FIRST agent's mean so the two columns stay
+            # comparable row by row; tasks never legal anywhere are dropped.
+            def key(t):
+                v = got[names[0]][1][t]
+                return -(float(np.mean(v)) if v else 0.0)
+            for t in sorted(HT, key=key):
+                if not any(got[n][2][t] for n in names):
+                    continue
+                row = f"  {t:<24}"
+                for n in names:
+                    _HT, p, legal, rows = got[n]
+                    v = p[t]
+                    mn = float(np.mean(v)) * 100 if v else 0.0
+                    row += f"{mn:>17.2f} /{100*legal[t]/max(rows,1):>6.0f}%"
+                print(row)
+        print("  legal% is over live hand slots, so a small crew does not "
+              "dilute it (cf. the 9-10% vs 14-27% correction in 9080478)")
+
     if a.by_crop:
         lo, hi = (int(v) for v in a.by_crop.split("-"))
         print(f"\n  P(BUY_SEED_<crop> | that crop is legal), day {lo}-{hi} only")
