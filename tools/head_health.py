@@ -164,12 +164,68 @@ def _med(v):
     return float(np.median(v)) if v else float("nan")
 
 
+def by_crop(d, opp, seed, every, lo, hi):
+    """P(BUY_SEED_<crop> | that crop's seed is legal), per crop, in a day window.
+
+    Why a separate table (2026-08-29, docs/RUNS.md): the family aggregate above
+    answers "does it buy seed at all", and 08-23 used it to find the market head
+    collapsed. But the board read on day 18-24 shows something the aggregate
+    cannot express -- our net holds 5.42 STRAWBERRY seeds and ZERO WHEAT, with 22
+    empty tiles, and ordered WHEAT seed ONCE in a season against k01's 580. One
+    number over `n.startswith("BUY_SEED")` sums those two facts into a single
+    healthy-looking figure.
+
+    The window matters as much as the split. STRAWBERRY has first_yield_day 10,
+    so declining to sow it after day 24 is CORRECT; WHEAT maxes in 4 days and is
+    the only crop that pays in the late season. A season-wide average therefore
+    credits the right refusal and the wrong one to the same account.
+
+    `MARKET_ACTIONS` carries a per-crop `BUY_SEED_<crop>` entry (rl/actions.py:69),
+    so this is one index into the head's own categorical -- not a new mechanism.
+    """
+    from kaggle_environments import make
+    obs_mod, act_mod, fwd = _load(d)
+    names = [str(n) for n in act_mod.MARKET_ACTIONS]
+    crops = [n[len("BUY_SEED_"):] for n in names if n.startswith("BUY_SEED_")]
+    idx = {c: names.index(f"BUY_SEED_{c}") for c in crops}
+    env = make("kaggriculture",
+               configuration={"episodeSteps": 720, "seed": seed}, debug=False)
+    env.run([os.path.join(d, "main.py"), opp])
+
+    p = {c: [] for c in crops}
+    legal = {c: 0 for c in crops}
+    n = 0
+    for step in range(0, len(env.steps) - 1, every):
+        o = env.steps[step][0].observation
+        if not (lo <= o.get("day", step // 24) <= hi):
+            continue
+        try:
+            ml = fwd(obs_mod.encode(o))[1]
+            mm = np.asarray(act_mod.market_mask(o), dtype=bool)
+            if not mm.any():
+                continue
+            pm = _softmax_masked(ml, mm)
+            n += 1
+            for c in crops:
+                if mm[idx[c]]:
+                    legal[c] += 1
+                    p[c].append(float(pm[idx[c]]))
+        except Exception:
+            continue
+    sys.path.pop(0)
+    return crops, p, legal, n
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dirs", nargs="+")
     ap.add_argument("--opp", default=f"{ROOT}/agents/champ/k06.py")
     ap.add_argument("--seed", type=int, default=10000)
     ap.add_argument("--every", type=int, default=7)
+    ap.add_argument("--by-crop", metavar="LO-HI", default=None,
+                    help="also split P(BUY_SEED|legal) per crop over this day "
+                         "window, e.g. 18-24. The family aggregate cannot "
+                         "distinguish 'buys the wrong seed' from 'buys none'")
     a = ap.parse_args()
 
     print(f"\n  states from a real episode against {os.path.basename(a.opp)}, "
@@ -206,6 +262,35 @@ def main():
         pl = pl_legal / max(pl_slots, 1)
         row += f"{_med(pp)*100:>5.1f}/{mnp*100:>6.1f}/{pl*100:>5.0f}%"
         print(row)
+    if a.by_crop:
+        lo, hi = (int(v) for v in a.by_crop.split("-"))
+        print(f"\n  P(BUY_SEED_<crop> | that crop is legal), day {lo}-{hi} only")
+        print(f"  {'agent':<20}{'states':>7}   "
+              + "".join(f"{c[:10]:>22}" for c in
+                        ("WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON")))
+        print(f"  {'':<20}{'':>7}   "
+              + "".join(f"{'med/mean/legal%':>22}" for _ in range(5)))
+        for d in a.dirs:
+            name = os.path.basename(d.rstrip("/"))
+            try:
+                crops, p, legal, n = by_crop(d, a.opp, a.seed, a.every, lo, hi)
+            except Exception as e:
+                print(f"  {name:<22}  ERROR {e}")
+                continue
+            row = f"  {name[:20]:<20}{n:>7}   "
+            for c in ("WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"):
+                if c not in p:
+                    row += f"{'-':>22}"
+                    continue
+                v = p[c]
+                mn = float(np.mean(v)) * 100 if v else float("nan")
+                row += (f"{_med(v)*100:>6.2f}/{mn:>6.2f}/"
+                        f"{100*legal[c]/max(n,1):>5.0f}%")
+            print(row)
+        print(f"  WHEAT: seed $10, first yield +2 days, maxed in 4 -- the only "
+              f"crop that pays after day 18. STRAWBERRY first yields at +10, so "
+              f"NOT sowing it late is correct.")
+
     print(f"\n  reference (nn-d0-chisel, 2026-08-23): P(BUY_SEED|legal) median "
           f"0.02%, P(PLANT|legal) median 21.4%")
     print(f"  H(market) ceiling is ln(n_legal); a COLLAPSED market head reads "
