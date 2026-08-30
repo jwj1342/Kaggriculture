@@ -12260,3 +12260,27 @@ zero-pad 对**加载**确实是中性的(不注入噪声),而它同时意味着*
 所以 −4,381 / −20,385 应读作"**把这一半单独移植过去的代价**",
 不是"这一半本身的价值"。**交互项的存在与量级不受这条限制影响**,
 因为四个格子里有两个是自洽系统且都通过了逐位机械门。
+
+## 2026-08-30 · 预登记:`granger-noks` —— 从 `granger.yaml` 移除 `kickstart: barnyard`(用户已批),验收门用**最强形式:与 `warmstart-zero-ks0` 的 train.csv 逐行字节等价**
+
+**为什么现在删**:`dd561a4` 的 2×2 判它是热启动塌陷的**必要条件**;`f74fecd` 早已关闭
+`--kickstart` 路;`ed4ad4f` 又证教师 CE 与教师质量无关地有害。配置却一直带着它,
+每条臂都要靠 `--ks-coef 0` 手工中和 —— 这正是 08-28 那批臂被静默污染的入口。
+用户 2026-08-30 批准移除,条件是自带 A/B。
+
+**为什么验收门可以用字节等价(读码得出,不是假设)**:`kickstart: barnyard`(无 profile
+后缀)时 `trl_env.py` 的 `self._kickstart_executor is None`,标签走
+`kickstart_labels(ep, seat, None)` —— **纯状态函数,不消耗 RNG、不修改 `ep`**;
+损失侧 CE 项乘 `ks_coef = 0` 精确为零(项有限,`mktfloor` 系读数 3.16)。
+所以移除它唯一该变的是:吞吐(不再算教师标签)与 obs spec 里三个 teacher_* 键(策略不读)。
+
+- **臂**:`granger-noks` = `--config granger.yaml(新) --init-from rl/runs/anvil/latest.pt
+  --hidden 1024 512 --v-hidden 512 --multi-head --legacy-new-bias zero --seed 280828`
+  （与 `warmstart-zero-ks0` 唯一差别:config 里没有 kickstart,于是命令行也不再需要
+  `--ks-coef 0`）。CPU 单 link 30 分钟。
+- **A 分支(移除干净)**:iters 0–8 的 `win`/`money`/`ent` 列与 `warmstart-zero-ks0`
+  **逐行相等**(sps/sec 是计时列,不比)。顺带记录 sps 变化。
+- **B 分支**:iter 0 相等但后续发散 → coef 0 时 kickstart 仍在某处消耗 RNG;
+  记录在哪;**移除仍保留**(它是目的状态),但此后与旧 `--ks-coef 0` 系对照不再字节可比,
+  需要重立基线。
+- **C 分支**:iter 0 就不等 → 结构性问题(teacher_* 键影响了策略路径?),**回滚并查**。

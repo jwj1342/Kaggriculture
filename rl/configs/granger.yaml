@@ -16,9 +16,9 @@
 #   L4+: same with --opp-noise 0.0
 # This schedule is archived; new runs go through tools/submit_rl.py.
 #
-# NO residual_base on purpose: kickstart labels + the build-curve credit
-# provide the warm direction without the melon anchor. Hand heads still
-# open AUTO-biased (the safe scheduler).
+# NO residual_base on purpose (and since 2026-08-30, no kickstart either --
+# see below): the build-curve credit provides the warm direction without
+# the melon anchor. Hand heads still open AUTO-biased (the safe scheduler).
 device: cuda
 B: 1024
 iters: 240
@@ -34,8 +34,12 @@ margin_bonus: 1.5
 margin_scale: 50000
 potential: future
 build_bonus: 1.0
-kickstart: barnyard
-ks_coef: 0.5
-ks_anneal: 80000000
+# kickstart removed 2026-08-30 (user-approved). dd561a4's 2x2 proved
+# `kickstart: barnyard` is the NECESSARY condition for the warm-start
+# collapse (money 40,682 -> 25,708, win -> 0.000 in one iteration), and
+# f74fecd had already closed the --kickstart path because barnyard is a
+# worse teacher than the learner. ed4ad4f then closed teacher CE at ANY
+# teacher quality. Removal is verified equivalent to --ks-coef 0 by the
+# granger-noks A/B (byte-equality gate) -- see docs/RUNS.md 2026-08-30.
 probe_every: 10
 stop_patience: 6
