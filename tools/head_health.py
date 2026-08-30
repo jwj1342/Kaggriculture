@@ -75,7 +75,27 @@ def _load(d):
         hl = (W["hw"] @ h + W["hb"]) if "hw" in W else None
         return f, m, hl
 
-    return obs_mod, act_mod, fwd
+    return obs_mod, act_mod, fwd, W
+
+
+def _couple_m(W, ml, fl, hl, act_mod, o):
+    """Condition market logits on the mode intents for coupled exports.
+
+    CoupledMultiHeadMasked (2026-08-30) plays market logits conditioned on
+    the SAME turn's farmer/hand choices. Reading the base `mw @ h + mb` for
+    such an export reports probabilities the policy never plays -- the
+    family-aggregate-hides-a-dead-action failure mode (6e2b2c2), moved into
+    this tool itself. Conditioning on the argmax intents matches what the
+    greedy export actually does.
+    """
+    if "cfw" not in W or hl is None:
+        return ml
+    fm = np.asarray(act_mod.farmer_mask(o), dtype=bool)
+    fa = int(np.where(fm, fl, -1e9).argmax())
+    hmk = np.asarray(act_mod.hand_task_mask(o), dtype=bool)
+    hl2 = np.where(hmk, hl.reshape(hmk.shape), -1e9)
+    tasks = hl2.argmax(-1)
+    return ml + W["cfw"][:, fa] + W["chw"][:, tasks].mean(axis=1)
 
 
 def _softmax_masked(logits, mask):
@@ -94,7 +114,7 @@ def _entropy(p):
 
 def probe(d, opp, seed, every):
     from kaggle_environments import make
-    obs_mod, act_mod, fwd = _load(d)
+    obs_mod, act_mod, fwd, W = _load(d)
     names = [str(n) for n in act_mod.MARKET_ACTIONS]
     HT = [str(t) for t in getattr(act_mod, "HAND_TASKS", [])]
     env = make("kaggriculture",
@@ -113,6 +133,7 @@ def probe(d, opp, seed, every):
         try:
             x = obs_mod.encode(o)
             fl, ml, hl = fwd(x)
+            ml = _couple_m(W, ml, fl, hl, act_mod, o)
             fm = np.asarray(act_mod.farmer_mask(o), dtype=bool)
             mm = np.asarray(act_mod.market_mask(o), dtype=bool)
             if not mm.any():
@@ -187,7 +208,7 @@ def by_task(d, opp, seed, every, lo, hi):
     MAX_HANDS denominator did (the 9-10% vs 14-27% correction, 9080478).
     """
     from kaggle_environments import make
-    obs_mod, act_mod, fwd = _load(d)
+    obs_mod, act_mod, fwd, _W = _load(d)
     HT = [str(t) for t in getattr(act_mod, "HAND_TASKS", [])]
     env = make("kaggriculture",
                configuration={"episodeSteps": 720, "seed": seed}, debug=False)
@@ -243,7 +264,7 @@ def by_crop(d, opp, seed, every, lo, hi):
     so this is one index into the head's own categorical -- not a new mechanism.
     """
     from kaggle_environments import make
-    obs_mod, act_mod, fwd = _load(d)
+    obs_mod, act_mod, fwd, W = _load(d)
     names = [str(n) for n in act_mod.MARKET_ACTIONS]
     crops = [n[len("BUY_SEED_"):] for n in names if n.startswith("BUY_SEED_")]
     idx = {c: names.index(f"BUY_SEED_{c}") for c in crops}
@@ -259,7 +280,8 @@ def by_crop(d, opp, seed, every, lo, hi):
         if not (lo <= o.get("day", step // 24) <= hi):
             continue
         try:
-            ml = fwd(obs_mod.encode(o))[1]
+            fl, ml, hl = fwd(obs_mod.encode(o))
+            ml = _couple_m(W, ml, fl, hl, act_mod, o)
             mm = np.asarray(act_mod.market_mask(o), dtype=bool)
             if not mm.any():
                 continue

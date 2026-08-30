@@ -55,6 +55,15 @@ if ra != rb:
     sys.exit("kg_rules.py differs between the two exports -- the same logits "
              "would decode against different prices")
 
+import numpy as _np
+for _side, _src in (("a", builder), ("b", inheritor)):
+    if "cfw" in _np.load(os.path.join(_src, "weights.npz")):
+        sys.exit(f"export {_side} is head-coupled (CoupledMultiHeadMasked, "
+                 f"cfw present) and this tool's generated forward does not "
+                 f"implement the market conditioning -- the hybrid would "
+                 f"silently play the UNCOUPLED base policy. Extend the "
+                 f"template first (see rl/export_agent.py's coupled branch).")
+
 for side, src, wname, modname in (("a", builder, "weights_a.npz", "kg_net_a"),
                                   ("b", inheritor, "weights_b.npz", "kg_net_b")):
     for f in os.listdir(src):

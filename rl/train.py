@@ -187,6 +187,20 @@ def build_parser():
                     help="floor the MARKET head's entropy at this fraction of "
                          "ln(n_legal); 0 disables. Penalty is "
                          "relu(frac*ceiling - H) so it is inert above the floor")
+    # 2026-08-30 (docs/RUNS.md 28da6ef, user-approved direction). The farm x
+    # market interaction measured +68,972 with either side swapped alone
+    # NEGATIVE (-4,381 / -20,385), so heads that are independent given the
+    # state cannot represent the coordination the gap consists of. This
+    # conditions the market head on the SAME turn's sampled farmer action and
+    # hand tasks through zero-initialised tables (CoupledMultiHeadMasked) --
+    # at load the policy is bit-identical to the factored one, so legacy
+    # warm starts and the iter-0 deterministic lane gate are unchanged.
+    # Sampled trajectories are NOT byte-comparable to factored runs (the
+    # global-RNG consumption order changes from f,m,h to f,h,m).
+    ap.add_argument("--couple-heads", action="store_true",
+                    help="condition the market head on this turn's sampled "
+                         "farmer/hand intents (zero-init coupling tables; "
+                         "requires --multi-head)")
     # 2026-08-28 (docs/RUNS.md, the mktfloor-ctrl verdict). Loading a
     # pre-expansion checkpoint widens the hand head from 10 tasks to 39, and
     # this bias is what the 29 added tasks get. `zero` -- the behaviour every
@@ -432,6 +446,26 @@ def train(args, log_fn=None):
             raise ValueError(
                 "--kickstart-only-until requires --multi-head, --ks-every 1, "
                 "and matching barnyard:<profile>/--fixed-market-profile")
+    if args.couple_heads:
+        if not args.multi_head:
+            raise ValueError("--couple-heads requires --multi-head: the "
+                             "coupling conditions on hand-task intents")
+        if args.kickstart:
+            raise ValueError(
+                "--couple-heads with --kickstart is not supported: the CE "
+                "targets the BASE market logits while the played policy is "
+                "the conditional (and teacher CE is a closed family, ed4ad4f)")
+        if args.mkt_entropy_floor:
+            raise ValueError(
+                "--couple-heads with --mkt-entropy-floor is not supported: "
+                "the floor reads the BASE market entropy, not the played "
+                "conditional (and the floor is refuted, 8ec1c96)")
+        if args.fixed_market_profile:
+            raise ValueError(
+                "--couple-heads with --fixed-market-profile is pointless: "
+                "the market head is masked to NOOP, so there is nothing to "
+                "condition (and that flag's artifacts are undeployable, "
+                "8db606f)")
 
     env = KGTensorEnv(
         args.B, device=dev,
@@ -452,7 +486,11 @@ def train(args, log_fn=None):
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
         v_hidden=args.v_hidden, device=dev,
-        residual_base=args.residual_base, multi=args.multi_head)
+        residual_base=args.residual_base, multi=args.multi_head,
+        couple=args.couple_heads)
+    if args.couple_heads:
+        log_fn("couple-heads: market head conditioned on sampled "
+               "farmer/hand intents (zero-init tables; RNG order f,h,m)")
     if args.init_from:
         ck = torch.load(args.init_from, map_location="cpu", weights_only=False)
         model = ck.get("model") or ck.get("state_dict") or ck

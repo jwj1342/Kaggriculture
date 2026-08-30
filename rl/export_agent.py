@@ -159,9 +159,17 @@ def _act(obs_dict):
     hm = np.array(_A.hand_task_mask(obs_dict), dtype=bool)
     hlog = hlog.reshape(hm.shape)
     hlog[~hm] = -1e9
+    fa = _pick(flog)
     tasks = [_pick(row) for row in hlog]
+    if "cfw" in _W:
+        # Coupled export (CoupledMultiHeadMasked): the market head is
+        # conditioned on THIS turn's farmer action and hand tasks. Skipping
+        # this would silently play the uncoupled base policy -- the
+        # loads-the-unwrapped-agent failure mode, one layer down.
+        mlog = mlog + _W["cfw"][:, fa] + _W["chw"][:, tasks].mean(axis=1)
+        mlog[~_A.market_mask(obs_dict)] = -1e9
     return _sheep_option(
-        obs_dict, _A.decode_multi(obs_dict, _pick(flog), tasks, _pick(mlog)))
+        obs_dict, _A.decode_multi(obs_dict, fa, tasks, _pick(mlog)))
 
 
 def agent(obs, config=None):

@@ -88,12 +88,22 @@ ACTOR_ARRAYS = {"l1w": "l1.weight", "l1b": "l1.bias",
                 "fw": "farmer.weight", "fb": "farmer.bias",
                 "mw": "market.weight", "mb": "market.bias"}
 HANDS_ARRAYS = {"hw": "hands.weight", "hb": "hands.bias"}
+# Head coupling (2026-08-30, docs/RUNS.md 28da6ef): the farm x market
+# interaction measured +68,972 while either side swapped alone measured
+# negative, so a policy whose heads are independent given the state cannot
+# represent the coordination the gap consists of. cfw/chw condition the
+# market head on the SAME TURN's sampled farmer action and hand tasks.
+# No bias array on purpose: a coupling bias would be state-independent and
+# the market head already has one -- and all-zero cfw/chw must reproduce
+# the factored policy exactly (that identity is the load/lane contract,
+# gated by test_couple.py).
+COUPLE_ARRAYS = {"cfw": "couple_f", "chw": "couple_h"}
 
 
 def actor_arrays(sd, prefix="", numpy=False):
     """State dict (keys under `prefix`) -> weights.npz array dict."""
     out = {}
-    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS}.items():
+    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS}.items():
         k = prefix + pk
         if k in sd:
             v = sd[k]
@@ -108,7 +118,7 @@ def actor_arrays(sd, prefix="", numpy=False):
 def arrays_to_sd(arrays, prefix=""):
     """weights.npz arrays (optionally d_-prefixed) -> actor state dict."""
     sd = {}
-    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS}.items():
+    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS}.items():
         k = prefix + ak
         if k in arrays:
             sd[pk] = torch.as_tensor(arrays[k])
@@ -282,6 +292,109 @@ class MultiHeadMasked(D.Distribution):
         return self.mode
 
 
+class CoupledMultiHeadMasked(D.Distribution):
+    """MultiHeadMasked with the market head CONDITIONED on the same turn's
+    farmer action and hand tasks (autoregressive order f, h -> m).
+
+    Why (docs/RUNS.md 28da6ef): the farm x market interaction measured
+    +68,972 with either side alone negative, so heads that are independent
+    given the state cannot represent the coordination the gap consists of.
+    The conditional is one linear map on intent counts:
+
+        mlogits(fa, ha) = mbase + couple_f[:, fa] + mean_i couple_h[:, ha_i]
+
+    couple_f/couple_h are bound as CLASS attributes by build_actor_critic
+    (a per-build subclass), because ProbabilisticActor instantiates the
+    distribution from tensordict tensors only, and shipping the (n_market x
+    n_farmer+n_task) tables through the replay buffer per step would cost
+    gigabytes. Gradients flow: the loss re-runs the actor forward, and the
+    parameters participate in log_prob's graph regardless of how the
+    reference arrived.
+
+    Contracts, each load-bearing:
+      * all-zero coupling == MultiHeadMasked exactly -- log_prob, entropy
+        and mode are bit-identical (test_couple.py G1), which is what makes
+        legacy warm starts and the iter-0 deterministic lane gate valid;
+      * sample() draws f, then h, then m -- a DIFFERENT global-RNG
+        consumption order from MultiHeadMasked's f, m, h, so sampled
+        trajectories are not byte-comparable to factored runs even at zero
+        coupling (deterministic evaluation is; use that for lane gates);
+      * entropy() is H(f) + H(h) + H(m | argmax f, argmax h): the exact
+        market term needs an expectation over (f, h); conditioning on the
+        mode keeps it deterministic (no extra RNG draws that would shift
+        the stream) and exact whenever the coupling is zero;
+      * hand means run over ALL MAX_HANDS slots, dead slots included --
+        dead rows are IDLE-only, so their contribution is a constant the
+        linear map absorbs; masking to live hands would need crew state
+        the distribution does not have.
+    """
+
+    arg_constraints = {}
+    has_enumerate_support = False
+    couple_f = None   # (n_market, n_farmer), bound by build_actor_critic
+    couple_h = None   # (n_market, n_hand_task)
+
+    def __init__(self, flogits, mlogits, hlogits, fmask, mmask, hmask):
+        self.flp = F.log_softmax(flogits.masked_fill(~fmask, NEG), -1)
+        self.hlp = F.log_softmax(hlogits.masked_fill(~hmask, NEG), -1)
+        self._mraw = mlogits
+        self._mmask = mmask
+        H = self.hlp.shape[-2]
+        super().__init__(batch_shape=self.flp.shape[:-1],
+                         event_shape=torch.Size([2 + H]), validate_args=False)
+
+    def _mlp(self, fa, ha):
+        """Conditioned market log-probs for one (fa, ha) per batch element."""
+        delta = (self.couple_f.t()[fa]
+                 + self.couple_h.t()[ha].mean(-2))
+        return F.log_softmax(
+            (self._mraw + delta).masked_fill(~self._mmask, NEG), -1)
+
+    def sample(self, sample_shape=torch.Size()):
+        if sample_shape != torch.Size():
+            # MC fallback only (A2C entropy estimates); collection and PPO
+            # never land here. Conditions each draw correctly.
+            fa = D.Categorical(logits=self.flp).sample(sample_shape)
+            ha = D.Categorical(logits=self.hlp).sample(sample_shape)
+            ma = D.Categorical(logits=self._mlp(fa, ha)).sample()
+            return torch.cat([fa.unsqueeze(-1), ma.unsqueeze(-1), ha], -1)
+        flp2 = self.flp.reshape(-1, self.flp.shape[-1])
+        hlp2 = self.hlp.reshape(-1, self.hlp.shape[-1])
+        fa = torch.multinomial(flp2.exp(), 1).squeeze(-1).reshape(self.batch_shape)
+        ha = torch.multinomial(hlp2.exp(), 1).squeeze(-1).reshape(
+            self.hlp.shape[:-1])
+        mlp = self._mlp(fa, ha)
+        ma = torch.multinomial(
+            mlp.reshape(-1, mlp.shape[-1]).exp(), 1
+        ).squeeze(-1).reshape(self.batch_shape)
+        return torch.cat([fa.unsqueeze(-1), ma.unsqueeze(-1), ha], -1)
+
+    def log_prob(self, action):
+        fa, ma, ha = action[..., 0], action[..., 1], action[..., 2:]
+        mlp = self._mlp(fa, ha)
+        return (self.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
+                + mlp.gather(-1, ma.unsqueeze(-1)).squeeze(-1)
+                + self.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))
+
+    def entropy(self):
+        fa = self.flp.argmax(-1)
+        ha = self.hlp.argmax(-1)
+        mlp = self._mlp(fa, ha)
+        return (-(self.flp.exp() * self.flp).sum(-1)
+                - (mlp.exp() * mlp).sum(-1)
+                - (self.hlp.exp() * self.hlp).sum((-1, -2)))
+
+    @property
+    def mode(self):
+        fa = self.flp.argmax(-1)
+        ha = self.hlp.argmax(-1)
+        ma = self._mlp(fa, ha).argmax(-1)
+        return torch.cat([fa.unsqueeze(-1), ma.unsqueeze(-1), ha], -1)
+
+    def deterministic_sample(self):
+        return self.mode
+
+
 class MultiActorNet(ActorNet):
     """ActorNet + one task head per hand slot. The hand-head bias starts at
     +auto_bias on AUTO, so the untrained policy behaves like the classic
@@ -290,13 +403,22 @@ class MultiActorNet(ActorNet):
     competent default where IDLE is a strike)."""
 
     def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
-                 n_hands=12, n_hand_task=None, auto_bias=2.5):
+                 n_hands=12, n_hand_task=None, auto_bias=2.5, couple=False):
         super().__init__(obs_dim, n_farmer, n_market, hidden1, hidden2)
         n_hand_task = n_hand_task or _n_hand_task()
         self.n_hands, self.n_hand_task = n_hands, n_hand_task
         self.hands = _ortho(nn.Linear(hidden2, n_hands * n_hand_task), 1e-4)
         with torch.no_grad():
             self.hands.bias.view(n_hands, n_hand_task)[:, 0] = auto_bias
+        if couple:
+            # Market-head coupling tables (CoupledMultiHeadMasked). ZERO init
+            # is the contract, not a convenience: at zero the coupled policy
+            # is bit-identical to the factored one, so legacy checkpoints
+            # warm-start unchanged and the iter-0 deterministic lane gate
+            # stays valid. torch.zeros draws no RNG, so adding these does
+            # not shift the init stream of the shared layers either.
+            self.couple_f = nn.Parameter(torch.zeros(n_market, n_farmer))
+            self.couple_h = nn.Parameter(torch.zeros(n_market, n_hand_task))
 
     def forward(self, x):
         h = torch.relu(self.l1(x))
@@ -308,6 +430,9 @@ class MultiActorNet(ActorNet):
         out = super().state_np()
         out["hw"] = self.hands.weight.detach().cpu().float().numpy()
         out["hb"] = self.hands.bias.detach().cpu().float().numpy()
+        if hasattr(self, "couple_f"):
+            out["cfw"] = self.couple_f.detach().cpu().float().numpy()
+            out["chw"] = self.couple_h.detach().cpu().float().numpy()
         return out
 
 
@@ -352,24 +477,35 @@ try:
     from torchrl.modules.distributions import HAS_ENTROPY
     HAS_ENTROPY[TwoHeadMasked] = True
     HAS_ENTROPY[MultiHeadMasked] = True
+    HAS_ENTROPY[CoupledMultiHeadMasked] = True  # bound subclasses register
+    # themselves in build_actor_critic (the dict is keyed by exact class)
 except ImportError:  # torchrl absent: the raw nets are still importable
     pass
 
 
 def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                        v_hidden=256, device="cpu", residual_base="",
-                       multi=False, n_hands=12, n_hand_task=None):
+                       multi=False, n_hands=12, n_hand_task=None,
+                       couple=False):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
 
     Construction order (actor layers, then critic layers) matches PolicyT's
     __init__, so under the same torch seed the initial weights are the same
     draws train_t.py would have made. residual_base wraps a frozen prior;
     multi=True adds the per-hand task heads (MultiHeadMasked, action
-    (B, 2 + n_hands)).
+    (B, 2 + n_hands)); couple=True conditions the market head on the same
+    turn's sampled farmer/hand intents (CoupledMultiHeadMasked).
     """
     from tensordict.nn import TensorDictModule, InteractionType
     from torchrl.modules import ProbabilisticActor, ValueOperator
 
+    if couple and not multi:
+        raise ValueError("couple=True requires multi=True: the coupling "
+                         "conditions on hand-task intents")
+    if couple and residual_base:
+        raise ValueError("couple=True with a residual prior is not "
+                         "implemented; the prior's market logits would be "
+                         "conditioned inconsistently with its own training")
     if multi:
         if residual_base:
             actor_net = MultiResidualActor(
@@ -377,14 +513,33 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                 n_hands, n_hand_task).to(device)
         else:
             actor_net = MultiActorNet(obs_dim, n_farmer, n_market, hidden1,
-                                      hidden2, n_hands, n_hand_task).to(device)
+                                      hidden2, n_hands, n_hand_task,
+                                      couple=couple).to(device)
         logits_mod = TensorDictModule(
             actor_net, in_keys=["observation"],
             out_keys=["flogits", "mlogits", "hlogits"])
         dist_keys = {"flogits": "flogits", "mlogits": "mlogits",
                      "hlogits": "hlogits", "fmask": "farmer_mask",
                      "mmask": "market_mask", "hmask": "hand_mask"}
-        dist_cls = MultiHeadMasked
+        if couple:
+            # A per-build subclass binds the coupling PARAMETERS as class
+            # attributes: ProbabilisticActor instantiates the distribution
+            # from tensordict tensors only, and expanding the tables per
+            # replay step would cost gigabytes. nn.Module.to() moves
+            # parameter storage in place, so binding after .to(device) holds
+            # the live tensors, and autograd tracks them through log_prob
+            # regardless of how the reference arrived.
+            dist_cls = type("CoupledMultiHeadMaskedBound",
+                            (CoupledMultiHeadMasked,),
+                            {"couple_f": actor_net.couple_f,
+                             "couple_h": actor_net.couple_h})
+            try:
+                from torchrl.modules.distributions import HAS_ENTROPY
+                HAS_ENTROPY[dist_cls] = True
+            except ImportError:
+                pass
+        else:
+            dist_cls = MultiHeadMasked
     else:
         if residual_base:
             actor_net = ResidualActor(residual_base, obs_dim, n_farmer,

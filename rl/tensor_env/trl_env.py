@@ -357,7 +357,19 @@ class FrozenPolicyOpponent:
             sd = arrays_to_sd(arrays, prefix)
             sd.pop("hands.weight", None)   # the hand head is applied
             sd.pop("hands.bias", None)     # separately (see _hands below)
+            sd.pop("couple_f", None)       # coupling tables likewise --
+            sd.pop("couple_h", None)       # played via self._couple below
             return sd
+
+        # Coupled snapshots (CoupledMultiHeadMasked exports): the market
+        # argmax must be conditioned on the farmer/hand argmaxes, or the
+        # snapshot silently plays the UNCOUPLED base policy -- the same
+        # loads-the-unwrapped-agent failure mode CLAUDE.md's agent-contract
+        # section warns about, one layer down.
+        self._couple = None
+        if "cfw" in arrays:
+            self._couple = (torch.as_tensor(arrays["cfw"]).float().to(device),
+                            torch.as_tensor(arrays["chw"]).float().to(device))
 
         self.net = self._net_from_sd(net_sd(), device)
         self.delta = None
@@ -402,12 +414,19 @@ class FrozenPolicyOpponent:
         fm, mm = features_t.masks_t(ep, player)
         fl, ml = self._logits(x)
         fa = fl.masked_fill(~fm, NEG).argmax(-1)
-        ma = ml.masked_fill(~mm, NEG).argmax(-1)
         if self._hands is None:
+            if self._couple is not None:
+                raise ValueError("coupled snapshot without a hand head -- "
+                                 "the coupling conditions on hand tasks")
+            ma = ml.masked_fill(~mm, NEG).argmax(-1)
             return fa, ma
         hl = self._hand_logits(x)
         hm = hand_task_mask_t(ep, player, hl.shape[-2])
         ha = hl.masked_fill(~hm, NEG).argmax(-1)
+        if self._couple is not None:
+            cfw, chw = self._couple
+            ml = ml + cfw.t()[fa] + chw.t()[ha].mean(-2)
+        ma = ml.masked_fill(~mm, NEG).argmax(-1)
         return fa, ma, ha
 
 

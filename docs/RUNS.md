@@ -12300,3 +12300,44 @@ zero-pad 对**加载**确实是中性的(不注入噪声),而它同时意味着*
 配置层面的收尾:`granger.yaml` 不再携带 kickstart/ks_coef/ks_anneal,
 新臂不再需要手工 `--ks-coef 0` 中和 —— 08-28 那批臂被静默污染的入口已经关闭。
 `warmstart-zero-ks0` 一系的旧对照与新 config 的臂**保持逐字节可比**(本条就是证明)。
+
+## 2026-08-30 · 预登记:`couple-v1` —— 耦合动作头(用户拍板的联合干预),市场头条件于同回合已采样的 farmer/hand 意图
+
+**设计依据(`28da6ef`)**:农场侧×市场侧交互 +68,972 而单独换任一侧为负,
+所以"给定状态下各头独立"的策略**表示不了**缺口所在的协调。实现
+(`CoupledMultiHeadMasked`,提交随本条):
+
+- `mlogits(fa, ha) = mbase + couple_f[:, fa] + mean_i couple_h[:, ha_i]`,
+  自回归顺序 f, h → m;耦合表**零初始化**(加载时与因子化策略**逐位相同**,
+  `test_couple.py` G1 断言 mode/log_prob/entropy 三者 bit-identical)。
+- 五道无引擎门全过:G1 零耦合恒等;G2 耦合只动市场列(46/64 态)、不漏进其他头;
+  G3 梯度经 log_prob 到达两张表;G4 导出契约(numpy 模板数学 == torch,偏差 2.4e-07,
+  argmax 翻转全部归因到自身头的 float32 平局带)、`actor_arrays` 往返保留 cfw/chw;
+  G5 legacy 检查点加载后耦合表保持为零。`test_trl.py` 全部既有门不受影响。
+- 同步实现的消费者:`export_agent.py` 模板(耦合解码)、`FrozenPolicyOpponent`
+  (联盟快照必须**播放**耦合,否则静默退化成基座 —— agent 契约那类故障下移一层)、
+  `head_health.py`(对耦合导出按 mode 意图条件化,否则报的是从不被播放的概率)、
+  `build_netnet.py`(硬门拒绝耦合导出)。与 `--kickstart`/`--mkt-entropy-floor`/
+  `--fixed-market-profile` 组合在 train.py 里显式报错(各自的理由写在错误信息里)。
+
+**臂**:`granger.yaml(noks) --couple-heads --init-from anvil/latest.pt
+--legacy-new-bias zero --hidden 1024 512 --v-hidden 512 --multi-head --seed 280828`。
+**对照**:`granger-noks`(刚证明与 zero-ks0 逐字节等价)。单变量 = `--couple-heads`。
+
+**lane 门换形式,原因预先写明**:耦合采样把全局 RNG 消耗顺序从 f,m,h 改成 f,h,m,
+所以**即使策略逐位相同,iter 0 的采样评估也不会复现 40,682/0.1553** ——
+逐字节 lane 门在这条臂上**不可用**(G1 已在分布层面证明零耦合恒等,这是替代证据)。
+机械有效性门代之:
+(i) 日志必须出现 couple-heads 行;
+(ii) **iter 0 合理带**:money ∈ 40,682±2,500 且 win ∈ 0.1553±0.05(同策略、不同样本);
+(iii) 跑完后检查点里 `couple_f/couple_h` 的 max|w| **> 0**(梯度确实流过)。
+任一失败 → 整条作废,不解释后续数字。
+
+**分支(iter 8,对照 46,300/0.4951)**:
+- **A(耦合早期就有效)**:money ≥ 50,000 且 win ≥ 对照。
+- **B(容量加了但 8 迭代内未被利用)**:money ∈ 46,300±3,700 → **不是设计的否证**;
+  +68,972 的交互需要两侧协调变化,8 个迭代可能太短 —— 预先写明这一分支的后续是
+  **更长的链**,而不是撤回。
+- **C(有害)**:money ≤ 42,600 → 先查(熵近似?RNG 顺序?)再谈更长链。
+- 事后读数(不作判据):`head_health --by-crop` 看资本形成格是否有任何苏醒迹象;
+  耦合表的范数轨迹。
