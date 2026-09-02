@@ -178,10 +178,14 @@ def test_preflight_ignores_prose_but_not_code():
         run("git", "config", "user.name", "t")
         os.makedirs(os.path.join(tmp, "docs"))
         os.makedirs(os.path.join(tmp, "tools"))
+        os.makedirs(os.path.join(tmp, "rl"))
         prose = os.path.join(tmp, "docs", "RUNS.md")
+        queue = os.path.join(tmp, "rl", "TODO.md")
         code = os.path.join(tmp, "tools", "thing.py")
         with open(prose, "w") as fh:
             fh.write("# verdicts\n")
+        with open(queue, "w") as fh:
+            fh.write("# RL TODO\n")
         with open(code, "w") as fh:
             fh.write("X = 1\n")
         run("git", "add", "-A")
@@ -200,6 +204,13 @@ def test_preflight_ignores_prose_but_not_code():
 
             with open(prose, "a") as fh:                 # a verdict is appended
                 fh.write("\n## 2026-09-02 - a verdict\n")
+            run_preflight.verify(manifest_path)          # must STILL pass
+
+            # the live queue is markdown INSIDE the code tree, which the first
+            # version of the exclusion list missed -- it voided 12 pending
+            # links within the hour
+            with open(queue, "a") as fh:
+                fh.write("\n- a new standing row\n")
             run_preflight.verify(manifest_path)          # must STILL pass
 
             with open(code, "a") as fh:                  # code drifts

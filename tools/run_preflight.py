@@ -20,7 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # kg-g1-wheat-240/408 and kg-warmstart-neg-* died the same way earlier.
 # Everything executable stays protected -- rl/, agents/, tools/, slurm/,
 # requirements/, setup_env.sh and the configs are all still covered by ".".
-PROSE_EXCLUDED = [".", ":(exclude)docs", ":(exclude)site", ":(exclude)notebooks"]
+# `*.md` is here because the first version of this list was incomplete and
+# the sentinel caught it within the hour: rl/TODO.md is the project's LIVE
+# QUEUE and it lives inside the code tree, so excluding only docs/ still
+# voided 12 pending links when the standing table was updated. Four more
+# markdown files sit under rl/ and rl/tensor_env/ for the same reason.
+# No .md file is read by any computation.
+PROSE_EXCLUDED = [".", ":(exclude)*.md", ":(exclude)docs",
+                  ":(exclude)site", ":(exclude)notebooks"]
 
 
 def sha256(path):
