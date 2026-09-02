@@ -62,7 +62,62 @@ best_score  vs  面板胜率      spearman −0.47      <- 负的
 > 代价是实打实的：`submissions/2026-08-13-topline/` 就是按 `best_score` 挑出来的
 > （17 条里第 1），而它的面板胜率只排**第 7**（92.4%，第一名 `k06` 是 98.5%）。
 
-### 面板胜率还没解决的两件事
+### 2026-09-02 更新：**RL 臂的选优改用 20 个对手的全场胜率**，十个 wrapped 的面板在我们那一档是**平的**
+
+`ruler-bt-v1`（65,280 局，17 个**有已知真实天梯分**的快照 × 20 个固定对手 ×
+96 seeds × 双席位）第一次用那些已知分去标定**锦标赛型**的尺子。结果把下面那两条
+「还没解决的事」升级成一条硬结论：
+
+**把范围限制到 900 分以下的 13 个候选（我们所有 RL 臂都在这一档，G1 是 692 → 1287）：**
+
+| 尺子 | ρ 对天梯分 | 天梯可分辨对的排对率 |
+|---|---:|---:|
+| **十个 wrapped 的面板胜率（本节上文那把）** | **+0.231** | **17.4%（4/23）** |
+| 中位钱 | +0.813 | 100.0%（23/23） |
+| **20 个对手的全场胜率** | **+0.880** | **100.0%（23/23）** |
+| 20 个对手的全场 BT-Elo | +0.880 | 100.0%（23/23） |
+
+**面板胜率在这 13 个候选上只取两个值：`0.0` 与 `0.001`。**
+`sower-it228`（天梯 555.4）与 `mgtight-liq29`（836.8）读数完全一样。
+所以下文 §「不能预测天梯」里那个 `spearman −0.05` **低估了问题**：
+它不是弱相关，是**在我们那一档没有分辨率**；而 17.4% 的排对率**比随机（50%）还差**，
+也就是说用它挑臂是**反信息**的。
+
+**改用哪把：把面板从 10 个换成 20 个，仍然读胜率。** 加的十个是
+4 个 `agents/spar/`、3 个 `agents/champ/`（顶端锚点）、`ledger_lena`、`broker_bea`、
+`starter`。**不要换成 BT**：实测 BT 与胜率在同一批对局上给出**逐位相同**的 ρ 与排对率，
+而 BT 更贵、在饱和场会发散、跨运行没有绝对尺度（`tools/stats.py:24-26`）。
+提升全部来自**场变宽**，与估计量无关 —— 这条是按预登记的第 4 条规则判的。
+
+```bash
+sbatch --account=def-zhouyang --array=0-7 --time=00:30:00 --cpus-per-task=32 --mem=48G \
+    slurm/tournament_array.sh panel --agents <你的候选>.py \
+    --panel agents/wrapped/w39.py agents/wrapped/w48.py agents/wrapped/w16.py \
+            agents/wrapped/w68.py agents/wrapped/w56.py agents/wrapped/w25.py \
+            agents/wrapped/w12.py agents/wrapped/w28.py agents/wrapped/w05.py \
+            agents/wrapped/w02.py \
+            agents/spar/estate-crew-grazier-flood-blind-muck.py \
+            agents/spar/estate-crew-berrybaron-metered-blind-muck.py \
+            agents/spar/homestead-crew-marketgarden-metered-blind-muck.py \
+            agents/spar/homestead-crew-orchardherd-flood-blind-compost.py \
+            agents/champ/k02.py agents/champ/k07.py agents/champ/k12.py \
+            agents/ref/ledger_lena.py agents/ref/broker_bea.py starter \
+    --seeds 96 --seed0 30000 --label <名字>
+# 然后按【全路径】统计,不要 ingest —— 每个候选都叫 main.py,而 short(path) 取 basename。
+# run #100 已经实测过这个合并:ratings 里 `main` 一行 1,440 局 = 4 x 360。
+python tools/ruler_calib.py --shards data/shards/<名字>    # 六把尺子对照 + 标定
+```
+
+**这把新尺子仍然过不了顶端。** 必过项 k01(2302.2) vs k06(2035.9) —— 全数据集里
+**唯一**族内可分辨的对 —— 五把尺子**全部排反**（`hands@20` 是完全相等，两者都 12.0）。
+这独立复现了 `fc1da67`。所以：**它在 900 以下可用、在 2000 档不可用**，
+而这可以接受，因为决策发生在 900 以下。
+
+**顺带一条要撤的**：2026-08-23 标的 `hands@20`（ρ=+0.96，当时称"更好的尺子"）
+在本地对局上是六把里**最差**的（ρ=+0.646、排对率 65.0%），且在 12 饱和。
+`fc1da67` 已记过饱和，本条是在本地对局上的独立确认。**不要再用它挑臂。**
+
+### 面板胜率还没解决的两件事（09-02 起：第 2 条已升级为上面那条硬结论）
 
 不要把它当成已经校准好的尺子：
 
