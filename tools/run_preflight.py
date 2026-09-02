@@ -10,6 +10,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# The commit check protects the COMPUTATION, so it must ignore trees that
+# cannot change a result. It used to be an unrestricted `git diff <commit> --`
+# over every tracked file, which put it in direct conflict with the project's
+# own discipline: CLAUDE.md requires every verdict to be appended to
+# docs/RUNS.md, so writing up one arm invalidated every arm still queued.
+# Measured 2026-09-02: the mkt-w2/mkt-w4/fut-w4 batch (9 links) was already
+# doomed to exit 42 with `docs/RUNS.md | 26 ++++` as the ONLY difference, and
+# kg-g1-wheat-240/408 and kg-warmstart-neg-* died the same way earlier.
+# Everything executable stays protected -- rl/, agents/, tools/, slurm/,
+# requirements/, setup_env.sh and the configs are all still covered by ".".
+PROSE_EXCLUDED = [".", ":(exclude)docs", ":(exclude)site", ":(exclude)notebooks"]
+
 
 def sha256(path):
     digest = hashlib.sha256()
@@ -25,8 +37,8 @@ def verify(manifest_path):
     failures = []
     expected_commit = manifest.get("commit")
     if expected_commit and not manifest.get("source_dirty"):
-        proc = subprocess.run(["git", "diff", "--quiet", expected_commit, "--"],
-                              cwd=ROOT)
+        proc = subprocess.run(["git", "diff", "--quiet", expected_commit, "--"]
+                              + PROSE_EXCLUDED, cwd=ROOT)
         if proc.returncode:
             failures.append(f"tracked files differ from {expected_commit}")
     for name, registered in manifest.get("input_files", {}).items():

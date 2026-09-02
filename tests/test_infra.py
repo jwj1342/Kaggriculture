@@ -158,6 +158,62 @@ def test_macro_rl_submit():
         raise AssertionError("managed macro device flag was accepted")
 
 
+def test_preflight_ignores_prose_but_not_code():
+    """A verdict written to docs/ must not invalidate a queued arm; code must.
+
+    docs/RUNS.md is append-only by project discipline (CLAUDE.md requires a
+    verdict per experiment), so an unrestricted `git diff <commit> --` put the
+    run gate in direct conflict with the write-up step: on 2026-09-02 the
+    9-link mkt-w2/mkt-w4/fut-w4 batch was already doomed to exit 42 with
+    `docs/RUNS.md | 26 ++++` as the only difference. Everything executable
+    stays gated -- that half is what makes a pre-registration binding.
+    """
+    import subprocess
+    with tempfile.TemporaryDirectory() as tmp:
+        run = lambda *a: subprocess.run(a, cwd=tmp, check=True,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL)
+        run("git", "init", "-q")
+        run("git", "config", "user.email", "t@t")
+        run("git", "config", "user.name", "t")
+        os.makedirs(os.path.join(tmp, "docs"))
+        os.makedirs(os.path.join(tmp, "tools"))
+        prose = os.path.join(tmp, "docs", "RUNS.md")
+        code = os.path.join(tmp, "tools", "thing.py")
+        with open(prose, "w") as fh:
+            fh.write("# verdicts\n")
+        with open(code, "w") as fh:
+            fh.write("X = 1\n")
+        run("git", "add", "-A")
+        run("git", "commit", "-q", "-m", "base")
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp,
+                             capture_output=True, text=True).stdout.strip()
+
+        manifest_path = os.path.join(tmp, "submission.json")
+        with open(manifest_path, "w") as fh:
+            json.dump({"commit": sha, "input_files": {}}, fh)
+
+        saved = run_preflight.ROOT
+        try:
+            run_preflight.ROOT = tmp
+            run_preflight.verify(manifest_path)          # clean tree passes
+
+            with open(prose, "a") as fh:                 # a verdict is appended
+                fh.write("\n## 2026-09-02 - a verdict\n")
+            run_preflight.verify(manifest_path)          # must STILL pass
+
+            with open(code, "a") as fh:                  # code drifts
+                fh.write("Y = 2\n")
+            try:
+                run_preflight.verify(manifest_path)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("a code change was accepted")
+        finally:
+            run_preflight.ROOT = saved
+
+
 if __name__ == "__main__":
     test_duration()
     test_gpu_csv()
@@ -166,4 +222,5 @@ if __name__ == "__main__":
     test_input_hash()
     test_macro_audit_submit()
     test_macro_rl_submit()
+    test_preflight_ignores_prose_but_not_code()
     print("infra tests passed")

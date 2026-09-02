@@ -13,7 +13,7 @@ set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:?submit from the repository root}"
 source setup_env.sh
 
-if [[ -n "${KG_EXPECT_COMMIT:-}" ]] && ! git diff --quiet "$KG_EXPECT_COMMIT" --; then
+if [[ -n "${KG_EXPECT_COMMIT:-}" ]] && ! git diff --quiet "$KG_EXPECT_COMMIT" -- . ":(exclude)docs" ":(exclude)site" ":(exclude)notebooks"; then
     echo "RUN-PREFLIGHT source changed; expected=$KG_EXPECT_COMMIT current=$(git rev-parse HEAD)" >&2
     exit 42
 fi

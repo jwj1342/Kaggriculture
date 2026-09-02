@@ -23,7 +23,7 @@ MIN_SPS=${KG_MIN_SPS:-5000}
 
 if [ -n "${KG_RUN_MANIFEST:-}" ]; then
     python tools/run_preflight.py --manifest "$KG_RUN_MANIFEST" || exit 42
-elif [ -n "${KG_EXPECT_COMMIT:-}" ] && ! git diff --quiet "$KG_EXPECT_COMMIT" --; then
+elif [ -n "${KG_EXPECT_COMMIT:-}" ] && ! git diff --quiet "$KG_EXPECT_COMMIT" -- . ":(exclude)docs" ":(exclude)site" ":(exclude)notebooks"; then
     echo "RUN-PREFLIGHT source changed since submission; expected=$KG_EXPECT_COMMIT current=$(git rev-parse HEAD)" >&2
     exit 42
 fi
