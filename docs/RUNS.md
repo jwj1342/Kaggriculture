@@ -12836,3 +12836,109 @@ win 0.0000/money 41,524,看着像天壤之别 —— 但那是因为末行落在
 第二个**复用了 `sys.modules` 里同名的 `kg_rl_actions_*`**,于是两条读数逐位相同、
 差异被完全掩盖。`plant_gate.py` 的 `_purge()` 正是为此而写。
 **此后任何多 export 对比必须一个 export 一个进程,或显式 purge。**
+
+## 2026-09-02 · **写判词这个动作在杀待跑的臂**:预测后 30 分钟被逐字证实,3 个链头 `FAILED 42:0`,唯一差异是 `docs/RUNS.md` 的 26 行
+
+排查"为什么 13 个作业一直 PENDING"时发现的,不是一条实验臂,是一个**过程缺陷**,
+而它决定我们在剩下 28 天里能测多少东西。
+
+`tools/run_preflight.py` 的提交检查是**无路径限定**的
+`git diff --quiet <commit> --`——覆盖全部被跟踪文件。而 `CLAUDE.md` 与项目纪律
+要求**每条判词都追加进 `docs/RUNS.md`**。两者直接冲突:**提交完臂、再写判词,
+就把还在排队的臂全杀了。**
+
+**先手工判定(14:20 左右),再由集群证实(14:52):**
+
+```
+$ python tools/run_preflight.py --manifest rl/runs/mkt-w2/submission.json
+RuntimeError: tracked files differ from 0565842a188e...
+$ git diff --stat 0565842a188e --
+ docs/RUNS.md | 26 ++++++++++++++++++++++++++     <- 唯一的差异
+```
+
+三十分钟后,`sacct` 给出同一件事的独立确认:
+
+| 作业 | 名称 | State | ExitCode | Elapsed |
+|---|---|---|---|---|
+| 21027173 | `kg-mkt-w2-l1` | FAILED | **42:0** | 00:00:07 |
+| 21027177 | `kg-mkt-w4-l1` | FAILED | **42:0** | 00:00:06 |
+| 21027181 | `kg-fut-w4-l1` | FAILED | **42:0** | 00:00:06 |
+
+三个链头各跑 6–7 秒即死,9 个后继 link 随之 `DependencyNeverSatisfied`。
+**整批 12 个作业(3 条链 × 4 link)的一个干净 2 因子设计
+(`future-mkt` 势函数 × 四墙入池)在开始之前就已作废,而原因是一段纯文档追加。**
+
+**这不是第一次。** `kg-g1-wheat-240`、`kg-g1-wheat-408`、`kg-warmstart-neg-*`
+都带着 `ExitCode 42:0`。此前从未被归因,因为 42 看起来像"哨兵正常工作"。
+
+### 处置(`e6ae614`)
+
+四处哨兵全部限定路径(`tools/run_preflight.py` 加
+`slurm/rl_train_cpu.sh` / `rl_train.sh` / `rl_cuda_test.sh` 的 elif 兜底):
+
+```python
+PROSE_EXCLUDED = [".", ":(exclude)docs", ":(exclude)site", ":(exclude)notebooks"]
+```
+
+**让预登记有约束力的那一半完整保留**:`.` 仍覆盖 `rl/`、`agents/`、`tools/`、
+`slurm/`、`requirements/`、`setup_env.sh` 与 configs。只排除三个**不可能改变结果**的树。
+
+`tests/test_infra.py::test_preflight_ignores_prose_but_not_code` 在一个一次性
+git 仓库里钉住两半:追加 `docs/RUNS.md` 必须仍然通过,`tools/` 下改一行必须仍然失败。
+**已验证它是承重的**——把 fix 撤掉,测试抛 `RuntimeError`。
+
+### 顺带两条操作事实
+
+- **`NibiMaintenance` 预留全部 778 节点 / 142,692 核,09-02 08:00 → 09-03 08:00**
+  (`Flags=MAINT,IGNORE_JOBS`)。作业仍会零星回填,所以"维护中"不等于"不会启动"——
+  这三个链头就是在维护窗口里死的。
+- **PATH 里的 `squeue` 是 24.11.7,控制器今天 13:15 升到 25.11.7p**
+  (`/opt/software/slurm/current -> 25.11.7p`)。旧客户端 `auth/munge` 版本不兼容,
+  `squeue`/`sacct`/`sbatch` 全部 fatal。**一律走 `/opt/software/slurm/current/bin/`。**
+  这条差点变成一次误判:第一次查询我带了 `2>/dev/null`,空输出被读成"没有作业",
+  而真相是工具故障。**任何"什么都没有"的读数必须先确认工具本身在工作。**
+
+## 2026-09-02 · BT 面板:`main.py` 的 basename 合并**被实测坐实**(1,440 局 = 4 × 360),而穿过合并的三条读数给 spar 场一个正面信号
+
+`bt-panel-0902`(run #100,2,160 局,6 seeds,30 个 `agents/spar/` 对手)。
+提交这个作业时我还不知道 basename 陷阱,所以它同时是一次**陷阱的实测**。
+
+**陷阱**:`tools/tournament.py:206` 的 `short(path)` 取 basename,而它就是 BT 的键。
+六个候选里有四个是 `main.py`(`rl/out/anvil-fix`、`hybrid-cleo12`、
+`hybrid-d12final20`、`hybrid-endgame20`)。`ratings` 表把它坐实为事实而非推断:
+
+| agent | games | wins | win% | bt_elo | median $ |
+|---|---:|---:|---:|---:|---:|
+| **`main`** | **1440** | 1185 | 82.3% | +229 | 79,684 |
+| `k01` | 360 | 360 | **100.0%** | +1328 | **121,095** |
+| `barnyard` | 360 | 11 | **3.1%** | −782 | 40,904 |
+
+**1,440 = 恰好 4 × 360**,四个候选并成一行,**彼此无法区分**。
+这正是 `duel101` 等 15 个大消融被故意从不 ingest 的原因
+(`docs/RUNS.md:527-531`),而这次我们自己撞了上去。**run #100 的 `main` 那一行作废。**
+
+### 但穿过合并的三条读数是有用的,而且方向是正的
+
+| | 本场胜率 | 本场中位钱 | **真实天梯分** |
+|---|---:|---:|---:|
+| `k01` | 100.0% | 121,095 | **2302.2** |
+| 我们四个候选(合并) | 82.3% | 79,684 | 692.2 |
+| `barnyard` | 3.1% | 40,904 | 621.4 |
+
+**30 个由真实天梯回放重建的 spar 对手,只用 6 个 seed,就把这三者排对了。**
+而现行的验收门(10 个 `agents/wrapped/` × 96 seeds)与源队伍真实天梯分的
+Spearman 是 **−0.05**(`docs/VALIDATING.md:59-72`),并且把 k01/k06 排反了 266.3 分。
+**这是"换成 spar 场 + BT"这条尺子第一次拿到正面证据。**
+
+**必须一起写的三条边界,否则这条会被误用**:
+
+1. **n=3 个家族,不是 3 个独立点。** 家族成员身份本身就几乎把 y 排好了。
+2. **`k01` 是 360/360,BT 在顶端发散**(`docs/RUNS.md:1013-1015`)。
+   +1328 这个幅度是任意的,只有方向可信。正式实验要用虚拟对手 `_prior`
+   做 Haldane 半计数正则化。
+3. **6 seeds 远不够。** 这只是一次机会读数,不是门。
+
+**顺带**:`barnyard` 3.1% 排在全部 30 个 spar 对手之下,
+所以 `granger.yaml` 的单对手池不只是"只有一个对手",
+**它的那一个对手比整个对齐场里最弱的那个还弱**。
+这给"任何像样的臂 10 个迭代触顶"补上了最后一块:课程从一开始就没有上升空间。
