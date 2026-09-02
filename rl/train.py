@@ -161,6 +161,23 @@ def build_parser():
                          "(Kilo's flat 300; the iter-160 census found the "
                          "economy land-gated because a quadrant unlocks "
                          "~5k of downstream crop credit. 0 = keep 300)")
+    # The two flat haircuts that make CASH the highest-credit asset in phi:
+    # money enters at 1.0 while a standing crop enters at PLANT_CREDIT=0.5 and
+    # an animal at ANIMAL_CREDIT=0.4, so liquidating an inherited farm and
+    # sitting on the money is a phi IMPROVEMENT. That is the takeover
+    # behaviour 512c3fa measured (day 12: 0 seeds, 1 PLANT, 121 units sold;
+    # standing crops 38 -> 9 by day 27) and it is 52.5% of the G1 gap in the
+    # six days 18-24. Risk is already priced separately -- `expected` yield,
+    # (1 - stress) water risk, and explicit UNFED/UNCARED penalties -- so
+    # these two sit on top of it as a second, unconditional discount.
+    # Sweep 0.5/0.75/1.0 rather than going straight to 1.0: over-crediting a
+    # standing crop invites the mirror failure, planting and never harvesting.
+    ap.add_argument("--plant-credit", type=float, default=0.0,
+                    help="override the potential's standing-crop credit "
+                         "(Kilo's 0.5; cash is 1.0). 0 = keep 0.5")
+    ap.add_argument("--animal-credit", type=float, default=0.0,
+                    help="override the potential's animal credit "
+                         "(Kilo's 0.4; cash is 1.0). 0 = keep 0.4")
     ap.add_argument("--ks-every", type=int, default=1,
                     help="teacher labels every Nth step (profiler: the "
                          "teacher is 41%% of step time; 4 buys ~1.7x "
@@ -481,7 +498,9 @@ def train(args, log_fn=None):
         bank=args.bank, bank_frac=args.bank_frac,
         shape_gamma=args.shape_gamma, ks_every=args.ks_every,
         fert_credit=args.fert_credit, land_value=args.land_value,
-        fixed_market_profile=args.fixed_market_profile)
+        fixed_market_profile=args.fixed_market_profile,
+        plant_credit=args.plant_credit,
+        animal_credit=args.animal_credit)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],

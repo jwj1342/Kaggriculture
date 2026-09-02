@@ -548,6 +548,98 @@ def gate_early_stop():
     print("gate (ix)  probe + both stop paths + chain-safe resume  PASS")
 
 
+def gate_asset_credit():
+    """(x) --plant-credit / --animal-credit: off is bit-identical, on is exact.
+
+    These two knobs change WHY the policy wants to liquidate, so a silent
+    default drift here would move every arm's reward without appearing in any
+    diff. The gate pins three separate claims:
+
+      off   : omitting them == passing Kilo's constants, bit for bit
+      exact : phi is LINEAR in each credit, so a half step must land exactly
+              halfway -- this catches a haircut applied twice, or applied to
+              the wrong term
+      apart : the crop knob must not move the animal term and vice versa
+    """
+    import engine_t
+    import engine_t_idx  # noqa: F401
+    import features_t
+    import opponents_t
+    import potential_future as PF
+
+    ep = engine_t.EpisodeT([601, 602, 603], episode_steps=720, device="cpu")
+    for t in range(200):
+        fm, mm = features_t.masks_t(ep, 0)
+        fa, ma = _pick_legal(fm, t), _pick_legal(mm, t)
+        ofa, oma = opponents_t.starter_indices(ep, 1)
+        ep.step_idx(torch.stack([fa, ofa], 1), torch.stack([ma, oma], 1))
+    # A random legal walk buys no animals, so plant them directly -- the same
+    # trick gate_potential uses. Both terms must be populated for either half
+    # of the separability check to prove anything.
+    for lane, seat, y, x, kindi, pday, yu in ((0, 0, 7, 2, 0, 3, 2),
+                                              (1, 0, 8, 1, 2, 6, 0),
+                                              (2, 1, 2, 2, 1, 1, 1)):
+        ep.animal[lane, seat, y, x] = kindi
+        ep.placed_day[lane, seat, y, x] = pday
+        ep.yield_units[lane, seat, y, x] = yu
+        ep.fed[lane, seat, y, x] = bool(lane % 2)
+        ep.cared[lane, seat, y, x] = not bool(lane % 2)
+    assert bool((ep.kind == engine_t.K_PLANT).any()), "no plants -- widen the walk"
+    assert bool((ep.animal >= 0).any()), "no animals -- widen the walk"
+
+    for seat in (0, 1):
+        base = PF.future_worth_t(ep, seat)
+        same = PF.future_worth_t(ep, seat, plant_credit=PF.PLANT_CREDIT,
+                                 animal_credit=PF.ANIMAL_CREDIT)
+        assert torch.equal(base, same), (seat, base, same)
+
+        # linearity in plant_credit, with animal_credit held anywhere
+        for ac in (PF.ANIMAL_CREDIT, 0.9):
+            p0 = PF.future_worth_t(ep, seat, plant_credit=0.0, animal_credit=ac)
+            p1 = PF.future_worth_t(ep, seat, plant_credit=1.0, animal_credit=ac)
+            ph = PF.future_worth_t(ep, seat, plant_credit=0.5, animal_credit=ac)
+            want = p0 + 0.5 * (p1 - p0)
+            assert torch.allclose(ph, want, rtol=0, atol=1e-9), (seat, ac, ph, want)
+            # not every lane has a standing crop, so the claim is monotone
+            # everywhere and strict where there IS one
+            assert bool((p1 >= p0).all()), "the crop credit lowered phi somewhere"
+            assert bool((p1 > p0).any()), "raising the crop credit moved nothing"
+
+        # the crop knob moves phi by the SAME amount at either animal setting,
+        # i.e. the two terms are separable
+        d_lo = (PF.future_worth_t(ep, seat, plant_credit=1.0, animal_credit=0.4)
+                - PF.future_worth_t(ep, seat, plant_credit=0.5, animal_credit=0.4))
+        d_hi = (PF.future_worth_t(ep, seat, plant_credit=1.0, animal_credit=0.9)
+                - PF.future_worth_t(ep, seat, plant_credit=0.5, animal_credit=0.9))
+        assert torch.allclose(d_lo, d_hi, rtol=0, atol=1e-9), (seat, d_lo, d_hi)
+        assert bool((d_lo.abs() > 0).any()), "the crop knob moved nothing"
+        assert bool((d_lo >= 0).all()), "the crop knob lowered phi somewhere"
+
+        # and symmetrically for the animal knob
+        a_lo = (PF.future_worth_t(ep, seat, animal_credit=1.0, plant_credit=0.5)
+                - PF.future_worth_t(ep, seat, animal_credit=0.4, plant_credit=0.5))
+        a_hi = (PF.future_worth_t(ep, seat, animal_credit=1.0, plant_credit=0.9)
+                - PF.future_worth_t(ep, seat, animal_credit=0.4, plant_credit=0.9))
+        assert torch.allclose(a_lo, a_hi, rtol=0, atol=1e-9), (seat, a_lo, a_hi)
+        assert bool((a_lo.abs() > 0).any()), "the animal knob moved nothing"
+
+    # env wiring: 0.0 is the "keep Kilo" sentinel (same as --land-value), so
+    # the default env and an explicitly-defaulted env must agree bit for bit,
+    # and a raised credit must actually reach phi through the env.
+    from trl_env import KGTensorEnv
+    def phi_of(**kw):
+        env = KGTensorEnv(2, device="cpu", episode_steps=26,
+                          potential="future", **kw)
+        # sum across lanes: lane 0 happens to hold an animal and no crop, so
+        # a single-lane read would silently miss the crop knob entirely
+        return float(env._pot(ep, 0).sum())
+    assert phi_of() == phi_of(plant_credit=0.0, animal_credit=0.0)
+    assert phi_of() == phi_of(plant_credit=PF.PLANT_CREDIT,
+                              animal_credit=PF.ANIMAL_CREDIT)
+    assert phi_of(plant_credit=1.0) > phi_of(), "the flag never reached phi"
+    print("gate (x)   asset credit: off bit-identical, linear, terms separable  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -559,4 +651,5 @@ if __name__ == "__main__":
     gate_potential()
     gate_barnyard_env()
     gate_early_stop()
+    gate_asset_credit()
     print("test_trl: all gates PASS")

@@ -43,6 +43,22 @@ import kg_rules as R
 # -- design constants (Kilo's, not engine values) ---------------------------
 SHED_DISCOUNT = 0.9
 SEED_RESIDUAL = 0.5
+# PLANT_CREDIT / ANIMAL_CREDIT are the two flat haircuts that make CASH the
+# highest-credit asset in phi (money enters at 1.0, see the `phi + ep.money`
+# line below). A standing crop is worth half of the cash it converts into and
+# an animal 0.4 of it, so "liquidate the inherited farm and sit on the money"
+# is a phi improvement -- which is exactly the takeover behaviour 512c3fa
+# measured (day 12: 0 seeds bought, 1 PLANT, 121 units sold, standing crops
+# 38 -> 9 by day 27, and money AHEAD by 1,851 at day 14).
+#
+# The obvious objection is that 0.5 prices the risk that a crop dies. It does
+# not: risk is already modelled separately and these sit on TOP of it --
+# `expected` is the expected remaining harvest, (1 - stress) is the water
+# risk, and the animal term subtracts UNFED_RISK / UNCARED_RISK as explicit
+# penalties. So both are a second, unconditional discount.
+#
+# Exposed as --plant-credit / --animal-credit for the A/B (same pattern as
+# --land-value). Defaults are Kilo's originals and the gates pin that path.
 PLANT_CREDIT = 0.5
 ANIMAL_CREDIT = 0.4
 UNFED_RISK = 0.8
@@ -91,7 +107,9 @@ def _luts(device):
     return _LUTS[key]
 
 
-def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE):
+def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE,
+                   plant_credit=PLANT_CREDIT,
+                   animal_credit=ANIMAL_CREDIT):
     """(B,) float64 future-credit potential for one seat.
 
     shed_at_market: value shed PRODUCTS at min(current market price, base)
@@ -127,7 +145,7 @@ def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE):
     exp_ongoing = torch.where(start > SEASON_DAYS, yu,
                               yu + torch.minimum(rem_cap, rem_events))
     expected = torch.where(L["ongoing"][crop], exp_ongoing, maxy)
-    plant_val = expected * L["crop_base"][crop] * PLANT_CREDIT * (1.0 - stress)
+    plant_val = expected * L["crop_base"][crop] * plant_credit * (1.0 - stress)
     phi = (plant_val * is_plant.to(f64)).sum((-1, -2))
 
     # animals: held + remaining production events, minus neglect risk
@@ -137,7 +155,7 @@ def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE):
                             placed + L["a_first"][aidx])
     rem_a = torch.where(a_start > SEASON_DAYS, yu,
                         yu + 1.0 + (SEASON_DAYS - a_start) / L["a_int"][aidx])
-    a_val = (rem_a * L["a_base"][aidx] * ANIMAL_CREDIT
+    a_val = (rem_a * L["a_base"][aidx] * animal_credit
              - (~ep.fed[:, player]).to(f64) * L["a_cost"][aidx] * UNFED_RISK
              - (~ep.cared[:, player]).to(f64) * L["a_cost"][aidx] * UNCARED_RISK)
     phi = phi + (a_val * has_a.to(f64)).sum((-1, -2))
