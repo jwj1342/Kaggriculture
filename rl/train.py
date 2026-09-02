@@ -528,6 +528,20 @@ def train(args, log_fn=None):
                    f"(new bias {compatibility['new_task_bias']})")
 
     pool = None
+    # Every pool knob lives on OpponentPool, and the pool is only built when
+    # --opponents is given -- so --league, --snapshot-every, --pfsp and
+    # --handicap are SILENT no-ops without it. Measured cost of that silence:
+    # --pfsp appears in zero of the 79 registered runs, and mynah.yaml (the
+    # only config that sets it) was never launched. Fail loudly instead.
+    if not args.opponents:
+        dead = [f"--{n.replace('_', '-')}" for n, v in
+                (("league", args.league), ("pfsp", args.pfsp),
+                 ("handicap", args.handicap)) if v]
+        if dead:
+            raise SystemExit(
+                f"{', '.join(dead)} needs --opponents: every one of these is a "
+                f"knob on the opponent pool, and without --opponents no pool "
+                f"is built, so they would be silently ignored for the whole run")
     if args.opponents:
         from trl_pool import OpponentPool
         snap_dir = (os.path.join(os.path.dirname(os.path.abspath(args.save)),
@@ -804,6 +818,11 @@ def train(args, log_fn=None):
                 log_fn(f"      curriculum {ev}: {pool.describe()}")
             elif it % 10 == 0:
                 log_fn(f"      pool: {pool.describe()}")
+            # snap-0000 is taken AFTER iteration 0's optim.step(), so it is
+            # a net with one update, not the warm-start -- checked against the
+            # loop order before touching it. Under --freeze-policy-until it IS
+            # the unmodified warm-start, but a previous run's net is a
+            # legitimate league opponent, so this stays as it is.
             if (args.league and args.snapshot_every > 0
                     and it % args.snapshot_every == 0):
                 pool.add_snapshot(actor_net, f"snap-{it:04d}")

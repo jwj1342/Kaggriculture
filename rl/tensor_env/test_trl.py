@@ -17,6 +17,16 @@
        --freeze-policy-until (actor bit-identical after a critic-only
        iteration), league snapshots on disk, --resume continuing iteration
        count, seed stream, records and pool state.
+ (x)   --plant-credit / --animal-credit: omitting them is bit-identical to
+       passing Kilo's constants, phi is linear in each (a half step lands
+       exactly halfway), and the two terms are separable. These two knobs
+       change WHY the policy liquidates, so a default drift here would move
+       every arm's reward without appearing in any diff.
+ (xi)  pool knobs are not silent: --league / --pfsp / --handicap without
+       --opponents build no pool, so they now fail loudly instead of being
+       ignored for a whole run. Also pins that snap-0000 DOES exist: it is
+       taken after iteration 0's optim.step(), so it is a net with one
+       update rather than the warm-start.
 """
 
 import os
@@ -640,6 +650,47 @@ def gate_asset_credit():
     print("gate (x)   asset credit: off bit-identical, linear, terms separable  PASS")
 
 
+def gate_pool_guards():
+    """(xi) pool knobs are not silent, and iteration 0 is not banked.
+
+    Both halves are silent-failure bugs, which is the class this project keeps
+    paying for: --pfsp appears in zero of 79 registered runs and mynah.yaml
+    (the only config that sets it) was never launched, so nobody noticed that
+    without --opponents there is no pool for it to configure.
+    """
+    import subprocess
+    import tempfile
+    root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    train = os.path.join(root, "rl", "train.py")
+    env = dict(os.environ, OMP_NUM_THREADS="1")
+
+    # (a) a pool knob without --opponents must FAIL, naming itself
+    for knob in (["--league"], ["--pfsp", "2.0"], ["--handicap", "800"]):
+        r = subprocess.run(
+            [sys.executable, train, "--B", "2", "--iters", "1", "--steps", "26"]
+            + knob, cwd=root, env=env, capture_output=True, text=True)
+        assert r.returncode != 0, (knob, "ran silently without --opponents")
+        assert "needs --opponents" in (r.stdout + r.stderr), (knob, r.stdout[-400:])
+
+    # (b) and the same run WITH --opponents must be accepted
+    with tempfile.TemporaryDirectory() as tmp:
+        save = os.path.join(tmp, "latest.pt")
+        r = subprocess.run(
+            [sys.executable, train, "--B", "4", "--iters", "3", "--steps", "26",
+             "--opponents", "starter", "--league", "--snapshot-every", "1",
+             "--advance-at", "1.01", "--save", save, "--quiet"],
+            cwd=root, env=env, capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout[-600:] + r.stderr[-600:]
+        snaps = sorted(os.listdir(os.path.join(tmp, "snapshots")))
+        # snap-0000 exists on purpose: add_snapshot runs after iteration 0's
+        # optim.step(), so it is a net with one update. Pinned here because a
+        # plausible-sounding "skip iteration 0" change is wrong, and cost one
+        # broken gate to find out.
+        assert snaps == ["snap-0000.npz", "snap-0001.npz", "snap-0002.npz"], snaps
+    print("gate (xi)  pool knobs fail loudly without --opponents; snap-0000 is post-update  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -652,4 +703,5 @@ if __name__ == "__main__":
     gate_barnyard_env()
     gate_early_stop()
     gate_asset_credit()
+    gate_pool_guards()
     print("test_trl: all gates PASS")
