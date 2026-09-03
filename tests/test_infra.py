@@ -225,6 +225,55 @@ def test_preflight_ignores_prose_but_not_code():
             run_preflight.ROOT = saved
 
 
+def test_resume_survives_a_written_verdict():
+    """--resume must bind the CODE, not the commit hash.
+
+    This is the submit-time half of the run-time defect: CLAUDE.md requires a
+    verdict appended to docs/RUNS.md per experiment, so writing up any arm
+    advances HEAD. Comparing bare hashes therefore made every OTHER run
+    permanently un-resumable, which on 2026-09-02 cost two full waves of arms
+    that had to be discarded and relaunched from iteration zero.
+    """
+    import subprocess
+    with tempfile.TemporaryDirectory() as tmp:
+        run = lambda *a: subprocess.run(a, cwd=tmp, check=True,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL)
+        run("git", "init", "-q")
+        run("git", "config", "user.email", "t@t")
+        run("git", "config", "user.name", "t")
+        os.makedirs(os.path.join(tmp, "docs"))
+        os.makedirs(os.path.join(tmp, "rl"))
+        prose = os.path.join(tmp, "docs", "RUNS.md")
+        code = os.path.join(tmp, "rl", "train.py")
+        for path, body in ((prose, "# verdicts\n"), (code, "X = 1\n")):
+            with open(path, "w") as fh:
+                fh.write(body)
+        run("git", "add", "-A")
+        run("git", "commit", "-q", "-m", "base")
+        pinned = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp,
+                                capture_output=True, text=True).stdout.strip()
+
+        assert submit_rl.code_unchanged_since(pinned, root=tmp)
+
+        # a verdict is written and committed: HEAD moves, the code does not
+        with open(prose, "a") as fh:
+            fh.write("\n## 2026-09-02 - a verdict\n")
+        run("git", "add", "-A")
+        run("git", "commit", "-q", "-m", "runs: a verdict")
+        moved = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp,
+                               capture_output=True, text=True).stdout.strip()
+        assert moved != pinned, "HEAD should have moved"
+        assert submit_rl.code_unchanged_since(pinned, root=tmp), \
+            "a written verdict must not make a run un-resumable"
+
+        # a code change must still block the resume
+        with open(code, "a") as fh:
+            fh.write("Y = 2\n")
+        assert not submit_rl.code_unchanged_since(pinned, root=tmp), \
+            "a change under rl/ must still invalidate the pre-registration"
+
+
 if __name__ == "__main__":
     test_duration()
     test_gpu_csv()
@@ -234,4 +283,5 @@ if __name__ == "__main__":
     test_macro_audit_submit()
     test_macro_rl_submit()
     test_preflight_ignores_prose_but_not_code()
+    test_resume_survives_a_written_verdict()
     print("infra tests passed")

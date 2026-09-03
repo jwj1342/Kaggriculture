@@ -17,7 +17,26 @@ import sys
 from pathlib import Path
 
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import run_preflight   # noqa: E402  -- one definition of "the code changed"
+
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def code_unchanged_since(old_commit, root=None):
+    """Has anything EXECUTABLE changed since `old_commit`?
+
+    A pre-registration binds the code, not the hash. Comparing bare hashes is
+    the submit-time half of the defect e6ae614/1fd6b33 fixed at run time:
+    CLAUDE.md requires a verdict appended to docs/RUNS.md per experiment, so
+    writing up any arm advances HEAD and would make every other run
+    permanently un-resumable. Asks exactly the question run_preflight asks, so
+    there is one definition of "the code changed" rather than two.
+    """
+    return subprocess.run(
+        ["git", "diff", "--quiet", old_commit, "--"]
+        + run_preflight.PROSE_EXCLUDED,
+        cwd=str(root or ROOT)).returncode == 0
 CONTROLLED = {
     "--device", "--save", "--resume", "--log", "--timing-log",
     "--profile-timing", "--max-minutes", "--rb-free", "--threads",
@@ -240,6 +259,20 @@ def main(argv=None):
         }
         changed = [key for key, value in expected.items()
                    if old_manifest.get(key) != value]
+        # A bare hash comparison on `commit` is the wrong test, and it is the
+        # submit-time half of the defect e6ae614/1fd6b33 fixed at run time:
+        # CLAUDE.md requires a verdict appended to docs/RUNS.md per experiment,
+        # so writing up ANY arm advances HEAD and makes every other run
+        # permanently un-resumable -- which on 2026-09-02 cost two full waves
+        # of arms that had to be discarded and relaunched from scratch.
+        # What a pre-registration actually binds is the CODE, so ask the same
+        # question run_preflight asks: does the executable tree still match?
+        if "commit" in changed and old_manifest.get("commit"):
+            if code_unchanged_since(old_manifest["commit"]):
+                changed.remove("commit")
+                print(f"resume: HEAD moved to {commit[:12]} but the executable "
+                      f"tree is unchanged since {old_manifest['commit'][:12]} "
+                      f"(only docs/site/notebooks differ) -- continuing")
         if changed:
             ap.error("resume changed registered fields (" + ", ".join(changed)
                      + "); use a new run name")
