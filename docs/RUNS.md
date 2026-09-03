@@ -14317,3 +14317,52 @@ python: can't open file '/tmp/claude-.../scratchpad/probe_screen.py': [Errno 2]
   **裸回放对 wrapped 得 0.0%**,即它们弱,正适合当下层梯级。**未筛,下一步做这个。**
 - **检查清单**:`advance_at` 与"对手表示"是耦合的。用 `tape:` 组阶梯池时,
   **先确认至少两级能过 `advance_at`**,否则课程与 PFSP 都只是摆设。
+
+## 2026-09-03 · 修好了:**梯底加一个 `starter` 就够** —— `earlier` 桶第一次装进两项,PFSP 加权第一次真正可测;而 ghost 录音**不能**当 `tape:` 用
+
+`d8f449f` 判定"带子池里加权结构上不可测",并把下一步写成"从 ghost 录音里找
+能打穿的下层梯级"。**那一步做了,失败了,而失败暴露的东西比预期的简单。**
+
+### 一、ghost 不能当 `tape:` 用(新事实)
+
+```
+AttributeError: module 'tape_src_ghost-89825016-0_py' has no attribute '_TRACE'
+```
+
+`tape_t.load_trace` 读的是模块的 `_TRACE` 属性,而 **`agents/ghosts/` 的 156 个
+录音不带它**(`agents/wrapped/w58.py` 里 `_TRACE` 出现 6 次)。
+两者都叫"开环录音",**但只有 `wrapped` 是 `tape:` 能吃的格式。**
+`_make_opponent` 的完整词汇因此是:`starter` / `barnyard` / `tape:<带 _TRACE 的文件>` / 冻结网。
+
+### 二、而答案本来就在已筛的结果里
+
+同一次筛选(21095339)在崩之前读出了第一行:
+
+| spec | probe 胜率 | probe margin | |
+|---|---:|---:|---|
+| **`starter`** | **1.000** | **+61,820** | **BEATABLE** |
+| `barnyard`(前次筛得) | 0.992 | +34,231 | **BEATABLE** |
+
+**两个 BEATABLE 一直都在,我上一个池只是没把 `starter` 放进梯底。**
+加上它之后,臂停在 stage 2 时 `earlier = [starter, barnyard]` —— **两项,
+`_pick` 不再短路,加权第一次被查询。**
+
+**所以 `band-var` 白跑的 6 个 link,代价其实只是"梯底少了一个 `starter`"。**
+`d8f449f` 把它归因到"带子作为对手表示的普遍后果",**那个归因过宽了**:
+真正的约束是"**梯底需要两级能过 `advance_at` 的 spec**",
+而 `starter`+`barnyard` 恰好满足,不需要带子。
+
+### 三、新池(已投 `rung-var` / `rung-flat`,各 8 link)
+
+按**池自己的仪器**实测难度升序:
+
+```
+starter(+61,820) → barnyard(+34,231) → w58(−7,394) → w84(−12,510) → w73(−20,692)
+```
+
+后三个是 probe 上离平价最近的三个,**而 `w84` 上一轮我根本没放进池**。
+
+**新增一道有效性门,正是上一轮我漏算的那一步**:
+**日志必须出现 `stage 3/5` 或更靠后。** 只有推进过 `starter` 与 `barnyard` 两级,
+`earlier` 才有 ≥2 项、加权才被执行;**若全程停在 stage ≤2,本 A/B 与 `band-var`
+一样作废,判词要写"加权未被执行",不得写成"加权无效"。**
