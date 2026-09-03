@@ -252,6 +252,47 @@ def test_ppo_multihead_update():
     print("ppo multihead update ok  pol=", round(stats["policy_loss"], 4))
 
 
+def test_alt_algo_updates():
+    B = 32
+    obs = [np.zeros(features.FEATURE_DIM) for _ in range(B)]
+    act = [[0] * 14 for _ in range(B)]
+    logp = [-2.0] * B
+    rew = [0.1] * B
+    val = [0.0] * (B + 1)
+    done = [False] * (B - 1) + [True]
+    nh = [2] * B
+    for algo in ("a2c", "reinforce"):
+        mlp = MultiHeadMLP(seed=0)
+        stats = ppo_update_multihead(
+            mlp, obs, act, logp, rew, val, done, n_hands_buf=nh,
+            episode_lengths=[B], epochs=1, minibatch=16, algo=algo,
+            lam=1.0 if algo == "reinforce" else 0.95,
+        )
+        assert stats["policy_loss"] == stats["policy_loss"], algo
+        print(f"{algo} multihead update ok  pol=", round(stats["policy_loss"], 4))
+
+    import torch
+    from .board_obs import PACKED_DIM
+    from .spatial_policy import SpatialActor, policy_update_spatial
+
+    x = torch.zeros(16, PACKED_DIM)
+    a = torch.zeros(16, 14, dtype=torch.long)
+    old = torch.zeros(16)
+    adv = torch.randn(16)
+    ret = torch.randn(16)
+    n_hands = torch.full((16,), 2)
+    for net in ("cnn", "transformer"):
+        m = SpatialActor(net=net)
+        opt = torch.optim.Adam(m.parameters(), lr=1e-3)
+        for algo in ("a2c", "reinforce"):
+            stats = policy_update_spatial(
+                m, opt, x, a, old, adv, ret, n_hands,
+                algo=algo, epochs=1, minibatch=8,
+            )
+            assert stats["policy_loss"] == stats["policy_loss"], (net, algo)
+            print(f"{algo} spatial {net} update ok  pol=", round(stats["policy_loss"], 4))
+
+
 def test_env_episode():
     from .env import KaggEnv
     env = KaggEnv(opponent="starter", seed=1)
@@ -293,16 +334,19 @@ def test_spatial_forward():
     obs = _blank_obs()
     packed = pack_obs(obs)
     assert len(packed) == PACKED_DIM, (len(packed), PACKED_DIM)
-    assert packed[FEATURE_DIM:FEATURE_DIM + BOARD_FLAT][20 * 100 + 4 * 10 + 4] == 1.0  # farmer at 4,4 ch20
+    board = packed[FEATURE_DIM:FEATURE_DIM + BOARD_FLAT]
+    assert float(board[20 * 100 + 4 * 10 + 4]) == 1.0  # farmer at 4,4 ch20
     import torch
     from .spatial_policy import SpatialActor
     for net in ("cnn", "transformer"):
         m = SpatialActor(net=net)
-        x = torch.tensor([packed], dtype=torch.float32)
+        x = torch.as_tensor(packed, dtype=torch.float32).unsqueeze(0)
         nh = torch.tensor([2], dtype=torch.int64)
         tasks, logp, val = m.act(x, nh, sample=False)
         assert tasks.shape == (1, 14), tasks.shape
         assert torch.isfinite(logp).all() and torch.isfinite(val).all()
+        g_tasks, _, _ = m.act(x, nh, sample=True, greedy_frac=1.0)
+        assert torch.equal(g_tasks, tasks)
         lf, lh, lm, lv = m.forward(x)
         assert lf.shape == (1, 13) and lh.shape == (1, 12, 13) and lm.shape == (1, 4)
         print(f"spatial {net} ok  packed={PACKED_DIM}  greedy={tasks[0].tolist()[:3]}...{int(tasks[0, -1])}")
@@ -320,6 +364,7 @@ def main():
     test_multihead_forward()
     test_multihead_save_load()
     test_ppo_multihead_update()
+    test_alt_algo_updates()
     test_env_episode()
     test_env_multi_episode()
     test_spatial_forward()

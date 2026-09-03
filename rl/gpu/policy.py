@@ -196,9 +196,18 @@ def compute_gae(rew, val, done, gamma=0.997, lam=0.95):
     return adv, ret
 
 
+def _policy_loss(logp, old_logp, adv, algo="ppo", clip=0.2):
+    if algo == "ppo":
+        ratio = (logp - old_logp).exp()
+        surr1 = ratio * adv
+        surr2 = ratio.clamp(1.0 - clip, 1.0 + clip) * adv
+        return -torch.min(surr1, surr2).mean()
+    return -(logp * adv).mean()
+
+
 def ppo_update(model, opt, obs, act, old_logp, adv, ret, n_hands,
                clip=0.2, entropy_coef=0.003, value_coef=0.5, epochs=3,
-               minibatch=2048, max_grad_norm=0.5):
+               minibatch=2048, max_grad_norm=0.5, algo="ppo"):
     T, B = adv.shape
     N = T * B
     obs = obs.reshape(N, -1)
@@ -224,10 +233,7 @@ def ppo_update(model, opt, obs, act, old_logp, adv, ret, n_hands,
                 continue
             lf, lh, lm, lv = model(obs[b])
             logp = _logp(lf, lh, lm, farmer[b], hands[b], mode[b], n_hands[b])
-            ratio = (logp - old_logp[b]).exp()
-            surr1 = ratio * adv[b]
-            surr2 = ratio.clamp(1.0 - clip, 1.0 + clip) * adv[b]
-            pol = -torch.min(surr1, surr2).mean()
+            pol = _policy_loss(logp, old_logp[b], adv[b], algo=algo, clip=clip)
             val_loss = ((lv - ret[b]) ** 2).mean()
             ent_f = -(F.softmax(lf, -1) * F.log_softmax(lf, -1)).sum(-1).mean()
             ent_m = -(F.softmax(lm, -1) * F.log_softmax(lm, -1)).sum(-1).mean()

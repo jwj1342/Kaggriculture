@@ -9,6 +9,9 @@ import os
 import sys
 
 
+_SPATIAL = {"model": None, "net": None}
+
+
 def _ensure_project_root():
     """Make sure the project root is in sys.path for imports in worker processes."""
     here = os.path.dirname(os.path.abspath(__file__))
@@ -34,11 +37,46 @@ def worker_init():
         pass
 
 
+def _resident_spatial(net, weights_dict):
+    """Reuse one SpatialActor per process; only reload weights each episode."""
+    from rl.spatial_policy import SpatialActor
+
+    slot = _SPATIAL
+    if slot["model"] is None or slot["net"] != net:
+        m = SpatialActor(net=net)
+        m.eval()
+        slot["model"] = m
+        slot["net"] = net
+    m = slot["model"]
+    m.load_numpy_state(weights_dict)
+    m.eval()
+    return m
+
+
+def _parse_worker_args(args):
+    net = "mlp"
+    sample = True
+    greedy_frac = 0.0
+    temperature = 1.0
+    if len(args) >= 6:
+        opponent, seed, weights_dict, arch, plan_turns, net = args[:6]
+    else:
+        opponent, seed, weights_dict, arch, plan_turns = args[:5]
+    if len(args) >= 7:
+        sample = bool(args[6])
+    if len(args) >= 8:
+        greedy_frac = float(args[7])
+    if len(args) >= 9:
+        temperature = float(args[8])
+    return opponent, seed, weights_dict, arch, plan_turns, net, sample, greedy_frac, temperature
+
+
 def run_episode_worker(args):
     """Run one episode in a worker process.
 
     Args:
-        args: (opponent, seed, weights_dict, arch, plan_turns[, net])
+        args: (opponent, seed, weights_dict, arch, plan_turns[, net, sample,
+              greedy_frac, temperature])
               arch ∈ {"single", "multi", "market"}
               net  ∈ {"mlp", "cnn", "transformer"}; default mlp
 
@@ -52,14 +90,14 @@ def run_episode_worker(args):
     from rl.env import KaggEnv, KaggEnvMulti, PlanMarketEnv, terminal_money
     from rl.ppo import MLP, MarketMLP, MultiHeadMLP
 
-    net = "mlp"
-    if len(args) >= 6:
-        opponent, seed, weights_dict, arch, plan_turns, net = args[:6]
-    else:
-        opponent, seed, weights_dict, arch, plan_turns = args[:5]
+    (opponent, seed, weights_dict, arch, plan_turns, net,
+     sample, greedy_frac, temperature) = _parse_worker_args(args)
 
     if net in ("cnn", "transformer"):
-        return _run_spatial_episode(opponent, seed, weights_dict, net)
+        return _run_spatial_episode(
+            opponent, seed, weights_dict, net, sample=sample,
+            greedy_frac=greedy_frac, temperature=temperature,
+        )
 
     if arch == "market":
         mlp = MarketMLP(seed=0)
@@ -92,9 +130,12 @@ def run_episode_worker(args):
 
         while not done and steps < 800:
             if arch == "multi":
-                act, logp, val, _ = mlp.act(obs, n_hands=n_hands, sample=True, rng=rng)
+                act, logp, val, _ = mlp.act(
+                    obs, n_hands=n_hands, sample=sample, rng=rng,
+                    greedy_frac=greedy_frac, temperature=temperature,
+                )
             else:
-                act, logp, val, _ = mlp.act(obs, sample=True, rng=rng)
+                act, logp, val, _ = mlp.act(obs, sample=sample, rng=rng)
             obs_buf.append(obs)
             act_buf.append(act)
             logp_buf.append(logp)
@@ -121,18 +162,16 @@ def run_episode_worker(args):
         return None
 
 
-def _run_spatial_episode(opponent, seed, weights_dict, net, sample=True):
+def _run_spatial_episode(opponent, seed, weights_dict, net, sample=True,
+                         greedy_frac=0.0, temperature=1.0):
     """Official-engine episode with a CNN / Transformer SpatialActor."""
     import numpy as np
     import torch
 
     from rl.board_obs import pack_obs
     from rl.env import KaggEnvMulti, terminal_money
-    from rl.spatial_policy import SpatialActor
 
-    model = SpatialActor(net=net)
-    model.load_numpy_state(weights_dict)
-    model.eval()
+    model = _resident_spatial(net, weights_dict)
 
     try:
         env = KaggEnvMulti(opponent=opponent, seed=seed)
@@ -146,12 +185,15 @@ def _run_spatial_episode(opponent, seed, weights_dict, net, sample=True):
         rew_buf, val_buf, done_buf, nh_buf = [], [], [], []
         total_r = 0.0
         steps = 0
+        gfrac = 0.0 if not sample else greedy_frac
         while not done and steps < 800:
-            xt = torch.tensor(packed, dtype=torch.float32).unsqueeze(0)
+            xt = torch.as_tensor(packed, dtype=torch.float32).unsqueeze(0)
             nh = torch.tensor([n_hands], dtype=torch.int64)
-            tasks, logp, val = model.act(xt, nh, sample=sample)
+            tasks, logp, val = model.act(
+                xt, nh, sample=sample, greedy_frac=gfrac, temperature=temperature,
+            )
             act = [int(v) for v in tasks[0].tolist()]
-            obs_buf.append(packed)
+            obs_buf.append(np.asarray(packed, dtype=np.float32))
             act_buf.append(act)
             logp_buf.append(float(logp[0]))
             val_buf.append(float(val[0]))
@@ -166,7 +208,7 @@ def _run_spatial_episode(opponent, seed, weights_dict, net, sample=True):
         if done:
             val_buf.append(0.0)
         else:
-            xt = torch.tensor(packed, dtype=torch.float32).unsqueeze(0)
+            xt = torch.as_tensor(packed, dtype=torch.float32).unsqueeze(0)
             nh = torch.tensor([n_hands], dtype=torch.int64)
             val_buf.append(float(model.act(xt, nh, sample=False)[2][0]))
         mine, opp_m = terminal_money(getattr(env, "obs", None))

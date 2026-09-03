@@ -1,4 +1,9 @@
-"""PPO training loop with curriculum opponents and PGA seed scheduling.
+"""On-policy training loop with curriculum opponents and PGA seed scheduling.
+
+Default update is PPO. ``--algo a2c`` / ``--algo reinforce`` keep the same
+collector, GAE (or Monte-Carlo for reinforce), and multi-head action space;
+only the policy surrogate changes. Non-PPO algos default to 1 epoch and
+all-sample collect (clip cannot hide the greedy-frac mixture).
 
 Default closed-loop ladder: barnyard -> enhanced. Promotion is greedy-probe
 win rate (exam-like), not the sampled train win= which stays near 0 under
@@ -13,18 +18,38 @@ Barnyard-only (no promotion):
         --init-weights rl/ckpt_official/ppo_it0300.npz \\
         --ckpt-dir rl/ckpt_herd --iters 200 --episodes 8 --workers 12
 
+A2C smoke (same env, unclipped GAE policy gradient):
+
+    python -m rl.train_ppo --algo a2c --arch multi \\
+        --opponents agents/barnyard.py --advance-at 0 --mix-prev 0 \\
+        --ckpt-dir rl/ckpt_a2c --iters 50 --episodes 8 --workers 12
+
 Spatial trunks (CNN / Transformer over the 10×10 farm) keep the same
 multi-head action space. They cannot load the 75→256 MLP npz:
 
     python -m rl.train_ppo --arch multi --net transformer \\
         --init-weights rl/ckpt_transformer_100/ppo_it0070.pt \\
         --ckpt-dir rl/ckpt_transformer_curr --iters 200
+
+A2C + Transformer (from scratch; 1 epoch, all-sample collect). Do not
+reuse ``rl/ckpt_a2c`` — that directory is the MLP A2C run:
+
+    python -m rl.train_ppo --algo a2c --arch multi --net transformer \\
+        --opponents agents/barnyard.py --advance-at 0 --mix-prev 0 \\
+        --init-weights none --ckpt-dir rl/ckpt_a2c_transformer \\
+        --iters 40 --episodes 8 --workers 4 --probe-every 10
+
+
+Collect is half argmax (`--greedy-frac 0.5`) with entropy annealed
+0.003 -> 0.0005 so the on-policy data is closer to the greedy exam.
+`--greedy-frac 0 --entropy-end 0.003` restores the old all-sample collect.
 """
 
 import argparse
 import csv
 import json
 import os
+import sys
 import time
 
 from concurrent.futures import ProcessPoolExecutor
@@ -41,7 +66,8 @@ from .ppo import (  # noqa: E402
 from .rollout import run_episode_worker, worker_init  # noqa: E402
 
 
-def _run_episode(env, mlp, arch="single", rng=None, sample=True):
+def _run_episode(env, mlp, arch="single", rng=None, sample=True,
+                 greedy_frac=0.0, temperature=1.0):
     obs_buf, act_buf, logp_buf = [], [], []
     rew_buf, val_buf, done_buf, nh_buf = [], [], [], []
 
@@ -50,9 +76,13 @@ def _run_episode(env, mlp, arch="single", rng=None, sample=True):
     done = False
     total_r = 0.0
     steps = 0
+    gfrac = 0.0 if not sample else greedy_frac
     while not done and steps < 800:
         if arch == "multi":
-            act, logp, val, _ = mlp.act(obs, n_hands=n_hands, sample=sample, rng=rng)
+            act, logp, val, _ = mlp.act(
+                obs, n_hands=n_hands, sample=sample, rng=rng,
+                greedy_frac=gfrac, temperature=temperature,
+            )
         else:
             act, logp, val, _ = mlp.act(obs, sample=sample, rng=rng)
         obs_buf.append(obs)
@@ -115,7 +145,8 @@ def _make_env(arch, opponent, seed, plan_turns=None):
 
 
 def _spatial_ppo_update(model, opt, batch_obs, batch_act, batch_logp, batch_rew,
-                        batch_val, batch_done, batch_nh, ep_lengths, args):
+                        batch_val, batch_done, batch_nh, ep_lengths, args,
+                        entropy_coef=None):
     import torch
     from .spatial_policy import ppo_update_spatial
 
@@ -128,11 +159,28 @@ def _spatial_ppo_update(model, opt, batch_obs, batch_act, batch_logp, batch_rew,
     adv_t = torch.tensor(adv.astype(np.float32), device=args.device)
     ret_t = torch.tensor(ret.astype(np.float32), device=args.device)
     nh = torch.tensor(np.asarray(batch_nh, dtype=np.int64), device=args.device)
+    ent = args.entropy if entropy_coef is None else entropy_coef
     return ppo_update_spatial(
         model, opt, obs, act, old_logp, adv_t, ret_t, nh,
-        clip=args.clip, entropy_coef=args.entropy, value_coef=args.value_coef,
+        clip=args.clip, entropy_coef=ent, value_coef=args.value_coef,
         epochs=args.epochs, minibatch=args.minibatch, max_grad_norm=args.max_grad_norm,
+        algo=args.algo,
     )
+
+
+def _entropy_at(it, args):
+    start = float(args.entropy)
+    end = float(args.entropy_end)
+    if int(args.iters) <= 1:
+        return start
+    t = (it - 1) / max(int(args.iters) - 1, 1)
+    return (1.0 - t) * start + t * end
+
+
+def _rollout_args(opp, seed, weights, args, plan_turns, sample=True):
+    gfrac = 0.0 if not sample else float(args.greedy_frac)
+    return (opp, seed, weights, args.arch, plan_turns, args.net,
+            sample, gfrac, float(args.temperature))
 
 
 def _greedy_probe(opponent, n, arch, net, spatial, mlp, plan_turns):
@@ -171,6 +219,10 @@ def _greedy_probe(opponent, n, arch, net, spatial, mlp, plan_turns):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--algo", choices=["ppo", "a2c", "reinforce"], default="ppo",
+                    help="policy update. a2c = unclipped GAE PG (1 epoch); "
+                         "reinforce = Monte-Carlo return + value baseline. "
+                         "collector / action space stay the same.")
     ap.add_argument("--arch", choices=["single", "multi", "market"], default="multi")
     ap.add_argument("--net", choices=["mlp", "cnn", "transformer"], default="mlp",
                     help="policy trunk. cnn/transformer need --arch multi and "
@@ -208,6 +260,15 @@ def main():
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--minibatch", type=int, default=512)
     ap.add_argument("--entropy", type=float, default=0.003)
+    ap.add_argument("--entropy-end", type=float, default=5e-4,
+                    help="linear anneal of entropy coef from --entropy to this "
+                         "by the last iter. Same value as --entropy disables.")
+    ap.add_argument("--greedy-frac", type=float, default=0.5,
+                    help="fraction of collect steps that take argmax (exam-like). "
+                         "0 is the old all-sample collect.")
+    ap.add_argument("--temperature", type=float, default=1.0,
+                    help="softmax temperature on sampled collect steps only; "
+                         "logp stays on the unscaled policy. 1 is default.")
     ap.add_argument("--value-coef", type=float, default=0.5)
     ap.add_argument("--max-grad-norm", type=float, default=0.5)
     ap.add_argument("--seed", type=int, default=0)
@@ -224,15 +285,29 @@ def main():
                     help="path to plan turns JSON for --arch market")
     args = ap.parse_args()
 
+    if args.algo != "ppo":
+        if "--epochs" not in sys.argv:
+            args.epochs = 1
+        if "--greedy-frac" not in sys.argv:
+            args.greedy_frac = 0.0
+        if args.algo == "reinforce" and "--lam" not in sys.argv:
+            args.lam = 1.0
+
     if args.market_only:
         args.arch = "market"
     if args.net != "mlp":
         if args.arch != "multi":
             raise SystemExit("--net cnn/transformer requires --arch multi")
-        if args.ckpt_dir == "rl/ckpt_herd":
-            args.ckpt_dir = f"rl/ckpt_{args.net}"
         if args.init_weights == "rl/ckpt_official/ppo_it0300.npz":
             args.init_weights = "none"
+
+    # Compose the default directory from both knobs. Previously --algo a2c
+    # won and wrote transformer checkpoints into the MLP A2C dir.
+    if args.ckpt_dir == "rl/ckpt_herd":
+        tags = [t for t in (args.algo if args.algo != "ppo" else "",
+                            args.net if args.net != "mlp" else "") if t]
+        if tags:
+            args.ckpt_dir = "rl/ckpt_" + "_".join(tags)
 
     opponents = [o.strip() for o in args.opponents.split(",") if o.strip()]
     if not opponents:
@@ -265,6 +340,9 @@ def main():
     else:
         print(f"curriculum: {opponents}  calendar switch-after={args.switch_after}"
               f"  probe-every={args.probe_every}")
+    print(f"collect: greedy_frac={args.greedy_frac} temperature={args.temperature} "
+          f"entropy {args.entropy} -> {args.entropy_end}")
+    print(f"algo={args.algo}  epochs={args.epochs}  lam={args.lam}  clip={args.clip}")
 
     plan_turns = None
     if args.arch == "market":
@@ -314,11 +392,13 @@ def main():
     fixed_seeds = [7, 13, 42, 99, 256, 512, 1024]
     n_workers = min(args.episodes, args.workers)
     if spatial is not None:
-        n_workers = min(n_workers, 4)
+        if os.name == "nt":
+            n_workers = min(n_workers, 4)
         import torch
         torch.set_num_threads(1)
         os.environ.setdefault("OMP_NUM_THREADS", "1")
-        print(f"spatial workers={n_workers} (capped; torch+spawn on Windows)")
+        extra = " (capped; torch+spawn on Windows)" if os.name == "nt" else ""
+        print(f"spatial workers={n_workers}{extra}")
     pool = None
     if n_workers > 1:
         pool = ProcessPoolExecutor(max_workers=n_workers, initializer=worker_init)
@@ -355,7 +435,10 @@ def main():
                     ep_opp = _episode_opp(ep)
                     if spatial is not None:
                         from .rollout import _run_spatial_episode
-                        result = _run_spatial_episode(ep_opp, seed, weights_dict, args.net)
+                        result = _run_spatial_episode(
+                            ep_opp, seed, weights_dict, args.net, sample=True,
+                            greedy_frac=args.greedy_frac, temperature=args.temperature,
+                        )
                     else:
                         try:
                             env = _make_env(args.arch, ep_opp, seed, plan_turns)
@@ -363,7 +446,10 @@ def main():
                             print(f"  env make failed seed={seed} opp={ep_opp}: {e}")
                             continue
                         ep_rng = np.random.default_rng(seed + 17)
-                        result = _run_episode(env, mlp, arch=args.arch, rng=ep_rng)
+                        result = _run_episode(
+                            env, mlp, arch=args.arch, rng=ep_rng, sample=True,
+                            greedy_frac=args.greedy_frac, temperature=args.temperature,
+                        )
                         try:
                             env.close()
                         except Exception:
@@ -382,7 +468,7 @@ def main():
                         ep_opp = _episode_opp(ep)
                         futures.append(pool.submit(
                             run_episode_worker,
-                            (ep_opp, seed, weights_dict, args.arch, plan_turns, args.net),
+                            _rollout_args(ep_opp, seed, weights_dict, args, plan_turns),
                         ))
                     for future in futures:
                         try:
@@ -410,11 +496,17 @@ def main():
                             ep_opp = _episode_opp(ep)
                             if spatial is not None:
                                 from .rollout import _run_spatial_episode
-                                result = _run_spatial_episode(ep_opp, seed, weights_dict, args.net)
+                                result = _run_spatial_episode(
+                                    ep_opp, seed, weights_dict, args.net, sample=True,
+                                    greedy_frac=args.greedy_frac, temperature=args.temperature,
+                                )
                             else:
                                 env = _make_env(args.arch, ep_opp, seed, plan_turns)
                                 ep_rng = np.random.default_rng(seed + 17)
-                                result = _run_episode(env, mlp, arch=args.arch, rng=ep_rng)
+                                result = _run_episode(
+                                    env, mlp, arch=args.arch, rng=ep_rng, sample=True,
+                                    greedy_frac=args.greedy_frac, temperature=args.temperature,
+                                )
                                 env.close()
                             _ingest_episode(
                                 result, batch_obs, batch_act, batch_logp, batch_rew, batch_val,
@@ -426,16 +518,20 @@ def main():
                 print(f"iter {it}/{args.iters}  no episodes collected")
                 continue
 
+            ent_coef = _entropy_at(it, args)
             update_kw = dict(
                 episode_lengths=ep_lengths,
                 gamma=args.gamma, lam=args.lam, clip=args.clip, epochs=args.epochs,
-                minibatch=args.minibatch, lr=args.lr, entropy_coef=args.entropy,
+                minibatch=args.minibatch, lr=args.lr, entropy_coef=ent_coef,
                 value_coef=args.value_coef, max_grad_norm=args.max_grad_norm,
             )
+            if args.arch == "multi":
+                update_kw["algo"] = args.algo
             if spatial is not None:
                 stats = _spatial_ppo_update(
                     spatial, spatial_opt, batch_obs, batch_act, batch_logp,
                     batch_rew, batch_val, batch_done, batch_nh, ep_lengths, args,
+                    entropy_coef=ent_coef,
                 )
             elif args.arch == "market":
                 stats = ppo_update_market(
@@ -469,13 +565,13 @@ def main():
                 )
                 print(f"  probe vs {opp}: win={pwin:.2f}  money={pmine:.0f}/{pomp:.0f}  "
                       f"n={args.probe_episodes} greedy seeds 10000+")
-            print(f"iter {it:4d}/{args.iters}  arch={args.arch} net={args.net}  "
+            print(f"iter {it:4d}/{args.iters}  algo={args.algo} arch={args.arch} net={args.net}  "
                   f"stage={tier + 1}/{len(opponents)}  opp={opp}  "
                   f"mix_prev={args.mix_prev if tier else 0:.2f}  fixed={int(use_fixed)}  "
                   f"ep_reward={ep_r:.3f}  win={win:.2f}  money={money:.0f}/{omoney:.0f}  "
                   f"steps={np.mean(ep_steps):.1f}  "
                   f"pol={stats['policy_loss']:.4f} val={stats['value_loss']:.4f} ent={stats['entropy']:.4f}  "
-                  f"time={elapsed:.1f}s")
+                  f"ent_coef={ent_coef:.5f}  time={elapsed:.1f}s")
             log_w.writerow([
                 it, opp, f"{ep_r:.4f}", f"{win:.4f}",
                 f"{money:.1f}", f"{omoney:.1f}",
@@ -508,10 +604,10 @@ def main():
             if it % args.save_every == 0 or it == args.iters:
                 if spatial is not None:
                     import torch
-                    path = os.path.join(args.ckpt_dir, f"ppo_it{it:04d}.pt")
+                    path = os.path.join(args.ckpt_dir, f"{args.algo}_it{it:04d}.pt")
                     torch.save({"net": args.net, "model": spatial.state_dict(), "iter": it}, path)
                 else:
-                    path = os.path.join(args.ckpt_dir, f"ppo_it{it:04d}.npz")
+                    path = os.path.join(args.ckpt_dir, f"{args.algo}_it{it:04d}.npz")
                     mlp.save(path)
                 print(f"  saved {path}  total_time={time.time()-start_time:.1f}s")
     finally:

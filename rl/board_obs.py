@@ -15,6 +15,8 @@ Channel layout (must match rl.gpu.obs.encode_board):
     20 farmer here   21 hands here / 4
 """
 
+import numpy as np
+
 from .features import ANIMALS, CROPS, FEATURE_DIM, _get
 
 BOARD = 10
@@ -22,6 +24,9 @@ CH_PER_FARM = 22
 N_FARM = 2
 BOARD_FLAT = CH_PER_FARM * N_FARM * BOARD * BOARD  # 4400
 PACKED_DIM = FEATURE_DIM + BOARD_FLAT
+
+_CROP_I = {name: i for i, name in enumerate(CROPS)}
+_ANIMAL_I = {name: i for i, name in enumerate(ANIMALS)}
 
 
 def _as_xy(pos, default=(4, 4)):
@@ -38,69 +43,61 @@ def _as_xy(pos, default=(4, 4)):
 
 def encode_farm(farm):
     """Return (CH, 10, 10) float32 for one farm."""
-    out = [[[0.0] * BOARD for _ in range(BOARD)] for _ in range(CH_PER_FARM)]
+    out = np.zeros((CH_PER_FARM, BOARD, BOARD), dtype=np.float32)
     tiles = _get(farm, "tiles") or []
     for y in range(BOARD):
         row = tiles[y] if y < len(tiles) else []
         for x in range(BOARD):
             t = row[x] if x < len(row) else "LOCKED"
             if t is None:
-                out[0][y][x] = 1.0
+                out[0, y, x] = 1.0
                 continue
             if t == "LOCKED" or not isinstance(t, dict):
-                out[1][y][x] = 1.0
+                out[1, y, x] = 1.0
                 continue
             kind = t.get("kind")
             if kind == "WEED":
-                out[2][y][x] = 1.0
+                out[2, y, x] = 1.0
             elif kind == "PLANT":
-                out[3][y][x] = 1.0
-                crop = t.get("crop")
-                if crop in CROPS:
-                    out[4 + CROPS.index(crop)][y][x] = 1.0
+                out[3, y, x] = 1.0
+                ci = _CROP_I.get(t.get("crop"))
+                if ci is not None:
+                    out[4 + ci, y, x] = 1.0
             elif kind == "PASTURE":
-                out[12][y][x] = 1.0
+                out[12, y, x] = 1.0
             elif kind == "COOP":
-                out[13][y][x] = 1.0
+                out[13, y, x] = 1.0
             try:
                 yu = float(t.get("yield_units") or 0.0)
             except (TypeError, ValueError):
                 yu = 0.0
-            out[9][y][x] = max(0.0, min(1.0, yu / 6.0))
+            out[9, y, x] = max(0.0, min(1.0, yu / 6.0))
             if t.get("watered_today"):
-                out[10][y][x] = 1.0
+                out[10, y, x] = 1.0
             try:
                 uw = float(t.get("consecutive_unwatered") or 0.0)
             except (TypeError, ValueError):
                 uw = 0.0
-            out[11][y][x] = max(0.0, min(1.0, uw / 2.0))
-            animal = t.get("animal")
-            if animal in ANIMALS:
-                out[14 + ANIMALS.index(animal)][y][x] = 1.0
+            out[11, y, x] = max(0.0, min(1.0, uw / 2.0))
+            ai = _ANIMAL_I.get(t.get("animal"))
+            if ai is not None:
+                out[14 + ai, y, x] = 1.0
             if t.get("fed_today"):
-                out[17][y][x] = 1.0
+                out[17, y, x] = 1.0
             if t.get("cared_today"):
-                out[18][y][x] = 1.0
+                out[18, y, x] = 1.0
             if t.get("fertilizer_available"):
-                out[19][y][x] = 1.0
+                out[19, y, x] = 1.0
 
     fx, fy = _as_xy(_get(farm, "farmer"))
-    out[20][fy][fx] = 1.0
+    out[20, fy, fx] = 1.0
     for pos in (_get(farm, "hands") or []):
         xy = _as_xy(pos, default=None)
         if xy is None:
             continue
         hx, hy = xy
-        out[21][hy][hx] = min(1.0, out[21][hy][hx] + 0.25)
+        out[21, hy, hx] = min(1.0, float(out[21, hy, hx]) + 0.25)
     return out
-
-
-def _flatten_farm(ch):
-    flat = []
-    for c in range(CH_PER_FARM):
-        for y in range(BOARD):
-            flat.extend(ch[c][y])
-    return flat
 
 
 def encode_board(obs):
@@ -109,16 +106,21 @@ def encode_board(obs):
     farms = _get(obs, "farms") or []
     mine = farms[player] if player < len(farms) else {}
     opp = farms[1 - player] if (1 - player) < len(farms) else {}
-    return _flatten_farm(encode_farm(mine)) + _flatten_farm(encode_farm(opp))
+    return np.concatenate(
+        [encode_farm(mine).ravel(), encode_farm(opp).ravel()]
+    ).astype(np.float32, copy=False)
 
 
 def pack_obs(obs, global_feats=None):
     """Packed vector: global features then board. Length PACKED_DIM."""
     from .features import encode as encode_global
-    g = list(global_feats) if global_feats is not None else encode_global(obs)
+    g = np.asarray(
+        global_feats if global_feats is not None else encode_global(obs),
+        dtype=np.float32,
+    ).reshape(-1)
     b = encode_board(obs)
-    if len(g) != FEATURE_DIM:
-        raise ValueError(f"global feats {len(g)} != {FEATURE_DIM}")
-    if len(b) != BOARD_FLAT:
-        raise ValueError(f"board feats {len(b)} != {BOARD_FLAT}")
-    return [float(v) for v in g] + [float(v) for v in b]
+    if g.shape[0] != FEATURE_DIM:
+        raise ValueError(f"global feats {g.shape[0]} != {FEATURE_DIM}")
+    if b.shape[0] != BOARD_FLAT:
+        raise ValueError(f"board feats {b.shape[0]} != {BOARD_FLAT}")
+    return np.concatenate([g, b])

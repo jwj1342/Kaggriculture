@@ -161,25 +161,40 @@ class SpatialActor(nn.Module):
         return lf, lh, lm, lv
 
     @torch.no_grad()
-    def act(self, obs, n_hands, sample=True):
+    def act(self, obs, n_hands, sample=True, greedy_frac=0.0, temperature=1.0):
         lf, lh, lm, lv = self.forward(obs)
-        pf = F.softmax(lf, dim=-1)
-        ph = F.softmax(lh, dim=-1)
-        pm = F.softmax(lm, dim=-1)
         B = obs.shape[0]
-        if sample:
+        farmer_g = lf.argmax(-1)
+        hands_g = lh.argmax(-1)
+        mode_g = lm.argmax(-1)
+        if not sample:
+            farmer, hands, mode = farmer_g, hands_g, mode_g
+        else:
+            t = max(float(temperature), 1e-5)
+            if t != 1.0:
+                pf = F.softmax(lf / t, dim=-1)
+                ph = F.softmax(lh / t, dim=-1)
+                pm = F.softmax(lm / t, dim=-1)
+            else:
+                pf = F.softmax(lf, dim=-1)
+                ph = F.softmax(lh, dim=-1)
+                pm = F.softmax(lm, dim=-1)
             farmer = torch.multinomial(pf, 1).squeeze(-1)
             hands = torch.multinomial(ph.reshape(B * _NHAND, _TASK), 1).reshape(B, _NHAND)
             mode = torch.multinomial(pm, 1).squeeze(-1)
-        else:
-            farmer = pf.argmax(-1)
-            hands = ph.argmax(-1)
-            mode = pm.argmax(-1)
+            g = float(greedy_frac)
+            if g > 0.0:
+                pick = torch.rand(B, device=obs.device) < g
+                farmer = torch.where(pick, farmer_g, farmer)
+                hands = torch.where(pick[:, None], hands_g, hands)
+                mode = torch.where(pick, mode_g, mode)
         n_hands = n_hands.long().clamp(0, _NHAND)
         hands = torch.where(
             torch.arange(_NHAND, device=obs.device)[None, :] < n_hands[:, None],
             hands, torch.zeros_like(hands),
         )
+        # log π of the taken action (unscaled). Mixture/temp collection is a
+        # mild IS bias; PPO clip absorbs it. Exam is still argmax of π.
         logp = _logp(lf, lh, lm, farmer, hands, mode, n_hands)
         tasks = torch.cat([farmer[:, None], hands, mode[:, None]], dim=-1)
         return tasks, logp, lv
@@ -199,9 +214,19 @@ class SpatialActor(nn.Module):
         self.load_state_dict(sd, strict=False)
 
 
-def ppo_update_spatial(model, opt, obs, act, old_logp, adv, ret, n_hands,
-                       clip=0.2, entropy_coef=0.003, value_coef=0.5, epochs=3,
-                       minibatch=512, max_grad_norm=0.5):
+def _policy_loss(logp, old_logp, adv, algo, clip):
+    """PPO clipped surrogate, or A2C/REINFORCE ∇θ E[log π A]."""
+    if algo == "ppo":
+        ratio = (logp - old_logp).exp()
+        surr1 = ratio * adv
+        surr2 = ratio.clamp(1.0 - clip, 1.0 + clip) * adv
+        return -torch.min(surr1, surr2).mean()
+    return -(logp * adv).mean()
+
+
+def policy_update_spatial(model, opt, obs, act, old_logp, adv, ret, n_hands,
+                          algo="ppo", clip=0.2, entropy_coef=0.003, value_coef=0.5,
+                          epochs=3, minibatch=512, max_grad_norm=0.5):
     N = adv.shape[0]
     adv = (adv - adv.mean()) / (adv.std() + 1e-8)
     farmer = act[:, 0].long()
@@ -219,10 +244,7 @@ def ppo_update_spatial(model, opt, obs, act, old_logp, adv, ret, n_hands,
                 continue
             lf, lh, lm, lv = model(obs[b])
             logp = _logp(lf, lh, lm, farmer[b], hands[b], mode[b], n_hands[b])
-            ratio = (logp - old_logp[b]).exp()
-            surr1 = ratio * adv[b]
-            surr2 = ratio.clamp(1.0 - clip, 1.0 + clip) * adv[b]
-            pol = -torch.min(surr1, surr2).mean()
+            pol = _policy_loss(logp, old_logp[b], adv[b], algo, clip)
             val_loss = ((lv - ret[b]) ** 2).mean()
             ent_f = -(F.softmax(lf, -1) * F.log_softmax(lf, -1)).sum(-1).mean()
             ent_m = -(F.softmax(lm, -1) * F.log_softmax(lm, -1)).sum(-1).mean()
@@ -241,3 +263,13 @@ def ppo_update_spatial(model, opt, obs, act, old_logp, adv, ret, n_hands,
             n_upd += 1
     n_upd = max(n_upd, 1)
     return {k: v / n_upd for k, v in stats.items()}
+
+
+def ppo_update_spatial(model, opt, obs, act, old_logp, adv, ret, n_hands,
+                       clip=0.2, entropy_coef=0.003, value_coef=0.5, epochs=3,
+                       minibatch=512, max_grad_norm=0.5, algo="ppo"):
+    return policy_update_spatial(
+        model, opt, obs, act, old_logp, adv, ret, n_hands,
+        algo=algo, clip=clip, entropy_coef=entropy_coef, value_coef=value_coef,
+        epochs=epochs, minibatch=minibatch, max_grad_norm=max_grad_norm,
+    )

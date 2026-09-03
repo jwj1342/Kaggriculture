@@ -258,14 +258,24 @@ def _compute_gae(rewards, values, dones, episode_lengths=None, gamma=0.99, lam=0
     return adv, ret
 
 
-def _ppo_logits_grad(probs, actions, advantages, logp, old_logp, clip, entropy_coef):
-    """dL/d(logits) for clipped PPO surrogate + entropy, L averaged over batch."""
+def _ppo_logits_grad(probs, actions, advantages, logp, old_logp, clip, entropy_coef,
+                     algo="ppo"):
+    """dL/d(logits) for the policy term + entropy, L averaged over batch.
+
+    ``algo="ppo"`` is the clipped surrogate. ``a2c`` / ``reinforce`` are
+    unclipped ∇θ E[log π A] (same collector, no IS clip).
+    """
     B = probs.shape[0]
     ratio = np.exp(logp - old_logp)
-    surr1 = ratio * advantages
-    surr2 = np.clip(ratio, 1.0 - clip, 1.0 + clip) * advantages
-    unclipped = surr1 <= surr2
-    dlogp = np.where(unclipped, -ratio * advantages, 0.0) / max(B, 1)
+    if algo == "ppo":
+        surr1 = ratio * advantages
+        surr2 = np.clip(ratio, 1.0 - clip, 1.0 + clip) * advantages
+        unclipped = surr1 <= surr2
+        dlogp = np.where(unclipped, -ratio * advantages, 0.0) / max(B, 1)
+        policy_loss = -np.minimum(surr1, surr2).mean()
+    else:
+        dlogp = -advantages / max(B, 1)
+        policy_loss = float(-(logp * advantages).mean())
     one_hot = np.zeros_like(probs)
     one_hot[np.arange(B), actions] = 1.0
     dlogits = dlogp[:, None] * (one_hot - probs)
@@ -273,7 +283,6 @@ def _ppo_logits_grad(probs, actions, advantages, logp, old_logp, clip, entropy_c
     H = -(probs * log_probs).sum(axis=1, keepdims=True)
     dH = -probs * (log_probs + H)
     dlogits += (-entropy_coef / max(B, 1)) * dH
-    policy_loss = -np.minimum(surr1, surr2).mean()
     entropy = float(H.mean())
     return dlogits, policy_loss, entropy, ratio
 
@@ -566,25 +575,33 @@ class MultiHeadMLP:
             "lf": lf, "lh": lh, "lm": lm, "lv": lv,
         }
 
-    def act(self, obs, n_hands=12, sample=True, rng=None):
+    def act(self, obs, n_hands=12, sample=True, rng=None, greedy_frac=0.0, temperature=1.0):
         f = _as_feats(obs)
         out = self.forward(f.reshape(1, -1))
-        pf = _softmax(out["lf"][0])
-        ph = _softmax(out["lh"][0].reshape(_NHAND, _TASK))
-        pm = _softmax(out["lm"][0])
+        lf, lh, lm = out["lf"][0], out["lh"][0], out["lm"][0]
         rng = _rng(rng)
         n_hands = int(max(0, min(_NHAND, n_hands)))
-        if sample:
+        use_sample = bool(sample)
+        if use_sample and float(greedy_frac) > 0.0 and rng.random() < float(greedy_frac):
+            use_sample = False
+        t = max(float(temperature), 1e-5) if use_sample else 1.0
+        pf = _softmax(lf / t)
+        ph = _softmax((lh / t).reshape(_NHAND, _TASK))
+        pm = _softmax(lm / t)
+        pf0 = _softmax(lf)
+        ph0 = _softmax(lh.reshape(_NHAND, _TASK))
+        pm0 = _softmax(lm)
+        if use_sample:
             farmer = _choice(rng, _TASK, pf)
             hands = [_choice(rng, _TASK, ph[i]) for i in range(_NHAND)]
             mode = _choice(rng, _MODE, pm)
         else:
-            farmer = int(np.argmax(pf))
-            hands = [int(np.argmax(ph[i])) for i in range(_NHAND)]
-            mode = int(np.argmax(pm))
-        logp = float(np.log(pf[farmer] + 1e-8) + np.log(pm[mode] + 1e-8))
+            farmer = int(np.argmax(pf0))
+            hands = [int(np.argmax(ph0[i])) for i in range(_NHAND)]
+            mode = int(np.argmax(pm0))
+        logp = float(np.log(pf0[farmer] + 1e-8) + np.log(pm0[mode] + 1e-8))
         for i in range(n_hands):
-            logp += float(np.log(ph[i, hands[i]] + 1e-8))
+            logp += float(np.log(ph0[i, hands[i]] + 1e-8))
         for i in range(n_hands, _NHAND):
             hands[i] = 0
         action = [farmer] + hands + [mode]
@@ -653,7 +670,7 @@ class MultiHeadMLP:
 def ppo_update_multihead(mlp, obs_buf, act_buf, logp_buf, rew_buf, val_buf, done_buf,
                          n_hands_buf=None, episode_lengths=None, gamma=0.997, lam=0.95,
                          clip=0.2, epochs=3, minibatch=512, lr=3e-4, entropy_coef=0.003,
-                         value_coef=0.5, max_grad_norm=0.5):
+                         value_coef=0.5, max_grad_norm=0.5, algo="ppo"):
     T = len(rew_buf)
     adv, ret = _compute_gae(rew_buf, val_buf, done_buf, episode_lengths, gamma, lam)
     adv = (adv - adv.mean()) / (adv.std() + 1e-8)
@@ -713,8 +730,10 @@ def ppo_update_multihead(mlp, obs_buf, act_buf, logp_buf, rew_buf, val_buf, done
             logp_h = (logp_h_all * hand_mask).sum(axis=1)
             logp = logp_f + logp_h + logp_m
 
-            dlf, pl_f, ent_f, _ = _ppo_logits_grad(pf, bf_a, badv, logp, bold, clip, entropy_coef)
-            dlm, pl_m, ent_m, _ = _ppo_logits_grad(pm, bm_a, badv, logp, bold, clip, entropy_coef)
+            dlf, pl_f, ent_f, _ = _ppo_logits_grad(
+                pf, bf_a, badv, logp, bold, clip, entropy_coef, algo=algo)
+            dlm, pl_m, ent_m, _ = _ppo_logits_grad(
+                pm, bm_a, badv, logp, bold, clip, entropy_coef, algo=algo)
 
             dlh = np.zeros((B, _NHAND * _TASK), dtype=np.float64)
             ent_h = 0.0
@@ -723,6 +742,7 @@ def ppo_update_multihead(mlp, obs_buf, act_buf, logp_buf, rew_buf, val_buf, done
                 active = hand_mask[:, i]
                 dli, pli, enti, _ = _ppo_logits_grad(
                     ph[:, i, :], bh_a[:, i], badv * active, logp, bold, clip, entropy_coef,
+                    algo=algo,
                 )
                 dli *= active[:, None]
                 dlh[:, i * _TASK:(i + 1) * _TASK] = dli

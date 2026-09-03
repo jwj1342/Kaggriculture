@@ -1,9 +1,12 @@
-"""GPU-batched PPO: vectorized env + PyTorch policy.
+"""GPU-batched on-policy trainer: vectorized env + PyTorch policy.
 
     pip install -r requirements/gpu.txt
     python -m rl.gpu.train --device cpu --batch 256 --iters 200 \\
         --opponent scripted --switch-after 0 \\
         --init-weights rl/ckpt_official/ppo_it0300.npz --ckpt-dir rl/ckpt_gpu
+
+    python -m rl.gpu.train --algo a2c --device cpu --batch 64 --iters 30 \\
+        --opponent scripted --init-weights none --ckpt-dir rl/ckpt_gpu_a2c
 
 `--device auto` picks CUDA when present. On a laptop GPU (measured RTX 4060)
 that is slower: one 256×720 iter is ~246s on CUDA vs ~132s on CPU, because
@@ -23,6 +26,7 @@ The torchrl exporter stays at `rl/export_agent.py`.
 
 import argparse
 import os
+import sys
 import time
 
 import torch
@@ -43,6 +47,9 @@ def _device(name):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--algo", choices=["ppo", "a2c", "reinforce"], default="ppo",
+                    help="policy update. a2c = unclipped GAE PG; "
+                         "reinforce = Monte-Carlo return + value baseline.")
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--iters", type=int, default=200)
     ap.add_argument(
@@ -69,8 +76,17 @@ def main():
     ap.add_argument("--save-every", type=int, default=5)
     args = ap.parse_args()
 
+    if args.algo != "ppo":
+        if "--epochs" not in sys.argv:
+            args.epochs = 1
+        if args.algo == "reinforce" and "--lam" not in sys.argv:
+            args.lam = 1.0
+        if args.ckpt_dir == "rl/ckpt_gpu":
+            args.ckpt_dir = f"rl/ckpt_gpu_{args.algo}"
+
     device = _device(args.device)
-    print(f"device={device}  batch={args.batch}  opponent={args.opponent}")
+    print(f"device={device}  batch={args.batch}  opponent={args.opponent}  "
+          f"algo={args.algo}  epochs={args.epochs}  lam={args.lam}")
     torch.manual_seed(args.seed)
     if device == "cuda":
         torch.cuda.manual_seed_all(args.seed)
@@ -128,19 +144,20 @@ def main():
             model, opt, obs_t, act_t, logp_t.detach(), adv.detach(), ret.detach(), nh_t,
             clip=args.clip, entropy_coef=args.entropy, value_coef=args.value_coef,
             epochs=args.epochs, minibatch=args.minibatch, max_grad_norm=args.max_grad_norm,
+            algo=args.algo,
         )
         money = env.st.money
         win = (money[:, 0] > money[:, 1]).float().mean()
         elapsed = time.time() - t0
         print(
-            f"iter {it:4d}/{args.iters}  opp={env.opponent}  "
+            f"iter {it:4d}/{args.iters}  algo={args.algo}  opp={env.opponent}  "
             f"ep_reward={float(ep_r.mean()):.3f}  win={float(win):.2f}  "
             f"money={float(money[:, 0].mean()):.0f}/{float(money[:, 1].mean()):.0f}  "
             f"pol={stats['policy_loss']:.4f} val={stats['value_loss']:.4f} "
             f"ent={stats['entropy']:.4f}  time={elapsed:.1f}s"
         )
         if it % args.save_every == 0 or it == args.iters:
-            path = os.path.join(args.ckpt_dir, f"ppo_it{it:04d}.npz")
+            path = os.path.join(args.ckpt_dir, f"{args.algo}_it{it:04d}.npz")
             model.save(path)
             print(f"  saved {path}  total_time={time.time() - t0_all:.1f}s")
 
