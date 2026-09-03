@@ -14238,3 +14238,26 @@ snaps   = []                                   (--league 未开)
 2. **投 A/B 之前,先算一遍"这个因子在预期的运行轨迹上会不会被执行"。**
    本例只需两行:停住点的 `earlier` 有几项、`advance_at` 与实测胜率的差。
    **两分钟的算术省下 6 个 link。**
+
+## 2026-09-03 · 操作陷阱:**scratchpad 的 `/tmp` 是节点本地的** —— `sbatch` 会拷走批处理脚本本身,但**不会**拷它引用的文件
+
+`kg-probe-screen`(21084799)**10 秒 FAILED**:
+
+```
+python: can't open file '/tmp/claude-.../scratchpad/probe_screen.py': [Errno 2]
+```
+
+**机制**:`sbatch` 在提交时把**批处理脚本**读进 Slurm 的 spool
+(所以脚本放哪都能跑 —— 之前 `a0_recheck.sh` 就在 `/tmp` 下,跑通了),
+**但脚本里 `python <path>` 引用的文件是在计算节点上打开的**,
+而计算节点的 `/tmp` 是它自己的,看不到登录节点的。
+
+**这条此前没被记过,而它正好会伪装成"作业秒失败,大概是环境问题"。**
+
+**处置**:把被引用的脚本放到共享文件系统,并且选一个 **gitignored** 的目录 ——
+`data/scripts/`(`data` 已 gitignore),这样它既对计算节点可见,
+又不会让 `submit_rl.py` 的脏树检查把它算成"未提交的相关改动"
+(此前 `tools/ruler_calib.py` 就因为这个挡下过一次提交)。
+
+**检查清单**:sbatch 脚本里**除了脚本自身之外的一切路径**都必须在
+`/scratch` 或 `/project` 上;scratchpad 只能用于登录节点自己跑的东西。
