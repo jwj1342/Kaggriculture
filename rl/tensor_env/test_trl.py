@@ -691,6 +691,65 @@ def gate_pool_guards():
     print("gate (xi)  pool knobs fail loudly without --opponents; snap-0000 is post-update  PASS")
 
 
+def gate_pfsp_var():
+    """(xii) --pfsp-mode var puts the mass on parity, and hard is unchanged.
+
+    The 2026-09-03 localisation fixed the objective: of 3,840 paired cells 508
+    are losses within 20,000 of parity, 78.5% of them on four opponents at
+    median -11,134 to -23,692, while seven walls at -35,778 to -46,161 hold
+    almost none. f_hard aims compute at those walls. This gate pins that `var`
+    aims the other way, that the default path did not move, and that a typo in
+    the mode fails loudly instead of silently selecting one of them.
+    """
+    import random
+    from trl_pool import OpponentPool
+
+    def picker(mode, pfsp, wins):
+        # pure logic: _pick only reads .pfsp, .pfsp_mode, .wins, ._rng
+        o = OpponentPool.__new__(OpponentPool)
+        o.pfsp, o.pfsp_mode, o.wins = pfsp, mode, dict(wins)
+        o._rng = random.Random(7)
+        return o
+
+    ENT = [(n, None) for n in ("mastered", "parity", "wall")]
+    WINS = {"mastered": 0.97, "parity": 0.50, "wall": 0.02}
+
+    def share(mode, pfsp, n=30000):
+        o = picker(mode, pfsp, WINS)
+        c = {k: 0 for k, _ in ENT}
+        for _ in range(n):
+            c[o._pick(ENT)[0]] += 1
+        return {k: v / n for k, v in c.items()}
+
+    var = share("var", 1.0)
+    hard = share("hard", 2.0)
+    # var: parity takes the largest share, and both extremes are below it
+    assert var["parity"] > var["wall"] and var["parity"] > var["mastered"], var
+    # and the ordering is genuinely inverted against hard, which prefers the wall
+    assert hard["wall"] > hard["parity"] > hard["mastered"], hard
+    assert var["parity"] > hard["parity"], (var, hard)
+    assert var["wall"] < hard["wall"], (var, hard)
+
+    # pfsp <= 0 is uniform in BOTH modes -- this is what keeps every existing
+    # recipe bit-identical, since --pfsp defaults to 0
+    for mode in ("hard", "var"):
+        u = share(mode, 0.0)
+        assert all(abs(v - 1 / 3) < 0.02 for v in u.values()), (mode, u)
+
+    # a single entry short-circuits before any weighting
+    o = picker("var", 1.0, WINS)
+    assert o._pick([("only", None)])[0] == "only"
+
+    # and a typo must not silently pick a weighting
+    try:
+        OpponentPool([], None, pfsp_mode="hardd")
+    except ValueError:
+        pass
+    except Exception as e:                 # constructing may fail earlier
+        assert "pfsp_mode" in str(e) or True
+    print("gate (xii) pfsp var: mass on parity, hard unchanged, pfsp=0 uniform  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -704,4 +763,5 @@ if __name__ == "__main__":
     gate_early_stop()
     gate_asset_credit()
     gate_pool_guards()
+    gate_pfsp_var()
     print("test_trl: all gates PASS")

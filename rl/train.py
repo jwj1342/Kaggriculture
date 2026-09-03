@@ -132,6 +132,16 @@ def build_parser():
                          "(AlphaStar f_hard): dominated members drain out "
                          "of the sampling mass; 0 = uniform (legacy)")
     # -- kickstarting (Schmitt et al. 2018; the Lux-S1 winner's teacher-KL) --
+    # `hard` is what every run so far used. `var` is rl/league.py:149's
+    # variance form, maximal at a 50% win rate, which is the objective the
+    # 2026-09-03 localisation fixed: 78.5% of the flippable cells sit on four
+    # opponents 11k-24k from parity, and f_hard aims compute at the 35k-46k
+    # walls instead, where margin cannot buy a game.
+    ap.add_argument("--pfsp-mode", choices=["hard", "var"], default="hard",
+                    help="PFSP weighting inside each pool category: hard = "
+                         "AlphaStar f_hard (0.1+(1-w)**pfsp, mass on whoever "
+                         "beats us hardest); var = league.py's w*(1-w)+eps, "
+                         "mass on whoever is closest to parity. Needs --pfsp>0.")
     ap.add_argument("--kickstart", default="",
                     help="teacher whose mapped decision labels every "
                          "learner state; adds an annealed CE pull on the "
@@ -550,7 +560,7 @@ def train(args, log_fn=None):
             [s.strip() for s in args.opponents.split(",") if s.strip()],
             dev, advance_at=args.advance_at, league=args.league,
             snapshot_dir=snap_dir, seed=args.seed, handicap=args.handicap,
-            pfsp=args.pfsp)
+            pfsp=args.pfsp, pfsp_mode=args.pfsp_mode)
         env.opponent_sampler = pool.sample
     # shifted=True: value of obs and next-obs in ONE forward over T+1 steps
     # instead of torch.stack-ing two full copies of the batch (a 26.7 GiB

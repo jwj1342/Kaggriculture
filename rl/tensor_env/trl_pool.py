@@ -42,7 +42,7 @@ def _spec_name(spec):
 class OpponentPool:
     def __init__(self, specs, device, advance_at=0.85, ema=0.2, min_records=3,
                  league=False, max_snapshots=8, snapshot_dir="", seed=0,
-                 handicap=0, pfsp=0.0):
+                 handicap=0, pfsp=0.0, pfsp_mode="hard"):
         from trl_env import _make_opponent
         self.device = device
         self.anchors = [(_spec_name(s), _make_opponent(s, device)) for s in specs]
@@ -54,6 +54,9 @@ class OpponentPool:
         # uniform floor keeps every entry occasionally visited so the EMA
         # stays live (the 15% "forgotten players" slice, miniaturised).
         self.pfsp = float(pfsp)
+        if pfsp_mode not in ("hard", "var"):
+            raise ValueError(f"pfsp_mode must be hard|var, got {pfsp_mode!r}")
+        self.pfsp_mode = pfsp_mode
         # handicap ladder: each stage opens with `handicap` extra starting
         # money for the learner; the win gate first steps the handicap down
         # (halving, zero below 200) and only advances the stage at zero --
@@ -102,12 +105,36 @@ class OpponentPool:
         return fn
 
     def _pick(self, entries):
-        """Uniform inside a category, or f_hard-weighted when pfsp > 0."""
+        """Uniform inside a category, or PFSP-weighted when pfsp > 0.
+
+        Two weightings, and the choice matters more than the exponent:
+
+        `hard` (default, unchanged) is AlphaStar's f_hard,
+        `0.1 + (1 - ema_win)**pfsp` -- mass goes to whoever beats us hardest.
+
+        `var` is the variance form `ema*(1 - ema) + eps` that rl/league.py:149
+        already implements, maximal at ema = 0.5 -- mass goes to whoever is
+        CLOSEST TO PARITY. That is the objective the 2026-09-03 localisation
+        argues for: of 3,840 paired cells, 508 are losses within 20,000 of
+        parity and 78.5% of those sit on four opponents at median -11,134 to
+        -23,692, while the seven walls at -35,778 to -46,161 hold almost none.
+        f_hard pushes compute at those walls, i.e. exactly the wrong way, and
+        no amount of margin there buys a game.
+
+        In `var` mode the `pfsp` value is only an on-switch; the exponent is
+        not applied, so this reproduces league.py's form rather than inventing
+        an untested knob. The build logs which mode is live.
+        """
         if self.pfsp <= 0.0 or len(entries) == 1:
             return entries[self._rng.randrange(len(entries))]
-        floor = 0.1
-        ws = [floor + (1.0 - self.wins.get(n, 0.0)) ** self.pfsp
-              for n, _ in entries]
+        if self.pfsp_mode == "var":
+            eps = 0.05                      # league.py's PFSP_EPS
+            ws = [self.wins.get(n, 0.0) * (1.0 - self.wins.get(n, 0.0)) + eps
+                  for n, _ in entries]
+        else:
+            floor = 0.1
+            ws = [floor + (1.0 - self.wins.get(n, 0.0)) ** self.pfsp
+                  for n, _ in entries]
         r = self._rng.random() * sum(ws)
         for (name, fn), w in zip(entries, ws):
             if r < w:
@@ -179,5 +206,8 @@ class OpponentPool:
         cur = self.anchors[self.stage][0]
         ws = " ".join(f"{n}:{w:.2f}" for n, w in sorted(self.wins.items()))
         hc = f"  handicap {self.handicap}" if self.handicap0 else ""
-        return (f"stage {self.stage + 1}/{len(self.anchors)} ({cur}){hc}  "
+        # which weighting is live, because `hard` and `var` aim at opposite
+        # ends of the win-rate range and a silent default would be unreadable
+        pf = f"  pfsp {self.pfsp_mode}:{self.pfsp:g}" if self.pfsp > 0 else ""
+        return (f"stage {self.stage + 1}/{len(self.anchors)} ({cur}){hc}{pf}  "
                 f"snaps {len(self.snapshots)}  ema[{ws}]")
