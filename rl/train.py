@@ -283,6 +283,18 @@ def build_parser():
                     help="state-closed barnyard profile that owns the learner "
                          "seat's market queue while PPO learns farmer/hand "
                          "execution; the market head is masked to NOOP")
+    ap.add_argument("--fixed-farm-tape", default="",
+                    help="mirror of --fixed-market-profile: a recorded agent "
+                         "whose farm program (farmer + every hand slot) is "
+                         "grafted onto the learner seat at the raw-op level, "
+                         "so ONLY the market head can move the reward. The "
+                         "ratio and entropy then count the market head alone "
+                         "(MarketOnlyMultiHead). Requires --multi-head. "
+                         "Premise, measured 2026-09-04: a farm plan explains "
+                         "R^2=0.273 of top-tier ladder score while 27 teams "
+                         "on one identical farm plan span 1,002 points, 6.9x "
+                         "the ladder noise floor, and a recorded tape lands "
+                         "100%% of its farm actions on boards it never saw")
     ap.add_argument("--potential",
                     choices=("networth", "future", "future-mkt"),
                     default="networth",
@@ -510,13 +522,20 @@ def train(args, log_fn=None):
         fert_credit=args.fert_credit, land_value=args.land_value,
         fixed_market_profile=args.fixed_market_profile,
         plant_credit=args.plant_credit,
-        animal_credit=args.animal_credit)
+        animal_credit=args.animal_credit,
+        fixed_farm_tape=args.fixed_farm_tape)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
         v_hidden=args.v_hidden, device=dev,
         residual_base=args.residual_base, multi=args.multi_head,
-        couple=args.couple_heads)
+        couple=args.couple_heads,
+        market_only=bool(args.fixed_farm_tape))
+    if args.fixed_farm_tape:
+        log_fn(f"fixed-farm-tape: farm program grafted from "
+               f"{args.fixed_farm_tape} (raw ops, farmer + all "
+               f"{A.MAX_HANDS} hand slots); ratio and entropy count the "
+               f"market head only")
     if args.couple_heads:
         log_fn("couple-heads: market head conditioned on sampled "
                "farmer/hand intents (zero-init tables; RNG order f,h,m)")

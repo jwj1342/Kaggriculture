@@ -750,6 +750,206 @@ def gate_pfsp_var():
     print("gate (xii) pfsp var: mass on parity, hard unchanged, pfsp=0 uniform  PASS")
 
 
+def gate_farm_tape():
+    """(xiii) --fixed-farm-tape grafts the farm program and leaves ONLY the
+    market head able to move the reward.
+
+    Premise (docs/RUNS.md 2026-09-04): a farm plan explains R^2=0.273 of
+    top-tier ladder score while 27 teams sharing one identical farm plan span
+    1,002 points, 6.9x the ladder noise floor. So the run freezes the farm and
+    trains the market. Every half of that sentence is a silent-failure risk:
+    a graft that misses a hand slot leaks the policy back into the farm, and a
+    ratio that still counts the dead heads trains on noise. Both look like
+    ordinary bad learning curves.
+    """
+    from trl_env import KGTensorEnv
+    from trl_policy import MarketOnlyMultiHead, MultiHeadMasked
+    import tape_t
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    tape_path = os.path.join(root, "agents", "champ", "k01.py")
+    assert os.path.exists(tape_path), tape_path
+
+    def roll(steps=14, tape="", seed=5, poke=None):
+        """Run `steps` turns with fixed pseudo-random actions; return a
+        signature of the learner's farm and the money trajectory."""
+        torch.manual_seed(seed)
+        env = KGTensorEnv(2, device="cpu", episode_steps=40, multi_head=True,
+                          fixed_farm_tape=tape)
+        td = env.reset()
+        kinds, moneys = [], []
+        for t in range(steps):
+            a = torch.stack([_pick_legal(td["farmer_mask"], t),
+                             _pick_legal(td["market_mask"], t)], -1)
+            h = torch.zeros((2, A.MAX_HANDS), dtype=torch.int64)
+            act = torch.cat([a, h], -1)
+            if poke == "farmer":
+                act[:, 0] = _pick_legal(td["farmer_mask"], t + 3)
+            elif poke == "hands":
+                act[:, 2:] = 1
+            elif poke == "market":
+                act[:, 1] = _pick_legal(td["market_mask"], t + 3)
+            td["action"] = act
+            td = env.step(td)
+            kinds.append(env._ep.kind[:, env.seat].clone())
+            moneys.append(env._ep.money[:, env.seat].clone())
+            td = td["next"].exclude("reward")
+        return (torch.stack(kinds), torch.stack(moneys))
+
+    # (a) flag off is bit-identical to itself, and ON changes the farm --
+    #     otherwise the graft is a no-op and every later reading is void
+    k_off, m_off = roll(tape="")
+    k_off2, _ = roll(tape="")
+    assert torch.equal(k_off, k_off2), "the off path is not deterministic"
+    k_on, m_on = roll(tape=tape_path)
+    assert not torch.equal(k_off, k_on), \
+        "grafting a tape changed nothing -- the override never applied"
+
+    # (b) the policy's farmer and hand draws are DISCARDED. This is the half
+    #     that leaks: a graft covering the farmer but not every hand slot
+    #     still trains a farm policy, and the loss curve looks normal.
+    for poke in ("farmer", "hands"):
+        k_p, m_p = roll(tape=tape_path, poke=poke)
+        assert torch.equal(k_on, k_p) and torch.equal(m_on, m_p), \
+            f"poking the {poke} head moved the episode under a farm tape"
+
+    # (c) but the market head is still live, or there is nothing to train
+    k_m, m_m = roll(tape=tape_path, poke="market")
+    assert not torch.equal(m_on, m_m), \
+        "poking the market head changed nothing -- nothing is trainable"
+
+    # (d) the graft must be INDEXED BY TURN, and the only way to gate that is
+    #     to read the ops actually handed to step_idx. A tape frozen at t=0
+    #     still changes the farm (so (a) passes) and a rolled-table control
+    #     still differs from the unrolled one (because rolling changes what
+    #     sits at index 0), which is why both of those pass a broken graft.
+    env = KGTensorEnv(2, device="cpu", episode_steps=40, multi_head=True,
+                      fixed_farm_tape=tape_path)
+    td = env.reset()
+    seen = []
+    real_step_idx = env._ep.step_idx
+
+    def spy(f_idx, m_idx, override=None, h_idx=None):
+        for entry in (override or []):
+            if entry[0] == env.seat and "f_op" in entry[1]:
+                seen.append({k: v for k, v in entry[1].items()})
+        return real_step_idx(f_idx, m_idx, override=override, h_idx=h_idx)
+
+    env._ep.step_idx = spy
+    for t in range(12):
+        td["action"] = torch.cat([
+            torch.stack([_pick_legal(td["farmer_mask"], t),
+                         _pick_legal(td["market_mask"], t)], -1),
+            torch.zeros((2, A.MAX_HANDS), dtype=torch.int64)], -1)
+        td = env.step(td)
+        td = td["next"].exclude("reward")
+    assert len(seen) == 12, f"the graft fired {len(seen)} times in 12 turns"
+    tab = env._farm_tape
+    for t, ops in enumerate(seen):
+        for j, key in enumerate(("f_op", "f_arg", "f_qty")):
+            assert bool((ops[key] == tab["f"][t, j]).all()), \
+                f"turn {t}: {key} is not the tape's -- graft is not indexed"
+        for u in range(tab["H"]):
+            for j, key in enumerate(("h_op", "h_arg", "h_qty")):
+                assert bool((ops[key][u] == tab["h"][t, u, j]).all()), \
+                    f"turn {t} hand {u}: {key} is not the tape's"
+    assert len({int(o["f_op"][0]) for o in seen}) > 1, \
+        "every turn grafted the same farmer op -- tape frozen at one index"
+
+    # (e) the hand block must be padded out to MAX_HANDS. k01's own tape
+    #     already uses all 12 slots, so asserting on it cannot discriminate --
+    #     the padding branch is dead code for that tape. Gate it on a
+    #     synthetic two-hand tape instead.
+    real_load = tape_t.load_trace
+    short = [{"farmer": ["PASS"], "hands": [["PASS"], ["WATER"]],
+              "market": []} for _ in range(40)]
+    try:
+        tape_t.load_trace = lambda _p: short
+        env_s = KGTensorEnv(2, device="cpu", episode_steps=40,
+                            multi_head=True, fixed_farm_tape=tape_path)
+    finally:
+        tape_t.load_trace = real_load
+    assert env_s._farm_tape["H"] == A.MAX_HANDS, \
+        (f"a 2-hand tape left H={env_s._farm_tape['H']}: slots "
+         f"{env_s._farm_tape['H']}..{A.MAX_HANDS - 1} would keep the "
+         f"POLICY's hand tasks and leak it back into the farm")
+    assert env_s._farm_tape["h"].shape[1] == A.MAX_HANDS
+
+    # (f) MarketOnlyMultiHead's ratio and entropy are the market terms exactly
+    torch.manual_seed(9)
+    Bt, NF, NM, NT, H = 6, 11, 9, 5, 4
+    fl, ml, hl = (torch.randn(Bt, NF), torch.randn(Bt, NM),
+                  torch.randn(Bt, H, NT))
+    fm = torch.ones(Bt, NF, dtype=torch.bool)
+    mm = torch.ones(Bt, NM, dtype=torch.bool)
+    hm = torch.ones(Bt, H, NT, dtype=torch.bool)
+    full = MultiHeadMasked(fl, ml, hl, fm, mm, hm)
+    only = MarketOnlyMultiHead(fl, ml, hl, fm, mm, hm)
+    act = full.sample()
+    lp_full, lp_only = full.log_prob(act), only.log_prob(act)
+    mlp = torch.log_softmax(ml, -1).gather(-1, act[..., 1:2]).squeeze(-1)
+    assert torch.allclose(lp_only, mlp, atol=1e-6), (lp_only[:3], mlp[:3])
+    assert not torch.allclose(lp_only, lp_full), "market-only == full ratio"
+    ent = -(torch.softmax(ml, -1) * torch.log_softmax(ml, -1)).sum(-1)
+    assert torch.allclose(only.entropy(), ent, atol=1e-6)
+    # analytic entropy must be registered, or torchrl MC-estimates it through
+    # rsample, which Categorical does not have
+    from torchrl.modules.distributions import HAS_ENTROPY
+    assert HAS_ENTROPY.get(MarketOnlyMultiHead) is True, \
+        "MarketOnlyMultiHead is not in HAS_ENTROPY"
+
+    # (g) gradient gate: the dead heads must receive NO gradient, and the
+    #     market head plus the shared trunk must receive some
+    from trl_policy import MultiActorNet
+    torch.manual_seed(4)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16,
+                        A.MAX_HANDS, NT)
+    x = torch.randn(8, O.OBS_DIM)
+    f2, m2, h2 = net(x)
+    d = MarketOnlyMultiHead(
+        f2, m2, h2,
+        torch.ones_like(f2, dtype=torch.bool),
+        torch.ones_like(m2, dtype=torch.bool),
+        torch.ones_like(h2, dtype=torch.bool))
+    d.log_prob(d.sample()).sum().backward()
+    grads = {n: (p.grad is not None and bool(p.grad.abs().sum() > 0))
+             for n, p in net.named_parameters()}
+    dead = [n for n, g in grads.items()
+            if g and (n.startswith("f") or n.startswith("h"))
+            and "l1" not in n and "l2" not in n]
+    assert not dead, f"farmer/hand heads got gradient: {dead}"
+    live = [n for n, g in grads.items() if g]
+    assert any(n.startswith("m") for n in live), f"market head got none: {live}"
+    assert any("l1" in n or "l2" in n for n in live), \
+        f"shared trunk got no gradient: {live}"
+
+    # (h) the guards, all three, must fail loudly
+    for kw, want in (
+            (dict(fixed_farm_tape=tape_path, fixed_market_profile="anvil",
+                  multi_head=True), "nothing trainable"),
+            (dict(fixed_farm_tape=tape_path, multi_head=False), "multi_head")):
+        try:
+            KGTensorEnv(2, device="cpu", episode_steps=26, **kw)
+        except ValueError as e:
+            assert want in str(e), (kw, str(e))
+        else:
+            raise AssertionError(f"{kw} was accepted silently")
+    from trl_policy import build_actor_critic
+    for kw, want in ((dict(market_only=True, multi=False), "requires multi"),
+                     (dict(market_only=True, multi=True, couple=True),
+                      "refused")):
+        try:
+            build_actor_critic(O.OBS_DIM, A.N_FARMER, A.N_MARKET, **kw)
+        except ValueError as e:
+            assert want in str(e), (kw, str(e))
+        else:
+            raise AssertionError(f"{kw} was accepted silently")
+
+    print("gate (xiii) fixed-farm-tape: farm grafted, dead heads inert, "
+          "market live, gradients confined  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -764,4 +964,5 @@ if __name__ == "__main__":
     gate_asset_credit()
     gate_pool_guards()
     gate_pfsp_var()
+    gate_farm_tape()
     print("test_trl: all gates PASS")

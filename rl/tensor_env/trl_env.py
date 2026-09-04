@@ -505,7 +505,7 @@ class KGTensorEnv(EnvBase):
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
                  shape_gamma=0.0, ks_every=1, fert_credit=0.0,
                  land_value=0.0, fixed_market_profile="",
-                 plant_credit=0.0, animal_credit=0.0):
+                 plant_credit=0.0, animal_credit=0.0, fixed_farm_tape=""):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -651,6 +651,36 @@ class KGTensorEnv(EnvBase):
         self.ks_every = max(1, int(ks_every))
         self.fixed_market_profile = str(fixed_market_profile)
         self._fixed_market_planted = None
+        # --fixed-farm-tape: the mirror image of fixed_market_profile. The farm
+        # program (farmer + every hand slot) is grafted from a recorded tape at
+        # the RAW op level, so only the market head can influence the reward.
+        # Refused together with fixed_market_profile: with both grafted there
+        # is nothing left for the policy to affect.
+        self.fixed_farm_tape = str(fixed_farm_tape)
+        self._farm_tape = None
+        if self.fixed_farm_tape:
+            if self.fixed_market_profile:
+                raise ValueError(
+                    "fixed_farm_tape and fixed_market_profile together graft "
+                    "the whole action, leaving nothing trainable")
+            if not multi_head:
+                raise ValueError("fixed_farm_tape needs multi_head=True: the "
+                                 "hand slots have to be graftable too, and "
+                                 "without it they run the scripted cascade")
+            import tape_t
+            tab = tape_t.compile_trace(
+                tape_t.load_trace(self.fixed_farm_tape), str(device))
+            # Pad the hand block out to MAX_HANDS with PASS. A tape shorter
+            # than MAX_HANDS would otherwise leave its tail slots carrying the
+            # POLICY's decoded hand tasks, which would leak the policy back
+            # into the farm program and quietly break the whole premise.
+            H = tab["H"]
+            if H < A.MAX_HANDS:
+                pad = torch.zeros((tab["T"], A.MAX_HANDS - H, 3),
+                                  dtype=torch.int64, device=tab["h"].device)
+                tab["h"] = torch.cat([tab["h"], pad], 1)
+                tab["H"] = A.MAX_HANDS
+            self._farm_tape = tab
         self._pending_teacher_ops = None
         self.kickstart_force = False
         # multi-head action space (rl/TODO.md #0): [farmer, market, hand x12]
@@ -815,6 +845,20 @@ class KGTensorEnv(EnvBase):
             step_overrides.append((seat, {
                 key: market_plan[key]
                 for key in ("m_op", "m_item", "m_rem")
+            }))
+        if self._farm_tape is not None:
+            tab = self._farm_tape
+            t = min(ep._step, tab["T"] - 1)
+            f = tab["f"][t]
+            h = tab["h"][t]
+            B = self.B
+            step_overrides.append((seat, {
+                "f_op": f[0].expand(B).clone(),
+                "f_arg": f[1].expand(B).clone(),
+                "f_qty": f[2].expand(B).clone(),
+                "h_op": [h[u, 0].expand(B).clone() for u in range(tab["H"])],
+                "h_arg": [h[u, 1].expand(B).clone() for u in range(tab["H"])],
+                "h_qty": [h[u, 2].expand(B).clone() for u in range(tab["H"])],
             }))
         if getattr(self.opp_fn, "provides_ops", False):
             # raw-encoding opponent (barnyard_t): its seat bypasses the

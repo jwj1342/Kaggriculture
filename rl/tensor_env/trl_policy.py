@@ -292,6 +292,39 @@ class MultiHeadMasked(D.Distribution):
         return self.mode
 
 
+class MarketOnlyMultiHead(MultiHeadMasked):
+    """MultiHeadMasked whose ratio and entropy count the MARKET head only.
+
+    For `--fixed-farm-tape`: the farm program comes from a recorded tape and
+    the learner's farmer/hand actions are overridden at the raw-op level
+    (`trl_env` step_overrides), exactly as `--fixed-market-profile` does in
+    the other direction. Those two heads therefore cannot influence the
+    reward, and leaving their log-probs in the PPO ratio would add pure noise
+    to it -- the importance weight would fluctuate with draws that changed
+    nothing. Dropping them makes the effective action space the market head,
+    which is what the run is about.
+
+    Why not do this with masks instead: a point-mass mask on the tape's own
+    action would give log_prob 0 and entropy 0 with no policy change at all,
+    but the tape lives in RAW op space (f_op/f_arg/f_qty) while the farmer
+    head is a MACRO index, and the macro decode cannot express every raw op --
+    which is precisely why `tape_t.TapeOpponent` bypasses the decode via
+    step_idx overrides rather than emitting macro actions.
+
+    Sampling is inherited unchanged: the farmer/hand draws still happen and
+    are then discarded by the override. That keeps the action tensor's shape,
+    the buffer layout and every downstream consumer identical, and costs one
+    multinomial per head per step.
+    """
+
+    def log_prob(self, action):
+        ma = action[..., 1]
+        return self.mlp.gather(-1, ma.unsqueeze(-1)).squeeze(-1)
+
+    def entropy(self):
+        return -(self.mlp.exp() * self.mlp).sum(-1)
+
+
 class CoupledMultiHeadMasked(D.Distribution):
     """MultiHeadMasked with the market head CONDITIONED on the same turn's
     farmer action and hand tasks (autoregressive order f, h -> m).
@@ -477,6 +510,7 @@ try:
     from torchrl.modules.distributions import HAS_ENTROPY
     HAS_ENTROPY[TwoHeadMasked] = True
     HAS_ENTROPY[MultiHeadMasked] = True
+    HAS_ENTROPY[MarketOnlyMultiHead] = True
     HAS_ENTROPY[CoupledMultiHeadMasked] = True  # bound subclasses register
     # themselves in build_actor_critic (the dict is keyed by exact class)
 except ImportError:  # torchrl absent: the raw nets are still importable
@@ -486,7 +520,7 @@ except ImportError:  # torchrl absent: the raw nets are still importable
 def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                        v_hidden=256, device="cpu", residual_base="",
                        multi=False, n_hands=12, n_hand_task=None,
-                       couple=False):
+                       couple=False, market_only=False):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
 
     Construction order (actor layers, then critic layers) matches PolicyT's
@@ -502,6 +536,15 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
     if couple and not multi:
         raise ValueError("couple=True requires multi=True: the coupling "
                          "conditions on hand-task intents")
+    if market_only and not multi:
+        raise ValueError("market_only=True requires multi=True: the hand "
+                         "heads have to exist to be excluded")
+    if market_only and couple:
+        raise ValueError("market_only=True with couple=True is refused: the "
+                         "coupling conditions the market head on the sampled "
+                         "farmer/hand intents, and under a fixed farm tape "
+                         "those intents are discarded, so it would condition "
+                         "on noise")
     if couple and residual_base:
         raise ValueError("couple=True with a residual prior is not "
                          "implemented; the prior's market logits would be "
@@ -538,6 +581,8 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                 HAS_ENTROPY[dist_cls] = True
             except ImportError:
                 pass
+        elif market_only:
+            dist_cls = MarketOnlyMultiHead
         else:
             dist_cls = MultiHeadMasked
     else:
