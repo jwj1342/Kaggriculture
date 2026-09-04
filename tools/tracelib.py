@@ -208,6 +208,10 @@ def cmd_pull(args):
     t0 = time.time()
     new_lines = dupes = errors = kept_seats = 0
     os.makedirs(WORK, exist_ok=True)
+    recfh = None
+    if args.records:
+        os.makedirs(os.path.dirname(args.records) or ".", exist_ok=True)
+        recfh = open(args.records, "a")          # append: pulls accumulate
     with ProcessPoolExecutor(args.jobs) as ex:
         futs = {ex.submit(_digest_one, j): j for j in jobs}
         for k, fut in enumerate(as_completed(futs), 1):
@@ -217,6 +221,8 @@ def cmd_pull(args):
                     continue
                 seen.add(rec["episode"])
                 kept_seats += 1
+                if recfh is not None:
+                    recfh.write(json.dumps(rec, sort_keys=True) + "\n")
                 sig = signature(_unpack(rec["turns"]))
                 key = coarse(sig)
                 hit = None
@@ -262,6 +268,10 @@ def cmd_pull(args):
                 _save(idx)                          # incremental: safe to interrupt
     idx["seen"] = sorted(seen)
     _save(idx)
+    if recfh is not None:
+        recfh.close()
+        print(f"  records -> {args.records} "
+              f"({os.path.getsize(args.records)/1e6:.1f} MB)")
     ok = kept_seats // 2
     rate = 100 * ok / max(1, len(jobs))
     print(f"\n  {ok}/{len(jobs)} episodes downloaded ({rate:.0f}%)"
@@ -485,10 +495,24 @@ def main():
     p = sub.add_parser("pull")
     p.add_argument("--dates", required=True)
     p.add_argument("--per-date", type=int, default=200)
-    # 16 is measured: at 48 the download failure rate was 80% and at 64 the
-    # account was 429'd for minutes. The bottleneck is Kaggle's request rate,
-    # not our cores, so more workers buy nothing and cost the whole pull.
-    p.add_argument("-j", "--jobs", type=int, default=16)
+    # 16 was measured in August: at 48 the download failure rate was 80% and at
+    # 64 the account was 429'd for minutes. The bottleneck is Kaggle's request
+    # rate, not our cores, so more workers buy nothing and cost the whole pull.
+    # 2026-09-04 re-measurement: a 1,000-episode pull at -j 6 -- a third of this
+    # default -- still took 23 429s, each absorbed by a 20s backoff. The run
+    # completed and lost nothing, but Kaggle's ceiling is lower now than when 16
+    # was measured, so budget for stalls and prefer 4-6.
+    p.add_argument("-j", "--jobs", type=int, default=6)
+    p.add_argument("--records", default=None, metavar="PATH",
+                   help="append every digested episode to this JSONL, full "
+                        "action log included. The index keeps only ONE tape per "
+                        "plan (the best-scoring sighting), and `signature` folds "
+                        "market orders out entirely, so without this the market "
+                        "layers -- which is where the ladder spread actually "
+                        "lives, 1,002 points across 27 teams on one identical "
+                        "farm plan -- are discarded as they arrive. ~12.5 KB an "
+                        "episode. Opt-in, because it is the pull's only "
+                        "unbounded write.")
     p.set_defaults(fn=cmd_pull)
     p = sub.add_parser("stats")
     p.add_argument("--top", type=int, default=25)
