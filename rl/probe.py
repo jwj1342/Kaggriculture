@@ -55,7 +55,16 @@ def run_probe(actor_net, pool, args, device):
         opponent=_probe_opponent(pool, args), win_bonus=0.0,
         potential=args.potential, shape_scale=args.shape_scale,
         multi_head=multi,
-        fixed_market_profile=getattr(args, "fixed_market_profile", ""))
+        fixed_market_profile=getattr(args, "fixed_market_profile", ""),
+        # The graft has to be forwarded or the probe measures a policy that
+        # does not exist. Under --fixed-farm-tape the farmer and hand heads
+        # are overridden in training and receive no objective, so an
+        # UNGRAFTED probe env argmaxes them anyway and reads "an untrained
+        # farm plus the trained market head" -- and that reading then drives
+        # EarlyStopper and the best.pt ratchet. Gate: test_trl.py
+        # gate_probe_graft.
+        fixed_farm_tape=getattr(args, "fixed_farm_tape", ""),
+        farm_tape_market=getattr(args, "farm_tape_market", "buys"))
     if pool is not None:
         env.opp_fn = pool.anchors[pool.stage][1]
     td = env.reset()

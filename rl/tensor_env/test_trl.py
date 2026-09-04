@@ -1002,6 +1002,100 @@ def gate_farm_tape():
           f"{c_none}/{c_buys}/{c_all} peak crops  PASS")
 
 
+def gate_probe_graft():
+    """(xiv) run_probe forwards the farm graft, so it measures the policy that
+    is actually being trained.
+
+    `rl/probe.py` builds its OWN env with nine of KGTensorEnv's ~25 kwargs.
+    Before this gate, `fixed_market_profile` was forwarded and
+    `fixed_farm_tape` was not, so under --fixed-farm-tape the probe argmaxed
+    all three heads in an UNGRAFTED env: it read "an untrained farm plus the
+    trained market head", a policy that never plays. That reading drives
+    EarlyStopper and the best.pt ratchet, so the run would have stopped and
+    ratcheted on a number unrelated to its objective -- silently.
+    """
+    import argparse
+    import probe as PR
+    import trl_env
+    from trl_policy import MultiActorNet
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    tape = os.path.join(root, "agents", "champ", "k01.py")
+
+    def mkargs(tape_path, steps=120):
+        return argparse.Namespace(
+            probe_lanes=4, steps=steps, seed=5, opponent="starter",
+            potential="future-mkt", shape_scale=3000.0, multi_head=True,
+            fixed_market_profile="", fixed_farm_tape=tape_path,
+            farm_tape_market="buys")
+
+    def net(quiet_market=False):
+        torch.manual_seed(17)
+        n = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 32, 16,
+                          A.MAX_HANDS, A.N_HAND_TASK)
+        if quiet_market:
+            # Pin the market head on MARKET_ACTIONS[0] == NOOP. Needed for the
+            # known answer below: an UNTRAINED market head argmaxes to
+            # SELL_TOMATO and, appended to the tape's own orders every single
+            # turn, strips the inventory the tape's timed sells were going to
+            # monetise -- measured, 132,098 -> 606 on this very setup. Which is
+            # the plan's premise from the downside: the SELL layer is worth
+            # ~131k of swing on a FIXED farm.
+            with torch.no_grad():
+                n.market.weight.zero_()
+                n.market.bias.zero_()
+                n.market.bias[0] = 10.0
+        return n
+
+    # (a) the contract, asserted directly on what run_probe hands the env.
+    #     Reading only the returned (win, margin) is NOT discriminating: at
+    #     any short horizon both the grafted and ungrafted probe sit near
+    #     -3,000 (nobody has earned anything yet), and the first version of
+    #     this gate passed on a 0.25 difference, which is luck rather than a
+    #     measurement. Capturing the kwargs cannot pass if the forwarding is
+    #     removed, because the key is then simply absent.
+    seen = {}
+    real_cls = trl_env.KGTensorEnv
+
+    class Spy(real_cls):
+        def __init__(self, *a, **kw):
+            seen.clear()
+            seen.update(kw)
+            super().__init__(*a, **kw)
+
+    trl_env.KGTensorEnv = Spy
+    try:
+        PR.run_probe(net(), None, mkargs(tape), "cpu")
+    finally:
+        trl_env.KGTensorEnv = real_cls
+    assert "fixed_farm_tape" in seen, (
+        "run_probe did not pass fixed_farm_tape to KGTensorEnv, so the probe "
+        "argmaxes an UNGRAFTED farm and its reading drives EarlyStopper and "
+        "the best.pt ratchet on a policy that never plays")
+    assert seen["fixed_farm_tape"] == tape, seen["fixed_farm_tape"]
+    assert seen.get("farm_tape_market") == "buys", seen.get("farm_tape_market")
+
+    # (b) behavioural corroboration with a KNOWN ANSWER. It has to use
+    #     market="all", not "buys": under "buys" an untrained argmax net
+    #     never sells, so BOTH the grafted and ungrafted probe sit near
+    #     -3,500 and the return value cannot discriminate at any horizon.
+    #     Under "all" the grafted probe IS the tape, so it must swing from a
+    #     loss to a large win.
+    a_off = mkargs("", steps=720); a_off.farm_tape_market = "all"
+    a_on = mkargs(tape, steps=720); a_on.farm_tape_market = "all"
+    off = PR.run_probe(net(quiet_market=True), None, a_off, "cpu")
+    on = PR.run_probe(net(quiet_market=True), None, a_on, "cpu")
+    assert off[1] < 0 < on[1] and on[1] > 50_000, (
+        f"probe read {off} ungrafted and {on} grafted under market=all with a "
+        f"NOOP market head; grafted must BE the tape and bank a large "
+        f"positive margin")
+    assert PR.run_probe(net(quiet_market=True), None, a_on, "cpu") == on, \
+        "run_probe is not deterministic; (xiv) is void"
+    print(f"gate (xiv) probe forwards the farm graft: kwargs carry the tape; "
+          f"full season ungrafted {off} vs grafted {on}  PASS")
+
+
 if __name__ == "__main__":
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2") or 2))
     gate_policy_parity()
@@ -1017,4 +1111,5 @@ if __name__ == "__main__":
     gate_pool_guards()
     gate_pfsp_var()
     gate_farm_tape()
+    gate_probe_graft()
     print("test_trl: all gates PASS")

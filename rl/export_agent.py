@@ -255,6 +255,41 @@ def main():
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     sd = ck["model"]
 
+    # A checkpoint trained with --fixed-farm-tape must NOT be exported down
+    # this path. Under that flag the farm program (farmer + every hand slot)
+    # and the tape's non-SELL market orders are grafted on at the raw-op
+    # level, so only SELL received an objective -- and MarketOnlyMultiHead is
+    # a parameterless distribution subclass, so the state dict is
+    # SHAPE-INDISTINGUISHABLE from a plain --multi-head run. `_act` below
+    # would hand farmer, all twelve hand slots and the full 31-way market
+    # mask straight back to heads that were never trained, with no tape and
+    # no buys-first merge.
+    #
+    # That is exactly how 8db606f's --fixed-market-profile arm turned out
+    # undeliverable: "export_agent.py then hands market decisions straight
+    # back to it ... 34,321 against the baseline export's 51,058, a 33%
+    # collapse produced purely by the export path rather than by training."
+    # Worse here, because the farm heads are not frozen -- they sit on the
+    # shared l1/l2 trunk and drift with the market head's gradient, so an
+    # ungrafted export is not even the warm start it began from.
+    #
+    # Nothing downstream would catch it: tests/test_export_agent.py only
+    # covers the sheep option, and tools/package.sh asserts money > 3000
+    # while the tape alone banks ~186k. So refuse here.
+    _ck_args = ck.get("args") or {}
+    if _ck_args.get("fixed_farm_tape"):
+        raise SystemExit(
+            f"refusing to export {args.ckpt}: it was trained with\n"
+            f"  --fixed-farm-tape {_ck_args['fixed_farm_tape']}\n"
+            f"  --farm-tape-market {_ck_args.get('farm_tape_market')}\n"
+            f"so only its market head received an objective. This path would "
+            f"hand the farmer and all hand slots back to untrained, drifted "
+            f"heads (the 8db606f failure, measured at -33% there). Such a "
+            f"checkpoint needs the grafted export -- main.py must embed the "
+            f"tape, take farmer/hands/non-SELL market from it, take one SELL "
+            f"macro from the net, and merge buys-first under the 10-order "
+            f"cap.")
+
     # 2026-08-28 (docs/RUNS.md 79c98d4). trl_env.py and macro_audit.py both run
     # the legacy adaptations here; this path did not, so any checkpoint predating
     # the hand-vocabulary expansion (anvil, chisel, cropper, longcredit -- 10
