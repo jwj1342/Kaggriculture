@@ -1,0 +1,61 @@
+# monger -- learn the SELL layer on a frozen top-meta farm program.
+#
+# The name is the definition: a monger sells. The farm program (farmer + every
+# hand slot) and every non-SELL market order are grafted from a mined tape, so
+# the only thing PPO can move is SELL. Per-arm: --fixed-farm-tape and the
+# matching tape: rung in --opponents.
+#
+# WHY THIS SHAPE -- three measurements from 2026-09-04 that meet in the middle:
+#
+#   * +20,000 money flips 16 of 18 of 56013382's real ladder losses (76 games,
+#     58-18, every loss inside 23,555; min 171, median 9,704).
+#   * "median -> p75 market layer" on ONE fixed farm plan is worth +13k..+31k,
+#     measured over 1,804 mined per-episode records in six farm groups.
+#   * a farm plan explains only R^2 = 0.273 of top-tier ladder score, so the
+#     other 73% is where the market layer lives.
+#
+# And the mechanism: in 56013382's losses the opponent is +21,566 stronger but
+# WE earn -27,076 less. The farm is open-loop deterministic, so our own 27k
+# collapse can only come from the board and the SHARED market -- cleo's SELL
+# layer is a static front-run heuristic and it folds under contention. Against
+# top-meta opponents (>=75k) we win 64%, against the field 76%.
+#
+# WHY market=buys AND NOT the whole market head: a frozen farm is NOT
+# independent of its market. PLANT consumes a seed the market bought, FEED a
+# product, CARE an animal, the outer quadrants land, the hands a HIRE. Measured:
+# graft the farm with a silent market and the learner ends the season on exactly
+# its 3,000 of starting capital with ZERO standing crops. So the buys are a
+# mandatory substrate and SELL is the only free dimension -- which is also
+# exactly what tools/wrap.py says the third-party layer contributes, "sell
+# ordering -- the most valuable sale takes the earliest market slot".
+#
+# Known floor 0 (buys everything, never sells). Known positive 82,019 (cleo's
+# SELL layer on this farm, in the tensor env) -- and that is the same half that
+# is live on the ladder as 56013382, so the baseline is measured, not estimated.
+#
+# THE POOL MUST HAVE >= 3 RUNGS AND MUST NOT END ON A TAPE. advance_at is one
+# knob doing two opposite jobs -- the stage-promotion gate AND the
+# curriculum-complete stop (probe.py:102-105: last stage, handicap 0, probe win
+# >= advance_at). A single-stage pool stops at the FIRST probe: 14 occurrences of
+# "early stop: curriculum-complete (iter 9)" in logs/. Lowering advance_at makes
+# it worse, not better -- wide-var used 0.05 and stopped at iter 139 on a probe
+# win of 0.055. The last rung is therefore a FROZEN NET, not a tape: an
+# open-loop replay's accidental variance can drift a probe over the threshold.
+device: cpu
+B: 1024
+iters: 240
+algo: ppo
+seat: alt
+multi_head: true
+farm_tape_market: buys
+potential: future-mkt
+hidden: [1024, 512]
+v_hidden: 512
+advance_at: 0.85
+handicap: 0
+win_bonus: 1.5
+margin_bonus: 1.5
+margin_scale: 50000
+build_bonus: 1.0
+probe_every: 10
+stop_patience: 6
