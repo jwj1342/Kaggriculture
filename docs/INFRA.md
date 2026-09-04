@@ -88,6 +88,30 @@ python tools/submit_macro_rl.py --run macro-ppo-v1 --links 2 \
 `route_s34`，直接报告配对 margin 差。checkpoint、对手 tape、argv、假设和门槛同样写入 manifest，
 后续 link 只通过 `afterok` 恢复。
 
+## 不可重建的文件放在哪（2026-09-04）
+
+组织规则明确禁止把唯一副本留在 `/scratch`（不备份、会被定期清理）。
+以下几份都曾**只**存在于 scratch 上，现已复制到有备份的 project 空间：
+
+    /home/jwj/projects/def-zhouyang/kaggriculture-artifacts/
+
+| 文件 | 为什么不可重建 |
+|---|---|
+| `kg-opponent-fields-2026-08-18.tar.gz` | **`agents/spar/` 的唯一恢复源。** `CLAUDE.md` 要求 spar 进每一个场且**绝不重新生成**，所以这个 tarball 坏掉等于那条纪律无法执行 |
+| `kg-rl-agent-deliverable-guarded.tar.gz` | RL 交付物快照 |
+| `tracerecords-2026-09-04.jsonl.xz` | 逐局回放记录（27 MB 原始）。重建 = 约 69 分钟的限流退避，见下 |
+| `tracelib-2026-09-04.json.xz` | 计划库索引（889 计划）。也在 `dist/` 里被 git 跟踪 |
+
+`data/releases/` 与 `data/tracelib/` 仍留在 scratch 作为工作副本；project 那份是备份，
+不是工作路径。**复制后用 md5 校验过。**
+
+**Kaggle 拉取的限流现状（09-04 实测，比 8 月紧得多）**：
+`tools/tracelib.py` 的 docstring 记的"16 workers 安全"是 8 月的标定。09-04 两次实测：
+1,000 局在 `-j 6` 下 **23 次 429**；900 局在 `-j 4` 下 **207 次 429**
+（后者日期列表是缓存命中，请求全花在下载上，且当天已累计拉了约 2,100 局）。
+每次退避 20 秒，207 次 ≈ **69 分钟纯等待**，两次都跑完 100% 没丢数据。
+默认已降到 `-j 6`。**规划挖掘时按"一天约 2,000 局"估容量，不要按吞吐估。**
+
 ## 每个 job 自动留下什么
 
 - stdout 的 `RUN-META`：commit、host、backend、CPU 数、run ID。
