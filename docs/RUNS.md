@@ -15744,3 +15744,75 @@ B = 嫁接导出的 `sell-n04`。
 `--multi-head` 形状上无法区分，走旧路径会把 farmer 与 12 个手位交还给从未受目标约束、
 且在共享 trunk 上漂移过的头 —— 那正是 `8db606f` 的 −33%。
 **所以这两条臂现在可以训练、可以按门 1 之外的方式读，但在 P3.2 写完之前不能导出、不能提交。**
+
+## 2026-09-04（续九）— 嫁接导出（P3.2）打通，农场保真 100%，而它补上了仓库里一直缺的那道门
+
+`rl/export_hybrid.py`（**新，暂为 untracked，见文末**）。`8db606f` 的腿 B 于此关闭。
+
+### 为什么必须是一个新的导出器而不是改旧的
+
+`export_agent.py` 的 `_act` 把 farmer + 12 手位 + 完整 31 路市场掩码交还给网。
+在 `--fixed-farm-tape` 下那些头**没有收到任何目标**，而且**比未训练更糟** ——
+`MarketOnlyMultiHead` 的采样照旧发生、抽样被 override 丢弃，但它们挂在共享 `l1/l2`
+trunk 上，随市场头的梯度**漂移**，所以走旧路径导出的既不是学到的策略、也不是热启的那个网。
+`6914519` 已让旧路径**拒绝**这类检查点（`ck["args"]["fixed_farm_tape"]`）。
+
+### 它写的东西（训练侧的镜像）
+
+    farmer  <- tape[step]["farmer"]
+    hands   <- tape[step]["hands"]
+    market  <- 带子该回合的非 SELL 单 + 网解码出的一个市场 option
+               买入在前, 截到 kg_rules.MAX_ORDERS = 10
+
+买入在前的理由与 `step_idx` 的 `m_add` 相同：引擎按槽序结算，一笔排在卖出之后的买入是浪费。
+**推理侧比训练侧简单**：两边都是普通动作列表，不需要 raw-op ↔ 宏动作的转换
+（那正是训练侧必须绕 `step_overrides` 的原因）。网的市场 option 走
+`_A.decode_multi(obs, 0, [0]*MAX_HANDS, m_idx)` —— **与训练时同一条公开解码路径**，
+而 `_market_action` 只读 obs 与 option 名，所以那两个占位参数不影响结果。
+
+### 验证（这是仓库现有导出门缺的那一类）
+
+`docs/VALIDATING.md` 之外的既有导出门**全部是训练侧契约**（torch net == numpy net：
+`test_trl.py` (vi)、`test_multi.py` M3、`test_couple.py` G4）。
+**没有一条检查导出的动作空间等于训练时的动作空间** —— 那正是 `8db606f` 掉进去的洞。
+`tests/test_export_agent.py` 只测 sheep option，`tools/package.sh` 的门是「钱 > 3000」
+而带子自己就挣 18 万，**两者都抓不到一个死掉或接错的市场头**。
+
+本次导出的整局读数（官方引擎，seed 30000，对 starter，用一个 2 迭代的垃圾权重）：
+
+| 检查 | 结果 |
+|---|---|
+| `get_last_callable` | → `agent` ✓ |
+| 整局 | 720 steps，`DONE` |
+| **农场保真** | **farmer 719/719 = 100.0%，hands 719/719 = 100.0%** |
+| 网发出的 SELL 单量（B 类：下单量，非成交量） | **228**（带子原有的 282 个已剥离）|
+| 非 SELL 单量（B 类） | 628 |
+| **超过 10 单上限的回合** | **0** |
+| 终局钱 | 47,293（同 seed 下 n04 本体是 117,671） |
+
+农场保真 **100%** 而 `sharedmeta-cleo` 是 714/719 —— 差别是**刻意的**：我们回放的是
+`mod._TRACE`（挖到的**计划**，训练嫁接的正是它），而 `agents/newlines/*.py` 在计划外面
+套了 cleo 那层，其 `_terminal_action` 从 step 714 起整段接管、`_terminal_liquidation`
+从 680 起。**所以我们的网必须自己学会终局清仓**；它有这个能力
+（`actions._market_action` 让 `SELL_<p>` 在清仓日卖整个库房）。任何与
+`sharedmeta-cleo` 的对比都必须把这一条读进去。
+
+终局钱 47,293 对本体 117,671 —— **再次印证下行**：一个未训练的 SELL 层不是"没有增益"，
+是毁掉 70k。与今日另一处实测（`market=all` 下 132,098 → 606）同向。
+
+### 两个自己踩到的坑，都记下
+
+1. **模板用 `.replace` 而我按 `.format` 的习惯写了双大括号** —— 双括号会原样进产物。
+   第一版还把 npz 的键写成 `w1/b1`（实际是 `l1w/l1b`，`trl_policy.ACTOR_ARRAYS`）
+   并 import 了不存在的 `env`（应为 `kg_env`）。三处都在第一次运行时暴露。
+2. **模块末尾的 `main()` 必须有 `if __name__` 守卫** —— `export_agent.py` 有，
+   而 `rl/league.py` 正是靠 `from export_agent import write_agent_dir` 才没被它执行。
+   我第一版漏了守卫，于是任何 `import export_hybrid` 都会解析命令行并报错。
+
+### 为什么它现在还是 untracked
+
+16 个训练作业（`sell-n04` / `sell-n07` 各 8 links）**正在排队**，而哨兵比的是
+**工作区对 manifest commit 的 `git diff`**。`*.md` 被排除，所以判词可以随时写；
+但 **`git add` 一个新文件会让它变成 tracked、被 diff 看见、把 16 个作业全部杀掉**
+（`ExitCode 42:0`）。所以 `rl/export_hybrid.py` 与它的门等链跑完再提交。
+**新建 untracked 文件本身是安全的** —— `git diff` 看不见它。
