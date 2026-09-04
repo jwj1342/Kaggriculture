@@ -764,6 +764,7 @@ def gate_farm_tape():
     """
     from trl_env import KGTensorEnv
     from trl_policy import MarketOnlyMultiHead, MultiHeadMasked
+    import engine_t
     import tape_t
 
     root = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -946,8 +947,59 @@ def gate_farm_tape():
         else:
             raise AssertionError(f"{kw} was accepted silently")
 
-    print("gate (xiii) fixed-farm-tape: farm grafted, dead heads inert, "
-          "market live, gradients confined  PASS")
+    # (i) the market modes, with the known positive built in. A frozen farm
+    #     is NOT independent of its market layer, and that is the trap this
+    #     whole flag walked into first: PLANT consumes a seed the market
+    #     bought, so grafting the farm alone gives an INERT farm that looks
+    #     like a policy failing to learn.
+    def season(mode, poke_market=False, B=8, steps=720):
+        torch.manual_seed(3)
+        env = KGTensorEnv(B, device="cpu", episode_steps=steps,
+                          multi_head=True, fixed_farm_tape=tape_path,
+                          farm_tape_market=mode,
+                          opponent=f"tape:{tape_path}")
+        td = env.reset()
+        peak = torch.zeros(B)
+        for t in range(steps - 1):
+            act = torch.zeros((B, 2 + A.MAX_HANDS), dtype=torch.int64)
+            if poke_market:
+                act[:, 1] = _pick_legal(td["market_mask"], t)
+            td["action"] = act
+            td = env.step(td)
+            td = td["next"].exclude("reward")
+            c = (env._ep.kind[:, env.seat].reshape(B, -1)
+                 == engine_t.K_PLANT).sum(-1).float()
+            peak = torch.maximum(peak, c)
+        ep = env._ep
+        return (float(ep.money[:, env.seat].mean()), float(peak.mean()),
+                float(ep.money[:, 1 - env.seat].mean()))
+
+    m_none, c_none, _ = season("none")
+    assert c_none == 0.0 and abs(m_none - 3000.0) < 1.0, \
+        (f"market=none should leave an INERT farm on its starting capital, "
+         f"got money {m_none:,.0f} and {c_none} standing crops")
+    m_buys, c_buys, _ = season("buys")
+    assert c_buys > 5.0, \
+        f"market=buys did not make the farm produce (peak crops {c_buys})"
+    assert m_buys < 1000.0, \
+        f"market=buys sells nothing, so money should be spent, got {m_buys:,.0f}"
+    # the known positive: grafting the WHOLE tape must reproduce the tape, so
+    # both seats are the same agent and must land within a few percent
+    m_all, c_all, opp_all = season("all")
+    assert c_all > c_buys, (c_all, c_buys)
+    assert abs(m_all - opp_all) / max(opp_all, 1.0) < 0.05, \
+        (f"market=all should BE the tape: learner {m_all:,.0f} vs tape "
+         f"{opp_all:,.0f} -- the m_add merge is not reproducing it")
+    # and under "buys" the policy's market action must still move the money,
+    # or there is nothing to train
+    m_poke, _, _ = season("buys", poke_market=True)
+    assert m_poke != m_buys, \
+        "under market=buys the policy's market action changed nothing"
+
+    print(f"gate (xiii) fixed-farm-tape: farm grafted, dead heads inert, "
+          f"market live, gradients confined; market none/buys/all -> "
+          f"{m_none:,.0f}/{m_buys:,.0f}/{m_all:,.0f} money, "
+          f"{c_none}/{c_buys}/{c_all} peak crops  PASS")
 
 
 if __name__ == "__main__":

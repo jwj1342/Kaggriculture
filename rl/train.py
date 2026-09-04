@@ -295,6 +295,20 @@ def build_parser():
                          "on one identical farm plan span 1,002 points, 6.9x "
                          "the ladder noise floor, and a recorded tape lands "
                          "100%% of its farm actions on boards it never saw")
+    ap.add_argument("--farm-tape-market", choices=("none", "buys", "all"),
+                    default="buys",
+                    help="with --fixed-farm-tape, how much of the tape's own "
+                         "market to graft. A frozen farm is NOT independent "
+                         "of its market: measured 2026-09-04, grafting the "
+                         "farm alone leaves the learner on its 3,000 of "
+                         "starting capital with zero standing crops, because "
+                         "PLANT consumes a seed the market bought. \"buys\" "
+                         "(default) grafts the non-SELL orders and leaves "
+                         "SELL to the policy, which is exactly what the "
+                         "third-party layer contributes; \"all\" is the "
+                         "ceiling (nothing trainable); \"none\" is the inert "
+                         "farm and is kept only so the measurement is "
+                         "reproducible"),
     ap.add_argument("--potential",
                     choices=("networth", "future", "future-mkt"),
                     default="networth",
@@ -523,7 +537,8 @@ def train(args, log_fn=None):
         fixed_market_profile=args.fixed_market_profile,
         plant_credit=args.plant_credit,
         animal_credit=args.animal_credit,
-        fixed_farm_tape=args.fixed_farm_tape)
+        fixed_farm_tape=args.fixed_farm_tape,
+        farm_tape_market=args.farm_tape_market)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
@@ -534,8 +549,8 @@ def train(args, log_fn=None):
     if args.fixed_farm_tape:
         log_fn(f"fixed-farm-tape: farm program grafted from "
                f"{args.fixed_farm_tape} (raw ops, farmer + all "
-               f"{A.MAX_HANDS} hand slots); ratio and entropy count the "
-               f"market head only")
+               f"{A.MAX_HANDS} hand slots) with market={args.farm_tape_market}; "
+               f"ratio and entropy count the market head only")
     if args.couple_heads:
         log_fn("couple-heads: market head conditioned on sampled "
                "farmer/hand intents (zero-init tables; RNG order f,h,m)")

@@ -1501,6 +1501,37 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
             m_op[:, seat] = graft(m_op[:, seat], ops["m_op"])
             m_item[:, seat] = graft(m_item[:, seat], ops["m_item"])
             m_rem[:, seat] = graft(m_rem[:, seat], ops["m_rem"])
+        if "m_add" in ops:
+            # MERGE rather than replace: the (B, S, 3) block's live slots are
+            # packed in FRONT of whatever the macro decode produced, and the
+            # decoded orders keep the remaining slots in their own order.
+            # This is what --fixed-farm-tape needs: a recorded farm program
+            # presupposes its own purchases (PLANT consumes a seed, FEED a
+            # product, CARE an animal, the outer quadrants land, the hands a
+            # HIRE), so those must be grafted while SELL stays with the
+            # policy -- and orders are capped at S, so the two cannot simply
+            # be concatenated. Buys go first because the engine applies slots
+            # in order and a purchase is worthless once a sale has eaten the
+            # slot budget.
+            #
+            # Done by a stable argsort over the 2S candidates rather than a
+            # scatter: with a scatter, slots past the cap clamp onto the last
+            # index and can collide with a kept slot, and which write wins is
+            # then undefined. Absent, this branch never runs and the path is
+            # bit-identical (gates test_barn.py G0, test_trl.py xiii).
+            add = torch.as_tensor(ops["m_add"], dtype=i64, device=dev)
+            S_ = m_op.shape[-1]
+            cat_op = torch.cat([add[..., 0], m_op[:, seat]], -1)
+            cat_item = torch.cat([add[..., 1], m_item[:, seat]], -1)
+            cat_rem = torch.cat([add[..., 2], m_rem[:, seat]], -1)
+            prio = torch.arange(2 * S_, device=dev, dtype=i64).expand(B, -1)
+            prio = torch.where(cat_op != ET.OP_DEAD, prio,
+                               torch.full_like(prio, 4 * S_))
+            order = prio.argsort(stable=True, dim=-1)[:, :S_]
+            m_op[:, seat] = graft(m_op[:, seat], cat_op.gather(-1, order))
+            m_item[:, seat] = graft(m_item[:, seat],
+                                    cat_item.gather(-1, order))
+            m_rem[:, seat] = graft(m_rem[:, seat], cat_rem.gather(-1, order))
 
     # ---- atomic PLANT validation (the reference's, verbatim): if the
     # turn's total PLANT requests for a crop exceed the farm's seeds, ALL

@@ -505,7 +505,8 @@ class KGTensorEnv(EnvBase):
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
                  shape_gamma=0.0, ks_every=1, fert_credit=0.0,
                  land_value=0.0, fixed_market_profile="",
-                 plant_credit=0.0, animal_credit=0.0, fixed_farm_tape=""):
+                 plant_credit=0.0, animal_credit=0.0, fixed_farm_tape="",
+                 farm_tape_market="buys"):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -680,6 +681,32 @@ class KGTensorEnv(EnvBase):
                                   dtype=torch.int64, device=tab["h"].device)
                 tab["h"] = torch.cat([tab["h"], pad], 1)
                 tab["H"] = A.MAX_HANDS
+            # The tape's OWN market orders. A frozen farm program is not
+            # independent of its market layer: PLANT consumes a seed the
+            # market bought, FEED a product, CARE an animal, the outer
+            # quadrants land, the hands a HIRE. Measured 2026-09-04 on this
+            # very tape -- graft the farm with a silent market and the learner
+            # ends the season on exactly its 3,000 of starting capital with
+            # ZERO standing crops, while the same tape with its own market
+            # makes 161,586. Graft the buys and it produces (peak 18 standing
+            # crops) but earns 0 because it never sells; graft everything and
+            # it is the tape, 82,019 against the tape's own 82,148.
+            #   "none"  -- market entirely the policy's (the farm goes inert)
+            #   "buys"  -- non-SELL orders grafted, SELL left to the policy.
+            #              This is the one that matches what the third-party
+            #              layer actually contributes: wrap.py's docstring
+            #              says it "only reorders within the market slots the
+            #              plan already used for selling".
+            #   "all"   -- the whole tape; nothing trainable, for the ceiling
+            if farm_tape_market not in ("none", "buys", "all"):
+                raise ValueError(f"farm_tape_market={farm_tape_market!r}")
+            self.farm_tape_market = farm_tape_market
+            m = tab["m"].clone()                              # (T, S, 3)
+            if farm_tape_market == "buys":
+                m[m[..., 0] == engine_t.OP_SELL] = 0
+            elif farm_tape_market == "none":
+                m.zero_()
+            tab["m_graft"] = m
             self._farm_tape = tab
         self._pending_teacher_ops = None
         self.kickstart_force = False
@@ -852,14 +879,23 @@ class KGTensorEnv(EnvBase):
             f = tab["f"][t]
             h = tab["h"][t]
             B = self.B
-            step_overrides.append((seat, {
+            ops = {
                 "f_op": f[0].expand(B).clone(),
                 "f_arg": f[1].expand(B).clone(),
                 "f_qty": f[2].expand(B).clone(),
                 "h_op": [h[u, 0].expand(B).clone() for u in range(tab["H"])],
                 "h_arg": [h[u, 1].expand(B).clone() for u in range(tab["H"])],
                 "h_qty": [h[u, 2].expand(B).clone() for u in range(tab["H"])],
-            }))
+            }
+            mg = tab["m_graft"][t]                            # (S, 3)
+            if bool((mg[:, 0] != engine_t.OP_DEAD).any()):
+                S = ep.max_market_orders
+                blk = torch.zeros((B, S, 3), dtype=torch.int64,
+                                  device=self.device)
+                k = min(S, mg.shape[0])
+                blk[:, :k] = mg[:k].unsqueeze(0)
+                ops["m_add"] = blk                # MERGE, not replace
+            step_overrides.append((seat, ops))
         if getattr(self.opp_fn, "provides_ops", False):
             # raw-encoding opponent (barnyard_t): its seat bypasses the
             # macro decode via the step_idx override. --opp-noise here is
