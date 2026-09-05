@@ -506,7 +506,7 @@ class KGTensorEnv(EnvBase):
                  shape_gamma=0.0, ks_every=1, fert_credit=0.0,
                  land_value=0.0, fixed_market_profile="",
                  plant_credit=0.0, animal_credit=0.0, fixed_farm_tape="",
-                 farm_tape_market="buys"):
+                 farm_tape_market="buys", terminal_cash=False):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -566,6 +566,8 @@ class KGTensorEnv(EnvBase):
         # over a season (~4.8 units at phi~20k). 0 keeps the legacy
         # difference; set it to the training gamma to close the leak.
         self.shape_gamma = float(shape_gamma)
+        # terminal potential := money_T (see _finish_step for the measurement)
+        self.terminal_cash = bool(terminal_cash)
         self.shape_scale = float(shape_scale)
         self.opp_lambda = float(opp_lambda)
         # build-curve credit folded into the potential: rides the same
@@ -978,10 +980,30 @@ class KGTensorEnv(EnvBase):
     def _finish_step(self, ep, seat, opp):
         g = self.shape_gamma if self.shape_gamma > 0.0 else 1.0
         w = self._pot(ep, seat)
+        if ep.done and self.terminal_cash:
+            # Grzes 2017: in a finite-horizon episode the terminal potential
+            # must not price what the score does not. The shaping telescopes
+            # to phi(s_T) - phi(s_0), and the score is money_T alone, so every
+            # non-monetary term still standing in phi_T is reward paid for
+            # something the competition values at exactly zero. Measured on a
+            # FREE farm (RUNS.md 2026-09-04 continuation ten): 7,930 (mkt-w4)
+            # and 9,311 (wide-var) = 2.6-3.1 reward units against a win bonus
+            # of 1.5, cross-seed sd 770-866 where a frozen tape gives 25. The
+            # two biggest pieces are the build curve's terminal value (~48%)
+            # and UNPLANTED SEEDS (20-26%).
+            #
+            # NOT phi_T := 0. That makes the telescoped total the constant
+            # -phi(s_0) and deletes the dense money signal outright, which is
+            # exactly how sg-f4 lost (gate 1 at 0.96%, lowest of its batch).
+            # phi_T := money_T keeps the load-bearing leak and drops only the
+            # terms the whistle zeroes.
+            w = ep.money[:, seat].to(w.dtype)
         r = (g * w - self._prev_w) * (1.0 / self.shape_scale)
         self._prev_w = w
         if self.opp_lambda:
             wo = self._pot(ep, opp)
+            if ep.done and self.terminal_cash:
+                wo = ep.money[:, opp].to(wo.dtype)   # same rule on both seats
             r = r - self.opp_lambda * (g * wo - self._prev_wo) * (1.0 / self.shape_scale)
             self._prev_wo = wo
         if ep.done:

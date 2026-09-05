@@ -324,6 +324,12 @@ def build_parser():
                          "to --gamma to close the leak.")
     ap.add_argument("--shape-scale", type=float, default=3000.0,
                     help="divisor of the per-step potential delta")
+    ap.add_argument("--terminal-cash", action="store_true",
+                    help="at the terminal step, value the potential at money_T "
+                         "instead of phi -- drops the non-monetary terms the "
+                         "whistle zeroes (build curve ~48%%, unplanted seeds "
+                         "20-26%%). NOT the same as zeroing phi_T, which "
+                         "deletes the dense money signal (sg-f4)")
     ap.add_argument("--opp-lambda", type=float, default=0.0,
                     help="subtract lambda * opponent potential delta "
                          "(relative shaping; 1.0 is the archived "
@@ -530,6 +536,7 @@ def train(args, log_fn=None):
         opp_noise=args.opp_noise, handicap=args.handicap,
         potential=args.potential, shape_scale=args.shape_scale,
         opp_lambda=args.opp_lambda, multi_head=args.multi_head,
+        terminal_cash=getattr(args, "terminal_cash", False),
         kickstart=args.kickstart, build_bonus=args.build_bonus,
         bank=args.bank, bank_frac=args.bank_frac,
         shape_gamma=args.shape_gamma, ks_every=args.ks_every,
