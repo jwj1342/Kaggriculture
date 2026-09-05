@@ -101,6 +101,10 @@ def build_plan(sched, opp_sched, knobs, W):
       halve_p    减半（`ceil(q/2)`）
       avoid_p    **同槽位规避**：对手同一回合也卖 p 时，跳过我这张单。
                  这一条直接对准"争夺是按槽位的"那个发现 —— 不在对手身上走价。
+      frac_p     **配置类**：把该产品的每张卖单按比例缩放，`0` = 整局不卖（持有）。
+                 方差分解说可操纵的因子是**商店抽取**（我方钱 sd 17,914，而棋盘只有 499），
+                 而商店组合决定哪些产品有需求 —— 所以「这局别卖 melon」这种配置决策
+                 才是那 18k 所在的维度，时序类的四个维度从设计上就动不到它。
       preempt_p  **主动抢跑**：对手将在 t 卖 p，就在 t−1 追加一张全卖 p。
                  同回合内双方按同一 pre-commit 库存报价，所以抢跑只能跨回合。
     """
@@ -112,6 +116,11 @@ def build_plan(sched, opp_sched, knobs, W):
                 if knobs["avoid"].get(p) and opp_sched[t].get(p):
                     continue                       # 删除：不与对手同槽位相撞
                 q = int(o[2])
+                f = knobs.get("frac", {}).get(p, 1.0)
+                if f <= 0.0:
+                    continue                       # 完全不卖这个产品（持有）
+                if f < 1.0:
+                    q = max(1, int(q * f + 0.5))
                 if knobs["halve"].get(p):
                     q = (q + 1) // 2
                 if q <= 0:
@@ -136,7 +145,8 @@ def zero_knobs():
     return {"shift": {p: 0 for p in PRODUCTS},
             "halve": {p: 0 for p in PRODUCTS},
             "avoid": {p: 0 for p in PRODUCTS},
-            "preempt": {p: 0 for p in PRODUCTS}}
+            "preempt": {p: 0 for p in PRODUCTS},
+            "frac": {p: 1.0 for p in PRODUCTS}}
 
 
 def rollout_shift(base, me, opp, W, sched, opp_sched, knobs, maxo=10):
@@ -199,6 +209,8 @@ def cem_knobs(base, me, opp, W, sched, opp_sched, iters, pop, elite, rng,
     pr_shift = {p: [(0.6 if j == -lo else 0.4 / (nsh - 1)) for j in range(nsh)]
                 for p in PRODUCTS}
     pr_bin = {d: {p: 0.12 for p in PRODUCTS} for d in ("halve", "avoid", "preempt")}
+    FRACS = [1.0, 0.75, 0.5, 0.25, 0.0]
+    pr_frac = {p: [0.6, 0.1, 0.1, 0.1, 0.1] for p in PRODUCTS}
     m_z, n_z, _oz = rollout_shift(base, me, opp, W, sched, opp_sched, zero_knobs())
     best = (m_z, zero_knobs(), n_z)
     for it in range(iters):
@@ -212,6 +224,10 @@ def cem_knobs(base, me, opp, W, sched, opp_sched, iters, pop, elite, rng,
                 if d in dims:
                     for p in PRODUCTS:
                         k[d][p] = 1 if rng.random() < pr_bin[d][p] else 0
+            if "frac" in dims:
+                for p in PRODUCTS:
+                    k["frac"][p] = FRACS[rng.choices(range(len(FRACS)),
+                                                     pr_frac[p])[0]]
             m, noop, _w = rollout_shift(base, me, opp, W, sched, opp_sched, k)
             cands.append((m, k, noop))
         cands.sort(key=lambda t: -t[0])
@@ -232,6 +248,14 @@ def cem_knobs(base, me, opp, W, sched, opp_sched, iters, pop, elite, rng,
             for p in PRODUCTS:
                 m_ = sum(k[d][p] for _m, k, _n in top) / len(top)
                 pr_bin[d][p] = 0.7 * pr_bin[d][p] + 0.3 * m_
+        if "frac" in dims:
+            for p in PRODUCTS:
+                cnt = [0.0] * len(FRACS)
+                for _m, k, _n in top:
+                    cnt[FRACS.index(k["frac"][p])] += 1
+                tot = sum(cnt) or 1
+                pr_frac[p] = [0.7 * pr_frac[p][j] + 0.3 * cnt[j] / tot
+                              for j in range(len(FRACS))]
         if verbose:
             print(f"    iter {it:2d}  best {cands[0][0]:>+10,.0f}  "
                   f"elite 均 {st.mean(c for c, _, _ in top):>+10,.0f}  "
@@ -252,7 +276,23 @@ def main():
     ap.add_argument("--shift", type=int, default=4)
     ap.add_argument("--dims", default="shift,halve,avoid,preempt",
                     help="打开哪几个残差维度；用来做逐维消融")
+    ap.add_argument("--shops", default="",
+                    help="逗号分隔，强制商店组合。解锁的**时刻与数量**仍由引擎决定，"
+                         "只换是哪几家 —— 杂草与商店共用一条 RNG，所以这样干预"
+                         "不会改变杂草抽取。与 tools/variance.py 同一种手法。")
     a = ap.parse_args()
+    if a.shops:
+        forced = [x for x in a.shops.split(",") if x]
+        _real_step = engine_np.Episode.step
+
+        def _step(self, actions):
+            k = len(self.town.get("unlocked_shops") or [])
+            if k:
+                self.town["unlocked_shops"] = list(forced[:k])
+            return _real_step(self, actions)
+
+        engine_np.Episode.step = _step
+        print(f"强制商店组合: {forced}")
 
     me, opp = load_agent(a.me), load_agent(a.opp)
     dims = tuple(x for x in a.dims.split(",") if x)
@@ -298,7 +338,9 @@ def main():
         sh = {p: v for p, v in sorted(k["shift"].items()) if v}
         print(f"  CEM 最好 {val:+,.0f}  **增益 {val-cleo_margin:+,.0f}**  "
               f"no-op {noop*100:.0f}%")
+        fr = {p: v for p, v in sorted(k.get("frac", {}).items()) if v != 1.0}
         print(f"    shift {sh or '全 0'}")
+        print(f"    frac  {fr or '全 1.0'}")
         for d in ("halve", "avoid", "preempt"):
             if d in dims:
                 print(f"    {d:8} {on[d] or '全关'}")
