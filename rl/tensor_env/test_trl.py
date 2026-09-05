@@ -1002,6 +1002,96 @@ def gate_farm_tape():
           f"{c_none}/{c_buys}/{c_all} peak crops  PASS")
 
 
+
+def gate_terminal_cash():
+    """(xv) --terminal-cash changes the LAST step only, and by exactly the
+    right amount.
+
+    The shaping telescopes to phi(s_T) - phi(s_0) while the score is money_T
+    alone, so every non-monetary term left in phi_T is reward paid for
+    something the competition values at zero. Measured on a FREE farm
+    (docs/RUNS.md 2026-09-04 continuation ten): 7,930 for mkt-w4 and 9,311 for
+    wide-var, i.e. 2.6-3.1 reward units against a win bonus of 1.5, with the
+    build curve's terminal value about 48% of it and unplanted seeds 20-26%.
+
+    Three assertions, and the third is why this gate exists in this shape:
+    gate (xiii)'s first version passed a BROKEN implementation on two of its
+    four checks, and a gate that does not bear load is worse than none, so (c)
+    breaks the implementation and requires the gate to fail.
+
+    (b')'s floor assertion is not decoration either. The tolerance had to be
+    loosened from 1e-9 to 1e-5 because float32 reward precision made a CORRECT
+    implementation fail at 8.9e-08 -- and once a tolerance is loosened, a zero
+    effect passes vacuously unless the effect itself is asserted non-trivial.
+    """
+    import trl_env
+    from trl_policy import MultiActorNet
+
+    lanes = 4
+
+    def rollout(terminal_cash, net):
+        env = trl_env.KGTensorEnv(
+            lanes, device="cpu", seat=0, base_seed=11, opponent="barnyard",
+            win_bonus=1.5, margin_bonus=1.5, margin_scale=50000.0,
+            build_bonus=1.0, multi_head=True, potential="future-mkt",
+            shape_scale=3000.0, terminal_cash=terminal_cash)
+        td = env.reset()
+        rs = []
+        with torch.no_grad():
+            while True:
+                o = net(td["observation"])
+                td["action"] = torch.cat([
+                    o[0].masked_fill(~td["farmer_mask"], -1e9).argmax(-1).unsqueeze(-1),
+                    o[1].masked_fill(~td["market_mask"], -1e9).argmax(-1).unsqueeze(-1),
+                    o[2].masked_fill(~td["hand_mask"], -1e9).argmax(-1)], -1)
+                td = env.step(td)
+                rs.append(td["next", "reward"].squeeze(-1).clone())
+                if bool(td["next", "done"].all()):
+                    break
+                td = td["next"].exclude("reward")
+        ep = env._ep
+        return (torch.stack(rs), ep.money[:, 0].to(torch.float64).clone(),
+                env._pot(ep, 0).clone())
+
+    def measure(net):
+        r0, _m0, _p0 = rollout(False, net)
+        r1, m1, p1 = rollout(True, net)
+        T = r0.shape[0]
+        mid = (r0[:T - 1] - r1[:T - 1]).abs().max().item()
+        want = (m1 - p1) / 3000.0
+        err = (r1[T - 1] - r0[T - 1] - want).abs().max().item()
+        return mid, err, want
+
+    torch.manual_seed(17)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 64, 32,
+                        A.MAX_HANDS, A.N_HAND_TASK).eval()
+    mid, err, want = measure(net)
+    assert mid == 0.0, f"(a) terminal_cash leaked into mid-episode: {mid}"
+    assert err < 1e-5, f"(b) last step != (money_T - phi_T)/scale: {err}"
+    assert want.abs().min().item() > 1e-2, (
+        f"(b') the terminal difference is itself ~0 {want.tolist()}; this gate "
+        f"has no resolution on this policy and would pass vacuously")
+
+    real = trl_env.KGTensorEnv._finish_step
+
+    class _Broken(trl_env.KGTensorEnv):
+        def _finish_step(self, ep, seat, opp):
+            self.terminal_cash = False          # ignore the flag
+            return real(self, ep, seat, opp)
+
+    orig = trl_env.KGTensorEnv
+    trl_env.KGTensorEnv = _Broken
+    try:
+        _mid_b, err_b, _ = measure(net)
+    finally:
+        trl_env.KGTensorEnv = orig
+    assert err_b > 1e-6, (
+        "(c) the gate still passed against a BROKEN implementation -- it does "
+        "not bear load, which is worse than having no gate")
+    print(f"gate (xv)  terminal-cash: mid-episode delta {mid:.1e}, terminal "
+          f"error {err:.1e}, broken-implementation error {err_b:.1e}  PASS")
+
+
 def gate_probe_graft():
     """(xiv) run_probe forwards the farm graft, so it measures the policy that
     is actually being trained.
@@ -1112,4 +1202,5 @@ if __name__ == "__main__":
     gate_pfsp_var()
     gate_farm_tape()
     gate_probe_graft()
+    gate_terminal_cash()
     print("test_trl: all gates PASS")
