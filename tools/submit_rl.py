@@ -164,7 +164,17 @@ def build_jobs(args, train_args, run_dir, expected_commit="", start_index=0):
         index = start_index + offset
         pilot = offset == 0 and args.pilot_minutes > 0
         train_minutes = args.pilot_minutes if pilot else args.full_minutes
-        allocation_minutes = train_minutes + 5
+        # Headroom between the trainer's own budget (KG_MAX_MINUTES) and the
+        # walltime. The trainer only checks the clock BETWEEN iterations, so
+        # the overshoot is one whole iteration plus the checkpoint save --
+        # and the tail is what matters, not the median. 2026-09-04:
+        # predator-n07's link 4 hit TIMEOUT at 35:06 against a 35-minute wall
+        # because one iteration took 681 s (its median was 99 s and the
+        # lambda=0 control's worst was 191 s). A TIMEOUT exits non-zero, so
+        # `afterok` never fires and the REST OF THE CHAIN sits in the queue
+        # as DependencyNeverSatisfied forever -- silently, with an intact
+        # checkpoint. Size this from the arm's p99 iteration, not its median.
+        allocation_minutes = train_minutes + args.headroom_minutes
         name = f"kg-{args.run[:20]}-{'p' if pilot else f'l{index + 1}'}"
         exports = ["ALL", f"KG_RUN_ID={args.run}",
                    f"KG_MAX_MINUTES={train_minutes}", f"KG_MIN_SPS={args.min_sps}",
@@ -195,6 +205,12 @@ def build_parser():
     ap.add_argument("--pilot-minutes", type=int, default=5,
                     help="short first link; 0 disables the pilot")
     ap.add_argument("--full-minutes", type=int, default=25)
+    ap.add_argument("--headroom-minutes", type=int, default=5,
+                    help="walltime minus the trainer budget. The trainer's "
+                         "clock check is BETWEEN iterations, so this must "
+                         "cover one p99 iteration plus the save; a TIMEOUT "
+                         "breaks the afterok chain and every later link "
+                         "sits as DependencyNeverSatisfied with no error")
     ap.add_argument("--min-sps", type=int, default=0,
                     help="pilot throughput floor; default: CPU 5000, GPU 8000")
     ap.add_argument("--hypothesis", required=True)
@@ -223,6 +239,8 @@ def main(argv=None):
         ap.error("--links must be between 1 and 8; submit a reviewed continuation later")
     if not 1 <= args.full_minutes <= 50 or not 0 <= args.pilot_minutes <= 10:
         ap.error("full minutes must be 1..50 and pilot minutes 0..10")
+    if not 2 <= args.headroom_minutes <= 30:
+        ap.error("headroom minutes must be 2..30")
     if args.backend == "gpu" and not args.gpu_justification.strip():
         ap.error("--backend gpu requires --gpu-justification")
     if args.min_sps < 0:
@@ -296,6 +314,7 @@ def main(argv=None):
         "links": args.links,
         "pilot_minutes": args.pilot_minutes,
         "full_minutes": args.full_minutes,
+        "headroom_minutes": args.headroom_minutes,
         "min_sps": args.min_sps,
         "train_argv": train_args,
         "input_files": input_files,
