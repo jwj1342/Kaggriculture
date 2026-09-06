@@ -96,6 +96,22 @@ MARKET_ACTIONS = (
 
 SEED_BULK = 8
 
+# Quantity ladder for the market head (2026-09-06). Index 0 is DEFAULT: it
+# reproduces each macro's historical quantity exactly, so a policy that never
+# leaves index 0 is byte-identical to the one before this existed.
+#
+# Why a ladder at all, measured on the 13 mined tapes: 6,674 market orders
+# carry a quantity across 66 distinct values, and the policy could express two
+# of them. SELL alone is 4,414 orders over 66 values with the mass at 1-8
+# (1x895, 2x514, 3x465, 6x436, 4x409); BUY_PRODUCT is 1,142 over 56;
+# BUY_SEED 999 over 20, of which SEED_BULK's 8 covers 23. Truncating n04's own
+# orders to what the policy can say costs -105,000 margin on BUY_PRODUCT
+# WHEAT, -70,000 on SELL and -33,000 on BUY_ANIMAL, against a +-10,000 control
+# band. The rungs below are chosen from the same histogram: they hit 81.4% of
+# those 6,674 orders exactly and 96.3% within 25%, where {1, 8} hits 30.4%.
+QTY_OPTS = (0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 18)   # 0 = the macro's default
+N_QTY = len(QTY_OPTS)
+
 N_FARMER = len(FARMER_ACTIONS)   # 23
 N_MARKET = len(MARKET_ACTIONS)   # 36
 
@@ -426,8 +442,11 @@ def _hands_actions(obs, s):
     return _hands_actions_multi(obs, s, ())
 
 
-def _market_action(obs, name):
+def _market_action(obs, name, qty=0):
     """Decode one market-head option into up to 10 engine orders.
+
+    `qty` is an index into QTY_OPTS; 0 keeps the macro's own quantity, which is
+    what every caller predating the quantity head passes.
 
     Compound decodes, matched against barnyard's measured throughput (it fires
     up to 10 orders in one turn; a single-order head liquidates and hires an
@@ -452,21 +471,25 @@ def _market_action(obs, name):
             rest = [["SELL", q, shed[q]] for q in PRODUCT_LIST
                     if q != p and shed.get(q, 0) > 0]
             return (first + rest)[:R.MAX_ORDERS]
-        n = shed.get(p, 0)
-        if half:
-            n = (n + 1) // 2
+        held = shed.get(p, 0)
+        n = (held + 1) // 2 if half else held
+        if qty:                              # explicit rung, capped by stock
+            n = min(QTY_OPTS[qty], held)
         return [["SELL", p, n]] if n > 0 else []
     if name.startswith("BUY_SEED_BULK_"):
-        return [["BUY_SEED", name[len("BUY_SEED_BULK_"):], SEED_BULK]]
+        return [["BUY_SEED", name[len("BUY_SEED_BULK_"):],
+                 QTY_OPTS[qty] if qty else SEED_BULK]]
     if name.startswith("BUY_SEED_"):
-        return [["BUY_SEED", name[len("BUY_SEED_"):], 1]]
+        return [["BUY_SEED", name[len("BUY_SEED_"):],
+                 QTY_OPTS[qty] if qty else 1]]
     if name == "BUY_WHEAT":
         herd = _analysis(obs, full=False).herd
-        return [["BUY_PRODUCT", "WHEAT", max(5, 2 * herd)]]
+        return [["BUY_PRODUCT", "WHEAT",
+                 QTY_OPTS[qty] if qty else max(5, 2 * herd)]]
     if name == "BUY_FERT":
-        return [["BUY_PRODUCT", "FERTILIZER", 1]]
+        return [["BUY_PRODUCT", "FERTILIZER", QTY_OPTS[qty] if qty else 1]]
     if name.startswith("BUY_") and name[len("BUY_"):] in R.ANIMALS:
-        return [["BUY_ANIMAL", name[len("BUY_"):], 1]]
+        return [["BUY_ANIMAL", name[len("BUY_"):], QTY_OPTS[qty] if qty else 1]]
     if name == "BUY_LAND":
         return [["BUY_LAND"]]
     if name == "HIRE":
@@ -488,13 +511,13 @@ def _market_action(obs, name):
     return []
 
 
-def decode(obs, f_idx, m_idx):
-    """(farmer index, market index) -> raw kaggle action dict."""
+def decode(obs, f_idx, m_idx, q_idx=0):
+    """(farmer index, market index[, quantity index]) -> raw kaggle action."""
     s = _scan(obs)
     farmer = _farmer_action(obs, FARMER_ACTIONS[f_idx], s) or ["PASS"]
     return {"farmer": farmer,
             "hands": _hands_actions(obs, s),
-            "market": _market_action(obs, MARKET_ACTIONS[m_idx])}
+            "market": _market_action(obs, MARKET_ACTIONS[m_idx], q_idx)}
 
 
 # --------------------------------------------------------------------------
@@ -754,13 +777,13 @@ def _hands_actions_multi(obs, s, tasks, farmer=None):
     return acts
 
 
-def decode_multi(obs, f_idx, hand_idxs, m_idx):
-    """(farmer, per-hand tasks, market) -> raw kaggle action dict."""
+def decode_multi(obs, f_idx, hand_idxs, m_idx, q_idx=0):
+    """(farmer, per-hand tasks, market[, quantity]) -> raw kaggle action."""
     s = _scan(obs)
     farmer = _farmer_action(obs, FARMER_ACTIONS[f_idx], s) or ["PASS"]
     return {"farmer": farmer,
             "hands": _hands_actions_multi(obs, s, hand_idxs, farmer),
-            "market": _market_action(obs, MARKET_ACTIONS[m_idx])}
+            "market": _market_action(obs, MARKET_ACTIONS[m_idx], q_idx)}
 
 
 def hand_task_mask(obs):
@@ -920,10 +943,18 @@ def market_mask(obs):
         vals.append(money >= _SEED_COST[c] * SEED_BULK
                     and day <= PLANT_DEADLINE[c])
     # Mechanics-dead endgame (the PLANT_DEADLINE pattern): on the
-    # liquidation day with products in the shed, everything but selling is
-    # dead -- post-deadline plants never mature, an animal placed now never
-    # yields, escapes stop mattering, and stock held to the end realises
-    # $0. SELL_<p> decodes compound into a full-shed liquidation here, so
+    # liquidation day with products in the shed, selling is what matters --
+    # post-deadline plants never mature, an animal placed now never yields
+    # (the day-29 end-of-day is step 719 and never executes), escapes stop
+    # mattering, and stock held to the end realises $0.
+    #
+    # NOT everything else is dead, contrary to what this comment used to say:
+    # HIRE still pays (forcing day-29 hires gains $4,984 mean over 6 seeds,
+    # +12.5%) and yield banked at end of day 28 is harvestable all through
+    # day 29. Blocking it costs nothing anyway -- the compound sell empties the
+    # shed in ONE turn and the next turn is unmasked, so a mask-faithful A/B
+    # over 6 seeds reads $44,902 against $44,900. Kept for that reason, not
+    # because the alternatives are mechanically dead. SELL_<p> decodes compound into a full-shed liquidation here, so
     # any sell choice is a liquidation. Measured: five runs in a row left
     # 62-100 melons rotting in the shed behind a NOOP-happy argmax.
     if day >= R.LIQUIDATE_DAY:

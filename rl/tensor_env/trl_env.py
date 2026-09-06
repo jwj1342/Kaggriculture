@@ -842,7 +842,15 @@ class KGTensorEnv(EnvBase):
 
     def queue_step_override(self, seat, ops, lane_mask=None):
         """Queue one raw step_idx graft, optionally for selected lanes."""
-        self._step_overrides.append((int(seat), ops, lane_mask))
+        # A 3-tuple sends step_idx down the lane_mask branch, which does
+        # torch.as_tensor(lane_mask).reshape(B) unconditionally -- so the
+        # DOCUMENTED default of None raised TypeError. Every current caller
+        # passes a mask, which is why it was never seen. Emit the 2-tuple form
+        # when there is no mask, which is the form that branch expects.
+        if lane_mask is None:
+            self._step_overrides.append((int(seat), ops))
+        else:
+            self._step_overrides.append((int(seat), ops, lane_mask))
 
     # -- EnvBase hooks -------------------------------------------------------
 

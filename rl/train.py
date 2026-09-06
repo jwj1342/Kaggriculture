@@ -343,12 +343,19 @@ def build_parser():
                          "to --gamma to close the leak.")
     ap.add_argument("--shape-scale", type=float, default=3000.0,
                     help="divisor of the per-step potential delta")
-    ap.add_argument("--terminal-cash", action="store_true",
-                    help="at the terminal step, value the potential at money_T "
-                         "instead of phi -- drops the non-monetary terms the "
-                         "whistle zeroes (build curve ~48%%, unplanted seeds "
-                         "20-26%%). NOT the same as zeroing phi_T, which "
-                         "deletes the dense money signal (sg-f4)")
+    ap.add_argument("--terminal-cash", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="value the terminal potential at money_T instead of "
+                         "phi. DEFAULT-ON since 2026-09-06: with it off, two "
+                         "independent measurements found the shaped return "
+                         "PREFERS ending the season with $40 and a full shed "
+                         "(2.12-2.47 units) to converting that shed into "
+                         "$7,696-$10,107 of the only thing scored (1.37-1.86). "
+                         "The leak is phi_T - money_T = $12,408 = 4.14 reward "
+                         "units against a win bonus of 1.5, and it is entirely "
+                         "shed stock the engine pays $0 for. Every run before "
+                         "2026-09-06 trained with it off. --no-terminal-cash "
+                         "restores that, for reproducing them only.")
     ap.add_argument("--opp-lambda", type=float, default=0.0,
                     help="subtract lambda * opponent potential delta "
                          "(relative shaping; 1.0 is the archived "

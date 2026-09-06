@@ -1029,12 +1029,13 @@ def gate_terminal_cash():
 
     lanes = 4
 
-    def rollout(terminal_cash, net):
+    def rollout(terminal_cash, net, seat=0, opp_lambda=0.0):
         env = trl_env.KGTensorEnv(
-            lanes, device="cpu", seat=0, base_seed=11, opponent="barnyard",
+            lanes, device="cpu", seat=seat, base_seed=11, opponent="barnyard",
             win_bonus=1.5, margin_bonus=1.5, margin_scale=50000.0,
             build_bonus=1.0, multi_head=True, potential="future-mkt",
-            shape_scale=3000.0, terminal_cash=terminal_cash)
+            shape_scale=3000.0, terminal_cash=terminal_cash,
+            opp_lambda=opp_lambda)
         td = env.reset()
         rs = []
         with torch.no_grad():
@@ -1050,15 +1051,20 @@ def gate_terminal_cash():
                     break
                 td = td["next"].exclude("reward")
         ep = env._ep
-        return (torch.stack(rs), ep.money[:, 0].to(torch.float64).clone(),
-                env._pot(ep, 0).clone())
+        s, o = env.seat, 1 - env.seat
+        return (torch.stack(rs),
+                ep.money[:, s].to(torch.float64).clone(), env._pot(ep, s).clone(),
+                ep.money[:, o].to(torch.float64).clone(), env._pot(ep, o).clone())
 
-    def measure(net):
-        r0, _m0, _p0 = rollout(False, net)
-        r1, m1, p1 = rollout(True, net)
+    def measure(net, seat=0, opp_lambda=0.0):
+        r0, *_ = rollout(False, net, seat, opp_lambda)
+        r1, m1, p1, mo1, po1 = rollout(True, net, seat, opp_lambda)
         T = r0.shape[0]
         mid = (r0[:T - 1] - r1[:T - 1]).abs().max().item()
-        want = (m1 - p1) / 3000.0
+        # The same rule on BOTH seats: with --opp-lambda the terminal term is
+        # (money - phi) for us MINUS lambda x (money - phi) for the opponent.
+        # The gate used to leave opp_lambda at 0, so that line never executed.
+        want = ((m1 - p1) - opp_lambda * (mo1 - po1)) / 3000.0
         err = (r1[T - 1] - r0[T - 1] - want).abs().max().item()
         return mid, err, want
 
@@ -1071,6 +1077,18 @@ def gate_terminal_cash():
     assert want.abs().min().item() > 1e-2, (
         f"(b') the terminal difference is itself ~0 {want.tolist()}; this gate "
         f"has no resolution on this policy and would pass vacuously")
+
+    # Cover the two axes the gate never touched: the OTHER seat, and a live
+    # opp_lambda. Both were verified correct by hand at <=2.7e-09; a gate that
+    # only ever runs seat 0 at lambda 0 cannot say so.
+    for _seat, _lam in ((1, 0.0), (0, 0.5), (1, 0.5)):
+        _mid, _err, _want = measure(net, _seat, _lam)
+        assert _mid == 0.0, (
+            f"(a') terminal_cash leaked mid-episode at seat {_seat} "
+            f"lambda {_lam}: {_mid}")
+        assert _err < 1e-5, (
+            f"(b'') seat {_seat} lambda {_lam}: last step != "
+            f"((money-phi) - lambda(money_opp-phi_opp))/scale: {_err}")
 
     real = trl_env.KGTensorEnv._finish_step
 
@@ -1089,7 +1107,8 @@ def gate_terminal_cash():
         "(c) the gate still passed against a BROKEN implementation -- it does "
         "not bear load, which is worse than having no gate")
     print(f"gate (xv)  terminal-cash: mid-episode delta {mid:.1e}, terminal "
-          f"error {err:.1e}, broken-implementation error {err_b:.1e}  PASS")
+          f"error {err:.1e}, broken-implementation error {err_b:.1e}; also "
+          f"exact on seat 1 and at opp-lambda 0.5  PASS")
 
 
 def gate_probe_graft():
