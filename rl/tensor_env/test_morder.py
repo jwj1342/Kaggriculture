@@ -321,6 +321,40 @@ def gate_o7(args, broken=False):
                   f"{bad['checked']} decodes (K={K})")
 
 
+def gate_l1(args, broken=False):
+    """A frozen/league snapshot of a K>1 policy must PLAY K slots.
+
+    Dropping slot_bias/couple_m makes the snapshot a one-order agent -- the cap
+    measured at -89,479 on closer_cleo -- so under --league the learner would
+    train against copies of itself that are systematically weaker than itself.
+    `broken` drops the tables and must fail.
+    """
+    from trl_env import FrozenPolicyOpponent
+    from trl_policy import MultiActorNet
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import obs as O
+    K = 4
+    torch.manual_seed(1)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 64, 32, n_hands=12,
+                        n_hand_task=A.N_HAND_TASK, market_orders=K, depth=4)
+    with torch.no_grad():
+        net.slot_bias.add_(torch.randn_like(net.slot_bias))
+        net.couple_m.add_(torch.randn_like(net.couple_m))
+    arrays = net.state_np()
+    if broken:
+        arrays.pop("msb", None); arrays.pop("cmw", None)
+    op = FrozenPolicyOpponent.from_state_np(arrays, "cpu")
+    ep = _ep([5 + i for i in range(args.lanes)], 20, args.device)
+    res = op(ep, 1)
+    ma = res[1]
+    if ma.dim() != 2 or ma.shape[-1] != K:
+        return False, (f"L1: snapshot market action is {tuple(ma.shape)}, "
+                       f"expected (B, {K}) -- it plays one order a turn")
+    if int((ma[:, 1:] != ma[:, :1]).sum()) == 0:
+        return False, "L1: every slot chose the same action; the tables are inert"
+    return True, (f"L1: snapshot plays {K} slots, e.g. {ma[0].tolist()}")
+
+
 def gate_p1(args, broken=False):
     """The probe must SEE the slot tables.
 
@@ -431,7 +465,7 @@ def main():
     args = ap.parse_args()
     ok = True
     for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
-                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("P1", gate_p1),
+                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("L1", gate_l1), ("P1", gate_p1),
                      ("D1", gate_d1), ("D3", gate_d3)):
         try:
             good, msg = fn(args)
@@ -441,7 +475,7 @@ def main():
         ok &= good
     for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
                          ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3"),
-                         ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7")):
+                         ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001

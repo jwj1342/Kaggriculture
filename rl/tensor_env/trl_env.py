@@ -371,6 +371,11 @@ class FrozenPolicyOpponent:
 
     def _build(self, arrays, device):
         from trl_policy import arrays_to_sd
+        import torch as _t
+        self._slots = None
+        if "msb" in arrays:
+            self._slots = (_t.as_tensor(arrays["msb"]).to(device),
+                           _t.as_tensor(arrays["cmw"]).to(device))
 
         def net_sd(prefix=""):
             sd = arrays_to_sd(arrays, prefix)
@@ -378,22 +383,10 @@ class FrozenPolicyOpponent:
             sd.pop("hands.bias", None)     # separately (see _hands below)
             sd.pop("couple_f", None)       # coupling tables likewise --
             sd.pop("couple_h", None)       # played via self._couple below
-            # Multi-order tables: MORDER_ARRAYS joined arrays_to_sd without
-            # joining this list, so the first league snapshot of a K>1 policy
-            # raised "Unexpected key(s) slot_bias, couple_m" out of
-            # ActorNet.load_state_dict. A frozen opponent plays slot 0 only.
-            if "slot_bias" in sd and int(sd["slot_bias"].shape[0]) > 1:
-                # A frozen opponent has no multi-order machinery, so it plays
-                # SLOT 0 ONLY. Under --league that means the learner trains
-                # against snapshots of itself that are capped at one order a
-                # turn -- the same cap measured at -89,479 on closer_cleo.
-                # Loud, because it changes what the pool means.
-                import warnings
-                warnings.warn(
-                    "league/frozen snapshot of a market_orders>"
-                    f"{1} policy plays slot 0 only: the self-play opponent is "
-                    "one-order and systematically weaker than the learner",
-                    RuntimeWarning, stacklevel=2)
+            # Multi-order tables are held aside and PLAYED (see _slots): a
+            # snapshot that dropped them would be capped at one order a turn,
+            # the cap measured at -89,479 on closer_cleo, so every self-play
+            # opponent would be systematically weaker than the learner.
             sd.pop("slot_bias", None)
             sd.pop("couple_m", None)
             return sd
@@ -461,16 +454,30 @@ class FrozenPolicyOpponent:
             if self._couple is not None:
                 raise ValueError("coupled snapshot without a hand head -- "
                                  "the coupling conditions on hand tasks")
-            ma = ml.masked_fill(~mm, NEG).argmax(-1)
-            return fa, ma
+            return fa, self._market(ml, mm)
         hl = self._hand_logits(x)
         hm = hand_task_mask_t(ep, player, hl.shape[-2])
         ha = hl.masked_fill(~hm, NEG).argmax(-1)
         if self._couple is not None:
             cfw, chw = self._couple
             ml = ml + cfw.t()[fa] + chw.t()[ha].mean(-2)
-        ma = ml.masked_fill(~mm, NEG).argmax(-1)
-        return fa, ma, ha
+        return fa, self._market(ml, mm), ha
+
+    def _market(self, ml, mm):
+        """argmax market action -- (B,) at K=1, (B, K) for a multi-order
+        snapshot, reproducing MultiOrderMultiHead.mode."""
+        slots = getattr(self, "_slots", None)
+        if slots is None:
+            return ml.masked_fill(~mm, NEG).argmax(-1)
+        msb, cmw = slots
+        cols, prev = [], None
+        for j in range(msb.shape[0]):
+            lj = ml + msb[j]
+            if prev is not None:
+                lj = lj + cmw.t()[prev]
+            a = lj.masked_fill(~mm, NEG).argmax(-1)
+            cols.append(a); prev = a
+        return torch.stack(cols, -1)
 
 
 def _make_opponent(spec, device):
@@ -1002,13 +1009,21 @@ class KGTensorEnv(EnvBase):
             rfa = torch.multinomial(ofm.double(), 1).squeeze(-1)
             rma = torch.multinomial(omm.double(), 1).squeeze(-1)
             ofa = torch.where(noisy, rfa, ofa)
-            oma = torch.where(noisy, rma, oma)
+            oma = torch.where(noisy.view(*noisy.shape, *([1] * (oma.dim() - 1))),
+                              rma.view(*rma.shape, *([1] * (oma.dim() - 1))),
+                              oma)
         if K > 1:
-            # the opponent lives in the one-order space; pad its extra slots
-            # with NOOP so the seats share one (B, 2, K) tensor
-            oma = torch.cat([oma.view(self.B, 1),
-                             torch.zeros((self.B, K - 1), dtype=torch.int64,
-                                         device=self.device)], 1)
+            # A one-order opponent is padded with NOOP; a multi-order snapshot
+            # already returns (B, K_opp) and is truncated or NOOP-padded to K
+            # so both seats share one (B, 2, K) tensor.
+            if oma.dim() == 1:
+                oma = oma.view(self.B, 1)
+            if oma.shape[1] > K:
+                oma = oma[:, :K]
+            elif oma.shape[1] < K:
+                oma = torch.cat(
+                    [oma, torch.zeros((self.B, K - oma.shape[1]),
+                                      dtype=torch.int64, device=self.device)], 1)
         if seat == 0:
             f_idx = torch.stack([fa, ofa], 1)
             m_idx = torch.stack([ma, oma], 1)
