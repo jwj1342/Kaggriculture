@@ -145,3 +145,24 @@ sps 会在当前拥堵集群上得出错误决策。
 5. 评测继续走 CPU array/shard，worker 不写 SQLite，由单一 ingest 进程合并。
 6. 跑完用 `tools/slurm_audit.py` 复盘，把统计证据和判词写进 `docs/RUNS.md`。
 7. Kaggle 提交仍遵守最多半天一次、至少输掉三分之一对局后才采信分数的规则。
+
+## 臂排队期间不要提交训练代码（2026-09-06 实测）
+
+`slurm/rl_train_cpu.sh` 在每一链开头跑 `tools/run_preflight.py`，
+它比对 **tracked files 与 manifest 里注册的 commit**（只排除 `*.md`/`docs`/`site`/`notebooks`）。
+不符就 **exit 42**，`afterok` 随即断链，后面所有链变成 `DependencyNeverSatisfied`。
+
+09-06 实测：三条臂的 pilot 都 COMPLETED，随后我提交了 `09b99d1`（多单头导出，
+动了 `rl/tensor_env/trl_policy.py` —— **训练代码，不是文档**），
+于是 `morder-free-l2` / `resid-order-l3` / `leafvalue-l2` 全部
+`FAILED 42:0`，`sacct` 里 Elapsed 只有 7–10 秒。
+
+**这是机制正确、操作错误。** 两条纪律：
+
+1. **臂在队列里时，只提交 `docs/**` 与 `*.md`**；训练代码的改动等链跑完，或者接受重发。
+2. **manifest 是不可变的**：`--resume` 会拒绝改变 `hypothesis` / `acceptance` / `commit`
+   （"resume changed registered fields"），所以代码一动就**只能换新 run 名重发**，
+   pilot 的进度作废。09-06 那次损失是每条臂 10 个 iteration。
+
+**怎么发现**：`squeue` 里后续链还在 `PENDING`，但 `rl/runs/<run>/train.csv` 停在 pilot 的行数不动。
+`sacct -u $USER --starttime today -o JobID%14,JobName%22,State%14,ExitCode,Elapsed` 一眼可见 `42:0`。

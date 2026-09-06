@@ -18,7 +18,8 @@
 
 | # | 事项 | 状态 | 阻塞在哪 |
 |---|---|---|---|
-| 1 | **⑳ 三条 RL 臂**（`morder-free` / `resid-order` / `leafvalue`） | 🟢 在跑，各 6 链 | 无；等结果 |
+| 1 | **⑳ 三条 RL 臂**（`morder2` / `residord2` / `leafval2`） | 🟢 在跑，各 6 链 | 无；等结果 |
+| 1b | ~~第一批 `morder-free`/`resid-order`/`leafvalue`~~ | ❌ **链被 preflight 拦下（exit 42）** | **我在臂排队期间提交了训练代码**（`09b99d1` 动了 `trl_policy.py`），`run_preflight.py` 检出 tracked files 与注册 commit 不符 —— **机制正确，是我的操作错误**。manifest 不可变，`--resume` 不能改 commit ⇒ 只能换新 run 名重发 |
 | 2 | **嫁接导出**（计划文件的 P3.2） | ⬜ **未实现** | `export_agent.py` 对 `--fixed-farm-tape` 有拒绝守卫 ⇒ **`resid-order` 与 `leafvalue` 无法过门 1** |
 | 3 | 白盒农场程序（`CEILING.md` 唯一没关的项） | ⬜ 未开始 | 用户 09-06 决定**后置**；带子在现金（前半季中位余额 167）与劳动（利用率 93%）两侧都无余量，只能重写 |
 | 4 | Phase 2 option-lite 分层控制器 | 🟡 门未过 | 对强墙 0 胜；进 Phase 3 需 cleo 96 局 ≥1 胜 |
