@@ -80,10 +80,17 @@ MARKET_ACTIONS = (
     # so a crop can only enter the rotation by winning an inventory race one
     # seed a turn. The shared meta plan does not play that way: n04 buys 23
     # STRAWBERRY seeds in a single order and all 12 MELON seeds in another.
-    # Measured (docs/RUNS.md verdict 36): capping closer_cleo's own BUY_SEED
-    # at one seed an order costs it -56,519 and leaves it on 21,678 against a
-    # baseline of 80,647; at a cap of 8 the loss is -8,708, which is where
-    # SEED_BULK is set.
+    # Measured: capping closer_cleo's own BUY_SEED at ONE seed an order costs
+    # it -56,519 (independently reproduced at -54,215 over 6 seeds), so "not
+    # one" is well supported.
+    #
+    # The VALUE 8 is not. It came from a single 3-seed reading of -8,708 at a
+    # cap of 8; re-run over 6 seeds with a spend-matched control that reading
+    # is +21,611 money / +5,400 margin and SIGN-UNSTABLE (3 positive, 3
+    # negative), i.e. inside the +-20k/+-10k control band that n04's $167
+    # median first-half cash balance produces for any perturbation. 8 was
+    # fixed on noise; 4, 12 and 23 are untested against it. n04 itself buys up
+    # to 23 STRAWBERRY seeds in one order.
     + [f"BUY_SEED_BULK_{c}" for c in CROP_LIST]
 )
 

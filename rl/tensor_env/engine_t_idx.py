@@ -914,7 +914,9 @@ def _idx_decode_market(self, m_idx, herd, day, t):
         cond = (((self.hands_n.to(i64).unsqueeze(-1) + t.j10) < A.MAX_HANDS)
                 & (fib <= 0.05 * self.money.unsqueeze(-1)))
         k = cond.to(i64).cumprod(-1).sum(-1)                 # leading-true run
-        for j in range(1, 10):
+        # bounded by S like the liquidation loop above; with
+        # maxMarketOrdersPerTurn < 10 this indexed past the end and raised.
+        for j in range(1, min(10, S)):
             slot = hire & (k > j)
             m_op[..., j] = torch.where(slot, OP_HIRE, m_op[..., j])
 

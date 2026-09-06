@@ -291,6 +291,17 @@ def main():
     import obs as O
 
     out_dir = os.path.join(args.out, args.name)
+    # A refusal or a crash used to leave a half-written directory behind, and
+    # tools/package.sh on that path would ship it. Register the cleanup before
+    # anything is written; it is a no-op on success (see the disarm below).
+    import atexit
+    import shutil as _sh
+    _ok = {"done": False}
+
+    def _sweep():
+        if not _ok["done"] and os.path.isdir(out_dir):
+            _sh.rmtree(out_dir, ignore_errors=True)
+    atexit.register(_sweep)
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     sd = ck["model"]
@@ -439,6 +450,7 @@ def main():
     # rl-baseline checkpoints carry global_step/stage; torchrl ones iter/algo
     step = ck.get("global_step", ck.get("iter"))
     step_s = f"{step:,}" if isinstance(step, int) else "?"
+    _ok["done"] = True
     print(f"exported {out_dir}  (ckpt step {step_s}, "
           f"stage {ck.get('stage', ck.get('algo'))})")
     print(f"opening action: {act['farmer']} market {act['market']}")
