@@ -51,17 +51,67 @@ def _ortho(layer, gain):
 class ActorNet(nn.Module):
     """PolicyT's actor half; forward returns raw (flogits, mlogits)."""
 
-    def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256):
+    def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
+                 depth=2):
         super().__init__()
         self.obs_dim, self.n_farmer, self.n_market = obs_dim, n_farmer, n_market
+        self.depth = max(2, int(depth))
         self.l1 = _ortho(nn.Linear(obs_dim, hidden1), math.sqrt(2))
         self.l2 = _ortho(nn.Linear(hidden1, hidden2), math.sqrt(2))
+        # Extra hidden2-wide layers, RESIDUAL and ZERO-init on the second
+        # matrix of each block, so depth > 2 starts bit-identical to depth 2
+        # and the warm-start / lane gates keep holding. Inference is not the
+        # constraint people assume here: the engine allows one second a turn
+        # and a 1024-512 forward costs 0.70 ms, 0.07% of it (docs/RUNS.md
+        # verdict 37), so depth is close to free.
         self.farmer = _ortho(nn.Linear(hidden2, n_farmer), 1e-4)
         self.market = _ortho(nn.Linear(hidden2, n_market), 1e-4)
+        # Built AFTER the heads on purpose: constructing them first consumes
+        # RNG and shifts farmer/market off the depth-2 stream (measured: max
+        # |delta| 3.85e-04, which would quietly break the warm-start and
+        # iter-0 lane gates). Built last, every depth-2 parameter is
+        # bit-identical and the zero second matrix makes the forward so too.
+        self._hidden2 = hidden2
+        self._build_extra()
 
-    def forward(self, x):
+    def _build_extra(self):
+        """Create the residual blocks WITHOUT touching the global RNG stream.
+
+        Building them anywhere in the constructor consumes draws and shifts
+        every layer created after it -- measured, that moved MultiActorNet's
+        hand head and left a depth-2/depth-8 forward differing by 1.03e-04,
+        which would quietly invalidate warm starts and the iter-0 lane gate.
+        Saving and restoring the RNG state makes depth free of side effects,
+        so a deeper net is bit-identical at init to the shallow one it grew
+        from, whichever subclass builds what afterwards."""
+        h2 = self._hidden2
+        state = torch.get_rng_state()
+        try:
+            self.extra = nn.ModuleList()
+            for _ in range(self.depth - 2):
+                a = _ortho(nn.Linear(h2, h2), math.sqrt(2))
+                b = nn.Linear(h2, h2)
+                nn.init.zeros_(b.weight); nn.init.zeros_(b.bias)
+                self.extra.append(nn.ModuleList([a, b]))
+        finally:
+            torch.set_rng_state(state)
+
+    def trunk(self, x):
+        """Shared trunk. Every subclass forward MUST go through this.
+
+        MultiActorNet.forward overrode ActorNet.forward and open-coded the two
+        layers, so --depth silently did nothing on the multi-head path -- the
+        path every arm uses -- while the depth gate still passed, because the
+        blocks are zero at init and the identity it checked was trivially
+        true. Hence `trunk`, and hence gate D3."""
         h = torch.relu(self.l1(x))
         h = torch.relu(self.l2(h))
+        for a, b in self.extra:
+            h = h + b(torch.relu(a(h)))
+        return h
+
+    def forward(self, x):
+        h = self.trunk(x)
         return self.farmer(h), self.market(h)
 
     # -- export (rl-baseline export_agent contract: policy side only) ------
@@ -72,6 +122,9 @@ class ActorNet(nn.Module):
             "fw": self.farmer.weight, "fb": self.farmer.bias,
             "mw": self.market.weight, "mb": self.market.bias,
         }
+        for i, (a, b) in enumerate(self.extra):
+            w[f"e{i}aw"], w[f"e{i}ab"] = a.weight, a.bias
+            w[f"e{i}bw"], w[f"e{i}bb"] = b.weight, b.bias
         return {k: v.detach().cpu().float().numpy() for k, v in w.items()}
 
     def export_npz(self, path):
@@ -109,11 +162,22 @@ COUPLE_ARRAYS = {"cfw": "couple_f", "chw": "couple_h"}
 MORDER_ARRAYS = {"msb": "slot_bias", "cmw": "couple_m"}
 
 
+def _depth_arrays(sd, prefix=""):
+    """Residual trunk blocks present in `sd`, as npz-key -> state-dict-key."""
+    out, i = {}, 0
+    while f"{prefix}extra.{i}.0.weight" in sd:
+        for tag, j in (("a", 0), ("b", 1)):
+            out[f"e{i}{tag}w"] = f"extra.{i}.{j}.weight"
+            out[f"e{i}{tag}b"] = f"extra.{i}.{j}.bias"
+        i += 1
+    return out
+
+
 def actor_arrays(sd, prefix="", numpy=False):
     """State dict (keys under `prefix`) -> weights.npz array dict."""
     out = {}
     for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS,
-                   **MORDER_ARRAYS}.items():
+                   **MORDER_ARRAYS, **_depth_arrays(sd, prefix)}.items():
         k = prefix + pk
         if k in sd:
             v = sd[k]
@@ -129,7 +193,7 @@ def arrays_to_sd(arrays, prefix=""):
     """weights.npz arrays (optionally d_-prefixed) -> actor state dict."""
     sd = {}
     for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS,
-                   **MORDER_ARRAYS}.items():
+                   **MORDER_ARRAYS, **_depth_arrays(sd, prefix)}.items():
         k = prefix + ak
         if k in arrays:
             sd[pk] = torch.as_tensor(arrays[k])
@@ -554,8 +618,9 @@ class MultiActorNet(ActorNet):
 
     def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                  n_hands=12, n_hand_task=None, auto_bias=2.5, couple=False,
-                 market_orders=1):
-        super().__init__(obs_dim, n_farmer, n_market, hidden1, hidden2)
+                 market_orders=1, depth=2):
+        super().__init__(obs_dim, n_farmer, n_market, hidden1, hidden2,
+                         depth=depth)
         self.market_orders = max(1, int(market_orders))
         n_hand_task = n_hand_task or _n_hand_task()
         self.n_hands, self.n_hand_task = n_hands, n_hand_task
@@ -591,8 +656,7 @@ class MultiActorNet(ActorNet):
             self.couple_m = nn.Parameter(torch.zeros(n_market, n_market))
 
     def forward(self, x):
-        h = torch.relu(self.l1(x))
-        h = torch.relu(self.l2(h))
+        h = self.trunk(x)
         hl = self.hands(h).view(*x.shape[:-1], self.n_hands, self.n_hand_task)
         return self.farmer(h), self.market(h), hl
 
@@ -664,7 +728,7 @@ except ImportError:  # torchrl absent: the raw nets are still importable
 
 def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                        v_hidden=256, device="cpu", residual_base="",
-                       market_orders=1,
+                       market_orders=1, depth=2,
                        multi=False, n_hands=12, n_hand_task=None,
                        couple=False, market_only=False):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
@@ -704,7 +768,8 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
             actor_net = MultiActorNet(obs_dim, n_farmer, n_market, hidden1,
                                       hidden2, n_hands, n_hand_task,
                                       couple=couple,
-                                      market_orders=market_orders).to(device)
+                                      market_orders=market_orders,
+                                      depth=depth).to(device)
         logits_mod = TensorDictModule(
             actor_net, in_keys=["observation"],
             out_keys=["flogits", "mlogits", "hlogits"])
@@ -748,7 +813,7 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                                       n_market, hidden1, hidden2).to(device)
         else:
             actor_net = ActorNet(obs_dim, n_farmer, n_market,
-                                 hidden1, hidden2).to(device)
+                                 hidden1, hidden2, depth=depth).to(device)
         logits_mod = TensorDictModule(
             actor_net, in_keys=["observation"], out_keys=["flogits", "mlogits"])
         dist_keys = {"flogits": "flogits", "mlogits": "mlogits",

@@ -61,7 +61,7 @@ C = O.C                                  # 24 board channels
 G = O.G                                  # globals + per-hand identity
 OBS_DIM = O.OBS_DIM                      # 2*C*N*N + G
 N_FARMER = A.N_FARMER                    # 23
-N_MARKET = A.N_MARKET                    # 22
+N_MARKET = A.N_MARKET                    # 36
 
 CROP_LIST = A.CROP_LIST
 ANIMAL_LIST = A.ANIMAL_LIST
@@ -398,6 +398,10 @@ def masks_t(ep, player):
             (ep.hands_n[:, player] < A.MAX_HANDS) & (money >= t.fib[hires]),
         ], dim=1),
         shed[:, :ET.N_MKT] > 0,                              # SELL_HALF_<p>
+        # BUY_SEED_BULK_<c>: same deadline gate as BUY_SEED, but it has to
+        # afford actions.SEED_BULK of them (the single-seed action stays
+        # available when it cannot).
+        (money_u >= t.seed_cost * A.SEED_BULK) & open_c,
     ], dim=1)
     # mechanics-dead endgame: liquidation day + products in the shed ->
     # SELL_<p> only (actions.market_mask's twin; gate test_b3)

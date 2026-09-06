@@ -14,7 +14,9 @@ what every head in this repo could emit.
       than K == 1 does, and never displaces an order the K == 1 path made.
   O4  load-bearing: a BROKEN decode (extra macros dropped) must fail O3.
 """
-import argparse, os, sys, torch
+import argparse, os, sys
+import numpy as np
+import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import engine_t, engine_t_idx as X          # noqa: E402
@@ -131,6 +133,129 @@ def gate_o3(args, broken=False):
     return True, f"O3: K=3 added {tally['extra']} orders, displaced 0"
 
 
+def gate_s1(args, broken=False):
+    """Bulk seed: BUY_SEED_BULK_<c> must actually buy SEED_BULK seeds.
+
+    Known-positive and its counterexample in one: the bulk action has to move
+    the seed store by actions.SEED_BULK where the single action moves it by 1.
+    `broken` decodes the bulk index through the SINGLE action instead, which is
+    exactly the failure a wrong LUT row would produce, and must fail.
+    """
+    i_one = A.MARKET_ACTIONS.index("BUY_SEED_WHEAT")
+    i_bulk = A.MARKET_ACTIONS.index("BUY_SEED_BULK_WHEAT")
+    if broken:
+        i_bulk = i_one
+    seeds = [55_000 + 3 * i for i in range(args.lanes)]
+    got = {}
+    for tag, idx in (("one", i_one), ("bulk", i_bulk)):
+        ep = _ep(seeds, 8, args.device)
+        before = ep.seeds_t[:, 0].clone()
+        f = torch.zeros((args.lanes, 2), dtype=torch.int64)
+        m = torch.full((args.lanes, 2), idx, dtype=torch.int64)
+        ep.step_idx(f, m)
+        got[tag] = int((ep.seeds_t[:, 0] - before).sum())
+    want = A.SEED_BULK * got["one"]
+    if got["one"] <= 0:
+        return False, f"S1: the single action bought nothing ({got})"
+    if got["bulk"] != want:
+        return False, (f"S1: bulk bought {got['bulk']}, single bought "
+                       f"{got['one']}, expected {want}")
+    return True, (f"S1: BUY_SEED_BULK moved the seed store by {got['bulk']} "
+                  f"against the single action's {got['one']} "
+                  f"(SEED_BULK={A.SEED_BULK})")
+
+
+def gate_d1(args, broken=False):
+    """Depth: a deeper trunk must be bit-identical at init, in every variant.
+
+    `broken` builds the residual blocks WITHOUT restoring the RNG state, which
+    is what the first implementation did; it shifts every layer created after
+    them and must fail.
+    """
+    import torch.nn as nn
+    from trl_policy import ActorNet, MultiActorNet, _ortho
+    variants = [(ActorNet, {}), (MultiActorNet, {"n_hands": 12, "n_hand_task": 39}),
+                (MultiActorNet, {"n_hands": 12, "n_hand_task": 39,
+                                 "market_orders": 4})]
+    if broken:
+        def leaky(self):
+            h2 = self._hidden2
+            self.extra = nn.ModuleList()
+            for _ in range(self.depth - 2):
+                a = _ortho(nn.Linear(h2, h2), 1.41)
+                b = nn.Linear(h2, h2)
+                nn.init.zeros_(b.weight); nn.init.zeros_(b.bias)
+                self.extra.append(nn.ModuleList([a, b]))
+        saved, ActorNet._build_extra = ActorNet._build_extra, leaky
+    try:
+        for cls, kw in variants:
+            torch.manual_seed(0); a = cls(64, 5, 7, 32, 16, depth=2, **kw)
+            torch.manual_seed(0); b = cls(64, 5, 7, 32, 16, depth=8, **kw)
+            x = torch.randn(4, 64)
+            with torch.no_grad():
+                oa, ob = a(x), b(x)
+            d = max(float((p - q).abs().max()) for p, q in zip(oa, ob))
+            if d != 0.0:
+                return False, (f"D1: {cls.__name__} depth 2 vs 8 differs by "
+                               f"{d:.2e} at init")
+    finally:
+        if broken:
+            ActorNet._build_extra = saved
+    return True, "D1: depth 8 == depth 2 at init, bit for bit, in 3 variants"
+
+
+def gate_d3(args, broken=False):
+    """Depth must actually DO something once the blocks are non-zero.
+
+    D1 alone is not load-bearing: the blocks are zero at birth, so a forward
+    that ignores them entirely still passes it. That is exactly what happened
+    -- MultiActorNet.forward open-coded the two layers and never applied the
+    residual blocks, so --depth was inert on the path every arm uses while D1
+    stayed green. D3 perturbs the blocks and demands the output move, and it
+    checks the numpy export path agrees with torch to 1e-5.
+    """
+    from trl_policy import MultiActorNet, actor_arrays
+    torch.manual_seed(3)
+    net = MultiActorNet(64, 5, 7, 32, 16, n_hands=12, n_hand_task=39,
+                        market_orders=4, depth=6)
+    x = torch.randn(1, 64)
+    with torch.no_grad():
+        before = net(x)[0].clone()
+    with torch.no_grad():
+        for blk in net.extra:
+            if broken:                       # BROKEN: leave the blocks zero
+                continue
+            blk[1].weight.add_(torch.randn_like(blk[1].weight) * 0.05)
+            blk[1].bias.add_(torch.randn_like(blk[1].bias) * 0.05)
+        after = net(x)[0]
+        moved = float((after - before).abs().max())
+    # The farmer head is 1e-4-initialised, so the move is small by
+    # construction; 1e-6 is far above float noise and far below a real signal.
+    if moved < 1e-6:
+        return False, (f"D3: perturbing the residual blocks moved the output "
+                       f"by only {moved:.3e} -- depth is inert")
+    W = actor_arrays(net.state_dict(), numpy=True)
+    xn = x.numpy()[0]
+    h = np.maximum(0.0, W["l1w"] @ xn + W["l1b"])
+    h = np.maximum(0.0, W["l2w"] @ h + W["l2b"])
+    i = 0
+    while f"e{i}aw" in W:
+        a = np.maximum(0.0, W[f"e{i}aw"] @ h + W[f"e{i}ab"])
+        h = h + W[f"e{i}bw"] @ a + W[f"e{i}bb"]
+        i += 1
+    with torch.no_grad():
+        tf, tm, th = net(x)
+    err = max(float(np.abs(tf.numpy()[0] - (W["fw"] @ h + W["fb"])).max()),
+              float(np.abs(tm.numpy()[0] - (W["mw"] @ h + W["mb"])).max()),
+              float(np.abs(th.numpy()[0].reshape(-1) - (W["hw"] @ h + W["hb"])).max()))
+    if i != 4:
+        return False, f"D3: depth 6 built {i} residual blocks, expected 4"
+    if err > 1e-5:
+        return False, f"D3: numpy export path differs from torch by {err:.2e}"
+    return True, (f"D3: blocks move the output by {moved:.3e}; numpy export "
+                  f"matches torch to {err:.1e} across {i} blocks")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lanes", type=int, default=6)
@@ -138,20 +263,24 @@ def main():
     ap.add_argument("--device", default="cpu")
     args = ap.parse_args()
     ok = True
-    for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3)):
+    for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
+                     ("S1", gate_s1), ("D1", gate_d1), ("D3", gate_d3)):
         try:
             good, msg = fn(args)
         except Exception as exc:                       # noqa: BLE001
             good, msg = False, f"{name}: raised {type(exc).__name__}: {exc}"
         print(("PASS " if good else "FAIL ") + msg)
         ok &= good
-    try:
-        good, msg = gate_o3(args, broken=True)
-    except Exception as exc:                           # noqa: BLE001
-        good, msg = False, str(exc)
-    print(("FAIL O4: broken decode PASSED O3 -- the gate is not load-bearing"
-           if good else f"PASS O4: broken decode fails O3 ({msg})"))
-    ok &= not good
+    for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
+                         ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3")):
+        try:
+            good, msg = fn(args, broken=True)
+        except Exception as exc:                       # noqa: BLE001
+            good, msg = False, str(exc)
+        print((f"FAIL {tag}: broken implementation PASSED {src} -- "
+               f"the gate is not load-bearing"
+               if good else f"PASS {tag}: broken implementation fails {src} ({msg})"))
+        ok &= not good
     print("ALL PASS" if ok else "GATES FAILED")
     return 0 if ok else 1
 

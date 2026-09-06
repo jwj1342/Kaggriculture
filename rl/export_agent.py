@@ -48,9 +48,21 @@ _W = dict(np.load(os.path.join(
     os.path.dirname(os.path.abspath(_O.__file__)), "weights.npz")))
 
 
+def _trunk_extra(h):
+    # Residual blocks (--depth > 2). Zero-init second matrix at birth, so an
+    # npz without them is a depth-2 net and this loop is a no-op.
+    i = 0
+    while f"e{i}aw" in _W:
+        a = np.maximum(0.0, _W[f"e{i}aw"] @ h + _W[f"e{i}ab"])
+        h = h + _W[f"e{i}bw"] @ a + _W[f"e{i}bb"]
+        i += 1
+    return h
+
+
 def _forward(x):
     h = np.maximum(0.0, _W["l1w"] @ x + _W["l1b"])
     h = np.maximum(0.0, _W["l2w"] @ h + _W["l2b"])
+    h = _trunk_extra(h)
     f, m = _W["fw"] @ h + _W["fb"], _W["mw"] @ h + _W["mb"]
     hl = _W["hw"] @ h + _W["hb"] if "hw" in _W else None
     if "d_l1w" in _W:  # residual export: frozen prior + learned correction

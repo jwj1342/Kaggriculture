@@ -349,6 +349,10 @@ def ref_market_mask(obs):
           and money >= _fib(farm.get("hires_today", 0)))
     for p in PRODUCT_LIST:
         allow(f"SELL_HALF_{p}", shed.get(p, 0) > 0)
+    for c in CROP_LIST:
+        allow(f"BUY_SEED_BULK_{c}",
+              money >= R.CROPS[c]["seed"] * A.SEED_BULK
+              and day <= A.PLANT_DEADLINE[c])
     if day >= R.LIQUIDATE_DAY:
         sellable = [shed.get(p, 0) > 0 for p in PRODUCT_LIST]
         if any(sellable):
@@ -381,6 +385,8 @@ def ref_market_action(obs, name):
             return (first + rest)[:R.MAX_ORDERS]
         n = shed.get(p, 0)
         return [["SELL", p, n]] if n > 0 else []
+    if name.startswith("BUY_SEED_BULK_"):
+        return [["BUY_SEED", name[len("BUY_SEED_BULK_"):], A.SEED_BULK]]
     if name.startswith("BUY_SEED_"):
         return [["BUY_SEED", name[len("BUY_SEED_"):], 1]]
     if name == "BUY_WHEAT":

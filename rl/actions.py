@@ -75,7 +75,19 @@ MARKET_ACTIONS = (
     # sell orders (rl/TODO.md #8): 47% are sell-ALL, the rest small
     # batches -- halving a few turns in a row composes any fraction.
     + [f"SELL_HALF_{p}" for p in PRODUCT_LIST]
+    # bulk seed, appended so every earlier index is stable. BUY_SEED_<c> buys
+    # exactly ONE seed, and the hands plant the farm's most-held viable seed,
+    # so a crop can only enter the rotation by winning an inventory race one
+    # seed a turn. The shared meta plan does not play that way: n04 buys 23
+    # STRAWBERRY seeds in a single order and all 12 MELON seeds in another.
+    # Measured (docs/RUNS.md verdict 36): capping closer_cleo's own BUY_SEED
+    # at one seed an order costs it -56,519 and leaves it on 21,678 against a
+    # baseline of 80,647; at a cap of 8 the loss is -8,708, which is where
+    # SEED_BULK is set.
+    + [f"BUY_SEED_BULK_{c}" for c in CROP_LIST]
 )
+
+SEED_BULK = 8
 
 N_FARMER = len(FARMER_ACTIONS)   # 23
 N_MARKET = len(MARKET_ACTIONS)   # 31
@@ -437,6 +449,8 @@ def _market_action(obs, name):
         if half:
             n = (n + 1) // 2
         return [["SELL", p, n]] if n > 0 else []
+    if name.startswith("BUY_SEED_BULK_"):
+        return [["BUY_SEED", name[len("BUY_SEED_BULK_"):], SEED_BULK]]
     if name.startswith("BUY_SEED_"):
         return [["BUY_SEED", name[len("BUY_SEED_"):], 1]]
     if name == "BUY_WHEAT":
@@ -895,6 +909,9 @@ def market_mask(obs):
                 and money >= _fib(farm.get("hires_today", 0)))
     for p in PRODUCT_LIST:                      # SELL_HALF_<p>
         vals.append(sget(p, 0) > 0)
+    for c in CROP_LIST:                         # BUY_SEED_BULK_<c>
+        vals.append(money >= _SEED_COST[c] * SEED_BULK
+                    and day <= PLANT_DEADLINE[c])
     # Mechanics-dead endgame (the PLANT_DEADLINE pattern): on the
     # liquidation day with products in the shed, everything but selling is
     # dead -- post-deadline plants never mature, an animal placed now never

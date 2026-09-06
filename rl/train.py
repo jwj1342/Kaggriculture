@@ -274,6 +274,13 @@ def build_parser():
                     help="frozen prior (npz / checkpoint): the actor learns "
                          "logit corrections over it instead of a policy "
                          "from scratch")
+    ap.add_argument("--depth", type=int, default=2,
+                    help="actor trunk depth. 2 is the historical net; each "
+                         "extra layer is a ZERO-init residual block over the "
+                         "hidden2 width, so depth>2 starts bit-identical. "
+                         "Inference is not the constraint: the engine allows "
+                         "1 s/turn and a 1024-512 forward costs 0.70 ms "
+                         "(0.07%%) -- docs/RUNS.md verdict 37.")
     ap.add_argument("--market-orders", type=int, default=1,
                     help="K market order slots per turn (autoregressive "
                          "multi-order head, rl/TODO.md 20). K=1 is the "
@@ -564,7 +571,7 @@ def train(args, log_fn=None):
         hidden1=args.hidden[0], hidden2=args.hidden[1],
         v_hidden=args.v_hidden, device=dev,
         residual_base=args.residual_base, multi=args.multi_head,
-        market_orders=args.market_orders,
+        market_orders=args.market_orders, depth=args.depth,
         couple=args.couple_heads,
         market_only=bool(args.fixed_farm_tape))
     if args.fixed_farm_tape:
