@@ -321,6 +321,57 @@ def gate_o7(args, broken=False):
                   f"{bad['checked']} decodes (K={K})")
 
 
+def gate_o9(args, broken=False):
+    """Cross-implementation: the tensor decode == what the export would emit.
+
+    O7 only checks tensor-internal properties and never calls
+    actions._market_action, so it could not see that extra macros decode
+    through a bare LUT in training (one order each, no HIRE burst, no
+    liquidation compound) while the export ran the FULL decode per slot:
+    [NOOP, HIRE] was 1 order trained and 10 deployed. This gate builds the
+    deployed list the way export_agent does -- slot 0 full, slots 1.. one
+    order each -- and compares order COUNTS against the tensor decode.
+    `broken` runs the full decode on every slot and must fail.
+    """
+    import kaggle_environments  # noqa: F401
+    from kaggle_environments import make
+    env = make("kaggriculture", configuration={"seed": 5}, debug=False)
+    raw = env.reset()[0].observation
+    raw = {**raw, "player": 0}
+    ep = _ep([5], 60, args.device)
+    mask = A.market_mask(raw)
+    legal = [i for i, ok in enumerate(mask) if ok]
+    # The set MUST include the macros that expand to several orders, or the
+    # gate cannot see the difference it exists to catch: HIRE bursts up to ten
+    # slots and a liquidation-day SELL compounds the whole shed. A curated
+    # list, not legal[:6] -- that took only low indices and both
+    # implementations agreed on every one of them.
+    want = ["NOOP", "HIRE", "BUY_WHEAT", "BUY_SEED_WHEAT", "BUY_FERT"]
+    pick = [A.MARKET_ACTIONS.index(n) for n in want
+            if A.MARKET_ACTIONS.index(n) in legal]
+    if A.MARKET_ACTIONS.index("HIRE") not in pick:
+        return False, "O9: HIRE is not legal on the probe state; gate is vacuous"
+    combos = [(a, b) for a in pick for b in pick]
+    bad = []
+    for m0, m1 in combos:
+        d0 = A._market_action(raw, A.MARKET_ACTIONS[m0])
+        d1 = A._market_action(raw, A.MARKET_ACTIONS[m1])
+        deployed = (d0 + (d1 if broken else d1[:1]))[:10]
+        mi = torch.tensor([[[m0, m1], [0, 0]]], dtype=torch.int64)  # (B=1,P=2,K=2)
+        op, _, _ = ep._idx_decode_market(
+            mi, torch.zeros((1, 2), dtype=torch.int64), int(ep.day),
+            X._tabs(args.device))
+        n_tensor = int((op[0, 0] != 0).sum())
+        if n_tensor != len(deployed):
+            bad.append((A.MARKET_ACTIONS[m0], A.MARKET_ACTIONS[m1],
+                        n_tensor, len(deployed)))
+    if bad:
+        return False, (f"O9: {len(bad)}/{len(combos)} macro pairs disagree, "
+                       f"e.g. {bad[0][0]}+{bad[0][1]}: tensor {bad[0][2]} "
+                       f"orders vs deployed {bad[0][3]}")
+    return True, f"O9: tensor and deployed order counts agree on {len(combos)} pairs"
+
+
 def gate_l1(args, broken=False):
     """A frozen/league snapshot of a K>1 policy must PLAY K slots.
 
@@ -465,7 +516,7 @@ def main():
     args = ap.parse_args()
     ok = True
     for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
-                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("L1", gate_l1), ("P1", gate_p1),
+                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("L1", gate_l1), ("P1", gate_p1),
                      ("D1", gate_d1), ("D3", gate_d3)):
         try:
             good, msg = fn(args)
@@ -475,7 +526,7 @@ def main():
         ok &= good
     for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
                          ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3"),
-                         ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1")):
+                         ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1"), ("O10", gate_o9, "O9")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001

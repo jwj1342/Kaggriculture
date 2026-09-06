@@ -197,9 +197,15 @@ def _act(obs_dict):
             a = _pick(lk)
             d = _A.decode_multi(obs_dict, fa, tasks, a)
             if out is None:
-                out = d
+                out = d                       # slot 0: the FULL decode
             else:
-                out["market"] = (out["market"] + d["market"])[:10]
+                # Slots 1.. contribute exactly ONE order each, which is what
+                # the training decode does (engine_t_idx puts each extra macro
+                # in one free slot through a bare LUT). Running the full
+                # decode here instead made training and deployment disagree:
+                # [NOOP, HIRE] was 1 order in training and 10 deployed, and
+                # [NOOP, SELL_MELON] on the liquidation day was 1 against 3.
+                out["market"] = (out["market"] + d["market"][:1])[:10]
             prev = a
         return _sheep_option(obs_dict, out)
     return _sheep_option(
