@@ -502,6 +502,7 @@ class KGTensorEnv(EnvBase):
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
+                 market_orders=1,
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
                  shape_gamma=0.0, ks_every=1, fert_credit=0.0,
                  land_value=0.0, fixed_market_profile="",
@@ -714,6 +715,10 @@ class KGTensorEnv(EnvBase):
         self.kickstart_force = False
         # multi-head action space (rl/TODO.md #0): [farmer, market, hand x12]
         self.multi_head = bool(multi_head)
+        # Multi-order market head (rl/TODO.md 20). K == 1 is the historical
+        # action space byte-for-byte; K > 1 appends K-1 macro slots that land
+        # in the tail of the order queue and never displace an existing order.
+        self.market_orders = max(1, int(market_orders))
         bs, dev = self.batch_size, self.device
         obs_entries = dict(
             observation=Unbounded(shape=(*bs, O.OBS_DIM),
@@ -724,7 +729,7 @@ class KGTensorEnv(EnvBase):
                                dtype=torch.bool, device=dev),
             money=Unbounded(shape=(*bs,), dtype=torch.float64, device=dev),
             opp_money=Unbounded(shape=(*bs,), dtype=torch.float64, device=dev))
-        nvec = [A.N_FARMER, A.N_MARKET]
+        nvec = [A.N_FARMER] + [A.N_MARKET] * self.market_orders
         if self.multi_head:
             obs_entries["hand_mask"] = Binary(
                 n=A.N_HAND_TASK, shape=(*bs, A.MAX_HANDS, A.N_HAND_TASK),
@@ -838,12 +843,14 @@ class KGTensorEnv(EnvBase):
         step_overrides = self._step_overrides
         self._step_overrides = []
         action = tensordict["action"]
-        fa, ma = action[..., 0], action[..., 1]
+        K = self.market_orders
+        fa = action[..., 0]
+        ma = action[..., 1] if K == 1 else action[..., 1:1 + K]
         h_idx = None
         if self.multi_head:
             h_idx = torch.zeros((self.B, 2, A.MAX_HANDS), dtype=torch.int64,
                                 device=self.device)
-            h_idx[:, seat] = action[..., 2:]
+            h_idx[:, seat] = action[..., 1 + K:]
         if self.kickstart_force:
             tf = tensordict["teacher_f"]
             tf_safe = tf.clamp(min=0)
@@ -924,7 +931,9 @@ class KGTensorEnv(EnvBase):
                                              ops[k])
             f_idx = torch.zeros((self.B, 2), dtype=torch.int64,
                                 device=self.device)
-            m_idx = torch.zeros_like(f_idx)
+            m_idx = (torch.zeros_like(f_idx) if K == 1 else
+                     torch.zeros((self.B, 2, K), dtype=torch.int64,
+                                 device=self.device))
             f_idx[:, seat] = fa
             m_idx[:, seat] = ma
             overrides = [(opp, ops), *step_overrides]
@@ -951,6 +960,12 @@ class KGTensorEnv(EnvBase):
             rma = torch.multinomial(omm.double(), 1).squeeze(-1)
             ofa = torch.where(noisy, rfa, ofa)
             oma = torch.where(noisy, rma, oma)
+        if K > 1:
+            # the opponent lives in the one-order space; pad its extra slots
+            # with NOOP so the seats share one (B, 2, K) tensor
+            oma = torch.cat([oma.view(self.B, 1),
+                             torch.zeros((self.B, K - 1), dtype=torch.int64,
+                                         device=self.device)], 1)
         if seat == 0:
             f_idx = torch.stack([fa, ofa], 1)
             m_idx = torch.stack([ma, oma], 1)

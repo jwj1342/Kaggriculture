@@ -851,6 +851,14 @@ def _idx_decode_market(self, m_idx, herd, day, t):
     m_item = torch.zeros((B, P, S), dtype=i64, device=dev)
     m_rem = torch.zeros((B, P, S), dtype=i64, device=dev)
     shed9 = self.shed[:, :, :ET.N_MKT].to(i64)
+    # Multi-order head (rl/TODO.md 20): m_idx may carry K macros per turn.
+    # Macro 0 keeps the historical decode EXACTLY, bursts included; macro k>=1
+    # lands in slot S-k and only when that slot is still empty, so K == 1 is
+    # byte-identical and an extra order can never displace an existing one.
+    m_extra = None
+    if m_idx.dim() == 3:
+        m_extra = m_idx[..., 1:] if m_idx.shape[-1] > 1 else None
+        m_idx = m_idx[..., 0]
     m = m_idx
 
     op0 = t.mop_lut[m]
@@ -897,6 +905,25 @@ def _idx_decode_market(self, m_idx, herd, day, t):
         for j in range(1, 10):
             slot = hire & (k > j)
             m_op[..., j] = torch.where(slot, OP_HIRE, m_op[..., j])
+
+    if m_extra is not None:
+        for kx in range(m_extra.shape[-1]):
+            slot = S - 1 - kx
+            if slot <= 0:
+                break
+            mk = m_extra[..., kx]
+            op_k = t.mop_lut[mk]
+            it_k = t.mitem_lut[mk]
+            cnt_k = shed9.gather(2, it_k.unsqueeze(-1)).squeeze(-1)
+            sell_k = op_k == ET.OP_SELL
+            sq_k = torch.where(mk >= 22, (cnt_k + 1) // 2, cnt_k)
+            op_k = torch.where(sell_k & (cnt_k == 0), torch.zeros_like(op_k), op_k)
+            rem_k = torch.where(sell_k, sq_k, torch.where(
+                mk == 15, (2 * herd).clamp(min=5), t.mrem_lut[mk]))
+            free = m_op[..., slot] == 0
+            m_op[..., slot] = torch.where(free, op_k, m_op[..., slot])
+            m_item[..., slot] = torch.where(free, it_k, m_item[..., slot])
+            m_rem[..., slot] = torch.where(free, rem_k, m_rem[..., slot])
     return m_op, m_item, m_rem
 
 
@@ -1330,7 +1357,8 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
     day = step // self.turns_per_day
 
     f_idx = torch.as_tensor(f_idx, dtype=i64, device=dev).reshape(B, P)
-    m_idx = torch.as_tensor(m_idx, dtype=i64, device=dev).reshape(B, P)
+    m_idx = torch.as_tensor(m_idx, dtype=i64, device=dev)
+    m_idx = m_idx.reshape(B, P) if m_idx.numel() == B * P else m_idx.reshape(B, P, -1)
 
     if getattr(self, "_ord_seq", None) is None:
         self._idx_init_ord()

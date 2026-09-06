@@ -274,6 +274,12 @@ def build_parser():
                     help="frozen prior (npz / checkpoint): the actor learns "
                          "logit corrections over it instead of a policy "
                          "from scratch")
+    ap.add_argument("--market-orders", type=int, default=1,
+                    help="K market order slots per turn (autoregressive "
+                         "multi-order head, rl/TODO.md 20). K=1 is the "
+                         "historical action space byte-for-byte. Requires "
+                         "--multi-head. Capping closer_cleo at one order a "
+                         "turn measures -89,479 (docs/RUNS.md verdict 33).")
     ap.add_argument("--multi-head", action="store_true",
                     help="per-hand task heads (rl/TODO.md #0): action = "
                          "[farmer, market, hand x12]; hand heads start "
@@ -505,6 +511,12 @@ def train(args, log_fn=None):
             raise ValueError(
                 "--kickstart-only-until requires --multi-head, --ks-every 1, "
                 "and matching barnyard:<profile>/--fixed-market-profile")
+    if args.market_orders != 1:
+        if not 1 <= args.market_orders <= 10:
+            raise ValueError("--market-orders must be 1..10 (the engine's "
+                             "maxMarketOrdersPerTurn cap)")
+        if not args.multi_head:
+            raise ValueError("--market-orders > 1 requires --multi-head")
     if args.couple_heads:
         if not args.multi_head:
             raise ValueError("--couple-heads requires --multi-head: the "
@@ -536,6 +548,7 @@ def train(args, log_fn=None):
         opp_noise=args.opp_noise, handicap=args.handicap,
         potential=args.potential, shape_scale=args.shape_scale,
         opp_lambda=args.opp_lambda, multi_head=args.multi_head,
+        market_orders=args.market_orders,
         terminal_cash=getattr(args, "terminal_cash", False),
         kickstart=args.kickstart, build_bonus=args.build_bonus,
         bank=args.bank, bank_frac=args.bank_frac,
@@ -551,6 +564,7 @@ def train(args, log_fn=None):
         hidden1=args.hidden[0], hidden2=args.hidden[1],
         v_hidden=args.v_hidden, device=dev,
         residual_base=args.residual_base, multi=args.multi_head,
+        market_orders=args.market_orders,
         couple=args.couple_heads,
         market_only=bool(args.fixed_farm_tape))
     if args.fixed_farm_tape:

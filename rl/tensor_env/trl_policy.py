@@ -325,6 +325,112 @@ class MarketOnlyMultiHead(MultiHeadMasked):
         return -(self.mlp.exp() * self.mlp).sum(-1)
 
 
+class MultiOrderMultiHead(D.Distribution):
+    """farmer + K autoregressive market slots + per-hand task heads.
+
+    Action is (..., 1 + K + H) int64 laid out
+    [farmer, market_0..market_{K-1}, hand_1..hand_H].
+
+    Why K > 1 (docs/RUNS.md verdict 33): the engine takes up to ten market
+    orders a turn and the shared meta plan uses them; capping closer_cleo at
+    one order a turn measures -89,479 and leaves the farm on 1,765 dollars.
+    Every head in this repo emitted exactly one, so the policy class could not
+    represent the plan it was being scored against -- that is the P ~ 1e-7
+    representation gap in dollars.
+
+    Slot k's logits are mbase + slot_bias[k] + couple_m[:, a_{k-1}] (slot 0
+    takes slot_bias[0] only). Contracts, each load-bearing:
+      * ZERO slot_bias and couple_m make slot 0 bit-identical to
+        MultiHeadMasked's market head, and every later slot an i.i.d. draw
+        from it -- warm starts and the K == 1 gate both rest on this;
+      * sample() draws f, then h, then m_0..m_{K-1} in order, so the global
+        RNG consumption differs from MultiHeadMasked; compare deterministic
+        lanes, not sampled trajectories;
+      * entropy() is H(f) + H(h) + sum_k H(m_k | argmax prefix): the exact
+        term needs an expectation over prefixes, and conditioning on the mode
+        keeps it deterministic and exact whenever the tables are zero.
+    """
+
+    arg_constraints = {}
+    has_enumerate_support = False
+    slot_bias = None   # (K, n_market), bound by build_actor_critic
+    couple_m = None    # (n_market, n_market)
+
+    def __init__(self, flogits, mlogits, hlogits, fmask, mmask, hmask):
+        self.flp = F.log_softmax(flogits.masked_fill(~fmask, NEG), -1)
+        self.hlp = F.log_softmax(hlogits.masked_fill(~hmask, NEG), -1)
+        self._mraw = mlogits
+        self._mmask = mmask
+        self.K = self.slot_bias.shape[0]
+        H = self.hlp.shape[-2]
+        super().__init__(batch_shape=self.flp.shape[:-1],
+                         event_shape=torch.Size([1 + self.K + H]),
+                         validate_args=False)
+
+    def _slot_lp(self, k, prev):
+        """log-probs for market slot k given the previous slot's action."""
+        logits = self._mraw + self.slot_bias[k]
+        if prev is not None:
+            logits = logits + self.couple_m.t()[prev]
+        return F.log_softmax(logits.masked_fill(~self._mmask, NEG), -1)
+
+    def _draw_slots(self, greedy=False):
+        acts, prev = [], None
+        for k in range(self.K):
+            lp = self._slot_lp(k, prev)
+            if greedy:
+                a = lp.argmax(-1)
+            else:
+                a = torch.multinomial(
+                    lp.reshape(-1, lp.shape[-1]).exp(), 1
+                ).squeeze(-1).reshape(self.batch_shape)
+            acts.append(a); prev = a
+        return acts
+
+    def sample(self, sample_shape=torch.Size()):
+        flp2 = self.flp.reshape(-1, self.flp.shape[-1])
+        hlp2 = self.hlp.reshape(-1, self.hlp.shape[-1])
+        fa = torch.multinomial(flp2.exp(), 1).squeeze(-1).reshape(self.batch_shape)
+        ha = torch.multinomial(hlp2.exp(), 1).squeeze(-1).reshape(
+            self.hlp.shape[:-1])
+        ma = self._draw_slots()
+        return torch.cat([fa.unsqueeze(-1)]
+                         + [a.unsqueeze(-1) for a in ma] + [ha], -1)
+
+    def log_prob(self, action):
+        K = self.K
+        fa, ha = action[..., 0], action[..., 1 + K:]
+        lp = (self.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
+              + self.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))
+        prev = None
+        for k in range(K):
+            a = action[..., 1 + k]
+            lp = lp + self._slot_lp(k, prev).gather(
+                -1, a.unsqueeze(-1)).squeeze(-1)
+            prev = a
+        return lp
+
+    def entropy(self):
+        ent = (-(self.flp.exp() * self.flp).sum(-1)
+               - (self.hlp.exp() * self.hlp).sum((-1, -2)))
+        prev = None
+        for k in range(self.K):
+            lp = self._slot_lp(k, prev)
+            ent = ent - (lp.exp() * lp).sum(-1)
+            prev = lp.argmax(-1)
+        return ent
+
+    @property
+    def mode(self):
+        ma = self._draw_slots(greedy=True)
+        return torch.cat([self.flp.argmax(-1, keepdim=True)]
+                         + [a.unsqueeze(-1) for a in ma]
+                         + [self.hlp.argmax(-1)], -1)
+
+    def deterministic_sample(self):
+        return self.mode
+
+
 class CoupledMultiHeadMasked(D.Distribution):
     """MultiHeadMasked with the market head CONDITIONED on the same turn's
     farmer action and hand tasks (autoregressive order f, h -> m).
@@ -436,8 +542,10 @@ class MultiActorNet(ActorNet):
     competent default where IDLE is a strike)."""
 
     def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
-                 n_hands=12, n_hand_task=None, auto_bias=2.5, couple=False):
+                 n_hands=12, n_hand_task=None, auto_bias=2.5, couple=False,
+                 market_orders=1):
         super().__init__(obs_dim, n_farmer, n_market, hidden1, hidden2)
+        self.market_orders = max(1, int(market_orders))
         n_hand_task = n_hand_task or _n_hand_task()
         self.n_hands, self.n_hand_task = n_hands, n_hand_task
         self.hands = _ortho(nn.Linear(hidden2, n_hands * n_hand_task), 1e-4)
@@ -452,6 +560,24 @@ class MultiActorNet(ActorNet):
             # not shift the init stream of the shared layers either.
             self.couple_f = nn.Parameter(torch.zeros(n_market, n_farmer))
             self.couple_h = nn.Parameter(torch.zeros(n_market, n_hand_task))
+        if self.market_orders > 1:
+            # Multi-order market head (rl/TODO.md 20). The gap it closes is
+            # measured, not assumed: capping closer_cleo at ONE market order a
+            # turn costs it -89,479 margin and bankrupts the farm (money 80,647
+            # -> 1,765, docs/RUNS.md verdict 33), and one order a turn is
+            # exactly what every head in this repo could emit.
+            #
+            # Slot 0 keeps the existing head verbatim. Slot k adds a per-slot
+            # bias and one linear map on the PREVIOUS slot's sampled action --
+            # the autoregressive order m_0 -> m_1 -> ... -> m_{K-1}. Both
+            # tables are ZERO-init, which is the contract: at zero, slot 0 is
+            # bit-identical to the one-order policy and every later slot is an
+            # i.i.d. draw from it, so a legacy checkpoint warm-starts unchanged
+            # and the K == 1 lane gate stays valid. torch.zeros draws no RNG,
+            # so the init stream of the shared layers is untouched.
+            self.slot_bias = nn.Parameter(
+                torch.zeros(self.market_orders, n_market))
+            self.couple_m = nn.Parameter(torch.zeros(n_market, n_market))
 
     def forward(self, x):
         h = torch.relu(self.l1(x))
@@ -519,6 +645,7 @@ except ImportError:  # torchrl absent: the raw nets are still importable
 
 def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                        v_hidden=256, device="cpu", residual_base="",
+                       market_orders=1,
                        multi=False, n_hands=12, n_hand_task=None,
                        couple=False, market_only=False):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
@@ -557,7 +684,8 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
         else:
             actor_net = MultiActorNet(obs_dim, n_farmer, n_market, hidden1,
                                       hidden2, n_hands, n_hand_task,
-                                      couple=couple).to(device)
+                                      couple=couple,
+                                      market_orders=market_orders).to(device)
         logits_mod = TensorDictModule(
             actor_net, in_keys=["observation"],
             out_keys=["flogits", "mlogits", "hlogits"])
@@ -576,6 +704,16 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                             (CoupledMultiHeadMasked,),
                             {"couple_f": actor_net.couple_f,
                              "couple_h": actor_net.couple_h})
+            try:
+                from torchrl.modules.distributions import HAS_ENTROPY
+                HAS_ENTROPY[dist_cls] = True
+            except ImportError:
+                pass
+        elif market_orders > 1:
+            dist_cls = type("MultiOrderMultiHeadBound",
+                            (MultiOrderMultiHead,),
+                            {"slot_bias": actor_net.slot_bias,
+                             "couple_m": actor_net.couple_m})
             try:
                 from torchrl.modules.distributions import HAS_ENTROPY
                 HAS_ENTROPY[dist_cls] = True
