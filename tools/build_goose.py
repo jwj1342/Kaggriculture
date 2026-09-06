@@ -13,6 +13,7 @@ _drop_inventories_to_shed 丢弃。
 """
 import argparse, base64, json, os, re, sys, zlib
 
+PRODUCT = {"GOOSE": "EGG", "SHEEP": "WOOL", "COW": "MILK"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "agents/newlines/n04.py")
 BLOB = re.compile(
@@ -26,7 +27,7 @@ def decode(src):
     blob = "".join(re.findall(r'[\'"]((?:[^\'"\\]|\\.)*)[\'"]', m.group(2)))
     return m, json.loads(zlib.decompress(base64.b85decode(blob.encode())).decode())
 
-def transform(T, keep=0, sell_egg=True, append_egg=True):
+def transform(T, keep=0, sell_egg=True, append_egg=True, species="GOOSE"):
     st = {"pasture": 0, "buy": 0, "place": 0, "sell": 0, "kept": 0, "pickup": 0, "append": 0}
     for e in T:
         for key in ("farmer", "hands"):
@@ -36,16 +37,16 @@ def transform(T, keep=0, sell_egg=True, append_egg=True):
                 if not isinstance(a, (list, tuple)) or not a:
                     continue
                 a = list(a)
-                if a[0] == "BUILD_PASTURE":
+                if a[0] == "BUILD_PASTURE" and species == "GOOSE":
                     a[0] = "BUILD_COOP"; st["pasture"] += 1
-                elif a[0] == "PLACE" and len(a) == 2 and a[1] in ("COW", "SHEEP"):
+                elif a[0] == "PLACE" and len(a) == 2 and a[1] in ("COW", "SHEEP") and a[1] != species:
                     if st["kept"] < keep:
                         st["kept"] += 1; continue
-                    a[1] = "GOOSE"; st["place"] += 1
-                elif a[0] in ("PICKUP", "DROP") and len(a) >= 2 and a[1] in ("COW", "SHEEP"):
+                    a[1] = species; st["place"] += 1
+                elif a[0] in ("PICKUP", "DROP") and len(a) >= 2 and a[1] in ("COW", "SHEEP") and a[1] != species:
                     # BUY_ANIMAL 落在棚里,PLACE 从单位库存取 -> 中间必须 PICKUP。
                     # 不换这一条,鹅会永远卡在棚里(实测:棚 GOOSE 6,畜群空,钱 88)。
-                    a[1] = "GOOSE"; st["pickup"] += 1
+                    a[1] = species; st["pickup"] += 1
                 else:
                     continue
                 if key == "farmer": e["farmer"] = a
@@ -55,23 +56,24 @@ def transform(T, keep=0, sell_egg=True, append_egg=True):
             if not isinstance(o, (list, tuple)) or not o:
                 continue
             o = list(o)
-            if o[0] == "BUY_ANIMAL" and o[1] in ("COW", "SHEEP"):
-                o[1] = "GOOSE"; st["buy"] += 1
+            if o[0] == "BUY_ANIMAL" and o[1] in ("COW", "SHEEP") and o[1] != species:
+                o[1] = species; st["buy"] += 1
             elif sell_egg and o[0] == "SELL" and o[1] in ("MILK", "WOOL"):
-                o[1] = "EGG"; o[2] = 10 ** 9; st["sell"] += 1
+                o[1] = PRODUCT[species]; o[2] = 10 ** 9; st["sell"] += 1
             else:
                 continue
             mk[i] = o
         if append_egg and len(mk) < 10:
             # 追加在末尾:既有槽位索引逐位不变,而空槽位有 6,488 个,基本免费。
             # 不这样做,蛋会堆在上限 100 的棚里把带子自己的收成挤掉(实测草莓 269->49)。
-            mk.append(["SELL", "EGG", 10 ** 9]); st["append"] += 1
+            mk.append(["SELL", PRODUCT[species], 10 ** 9]); st["append"] += 1
             e["market"] = mk
     return st
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=os.path.join(ROOT, "agents/goose/main.py"))
+    ap.add_argument("--species", default="GOOSE", choices=("GOOSE", "SHEEP", "COW"))
     ap.add_argument("--keep-cows", type=int, default=0, help="保留前 N 头不换（做剂量曲线）")
     ap.add_argument("--no-sell-egg", action="store_true", help="不把 MILK/WOOL 卖单改成 EGG")
     ap.add_argument("--no-append-egg", action="store_true", help="不在空槽位追加 EGG 卖单")
@@ -80,7 +82,7 @@ def main():
     src = open(SRC).read()
     m, T = decode(src)
     st = transform(T, keep=args.keep_cows, sell_egg=not args.no_sell_egg,
-                   append_egg=not args.no_append_egg)
+                   append_egg=not args.no_append_egg, species=args.species)
 
     blob = base64.b85encode(zlib.compress(json.dumps(T, separators=(",", ":")).encode(), 9)).decode()
     chunks = [blob[i:i + 76] for i in range(0, len(blob), 76)]
