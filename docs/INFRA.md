@@ -166,3 +166,23 @@ sps 会在当前拥堵集群上得出错误决策。
 
 **怎么发现**：`squeue` 里后续链还在 `PENDING`，但 `rl/runs/<run>/train.csv` 停在 pilot 的行数不动。
 `sacct -u $USER --starttime today -o JobID%14,JobName%22,State%14,ExitCode,Elapsed` 一眼可见 `42:0`。
+
+## `--iters` 默认 10：链会**正常退出**而不是失败（2026-09-06 实测）
+
+`rl/train.py` 的 `--iters` **默认值是 10**，而 `tools/submit_rl.py` 与
+`slurm/rl_train_cpu.sh` **都不传它** —— 只传 `--max-minutes`。
+两个预算取先到者，**10 次迭代永远先到**。
+
+后果：pilot 跑满 10 次就停，之后每一链 `--resume` 进来发现 `iter >= 10`，
+**做 0 次迭代、打印 `done: 10 iters`、`TRAIN-EXIT code=0`、State 是 `COMPLETED`**。
+`sacct` 里看到的是一串 COMPLETED，Elapsed 14–26 秒。
+**这比 exit 42 更隐蔽**：没有任何一处报错，`squeue` 清空、链"跑完了"，
+只有 `train.csv` 停在 10 行。
+
+**历史上成功的 run 之所以没踩到，是因为它们都走 `--config rl/configs/*.yaml`**
+（`granger.yaml` 里 `iters: 240`）。手写 flag 的臂必须**显式传 `--iters`**。
+
+**发臂前的检查（两条，都要做）**：
+
+1. `train_argv` 里必须有 `--iters`（或 `--config`），且数值 >> 每链能跑的迭代数；
+2. pilot 结束后确认 `train.csv` 的行数 **不等于** `--iters`，否则后续链会全部空转。
