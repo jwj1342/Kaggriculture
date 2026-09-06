@@ -594,6 +594,19 @@ def train(args, log_fn=None):
         model, obs_compatibility = adapt_legacy_observation(model, O.OBS_DIM)
         model, compatibility = adapt_legacy_hand_head(
             model, new_bias=0.0 if args.legacy_new_bias == "zero" else NEG)
+        # Same shape-compatible-but-different trap as --resume: the merge
+        # picks strictness by key COUNT, so a source with slot_bias/couple_m or
+        # residual blocks loads into a net without them, silently discarding
+        # them. --resume refuses; --init-from used to accept in silence.
+        _src = ck.get("args") or {}
+        _drop = [k for k in ("depth", "market_orders")
+                 if _src.get(k) is not None
+                 and int(_src[k]) != int(getattr(args, k))]
+        if _drop:
+            log_fn("WARNING --init-from mismatch on "
+                   + ", ".join(f"--{k.replace('_','-')} "
+                               f"{_src[k]} -> {getattr(args, k)}" for k in _drop)
+                   + "; the extra tensors are DISCARDED, not adapted")
         load_merged_state_dict(actor_net, critic_net, model)
         log_fn(f"initialised from {args.init_from}")
         if obs_compatibility["adapted"]:
@@ -648,13 +661,30 @@ def train(args, log_fn=None):
         stopper = EarlyStopper(
             len(pool.anchors) if pool is not None else 1, args.advance_at,
             patience=args.stop_patience, delta_win=args.stop_delta_win,
-            delta_margin=args.stop_delta_margin)
+            delta_margin=args.stop_delta_margin,
+            pinned=bool(args.probe_vs))
 
     start_it, total_steps, best_win = 0, 0, -1.0
     best_probe = -float("inf")
     prev_records = []
     if args.resume and os.path.exists(args.resume):
         ck = torch.load(args.resume, map_location=dev, weights_only=False)
+        # Shape-compatible but semantically different: load_merged_state_dict
+        # decides strictness by key COUNT, and a depth-8 state dict loaded into
+        # a depth-2 net simply has the extras filtered out, so the counts match
+        # and strict=True passes. Same for the multi-order tables. Nothing else
+        # records these, so a link that lost the flag would resume a different
+        # policy in silence -- the shape of the --iters chain failure.
+        _prev = ck.get("args") or {}
+        for _flag, _now in (("depth", args.depth),
+                            ("market_orders", args.market_orders)):
+            _was = _prev.get(_flag)
+            if _was is not None and int(_was) != int(_now):
+                raise SystemExit(
+                    f"refusing to resume {args.resume}: it was trained with "
+                    f"--{_flag.replace('_', '-')} {_was} and this link passes "
+                    f"{_now}. The state dict would load without error and play "
+                    f"a different policy.")
         if ck.get("stopped"):
             log_fn(f"run already stopped ({ck['stopped']}) -- "
                    "nothing to resume; exiting cleanly")
@@ -834,7 +864,13 @@ def train(args, log_fn=None):
                         outs=aux_outs)
                     loss = loss + ks_coef * ks
                     stats["ks"] += ks.item()
-                if args.mkt_entropy_floor > 0.0:
+                # `not frozen` for the same reason --kickstart is gated on it:
+                # the floor is a function of the actor's market logits, so
+                # while --freeze-policy-until is meant to hold the policy still
+                # it was back-propagating into the trunk. Measured with the
+                # floor on: 14 of 20 actor tensors moved while "frozen",
+                # including every residual block; with it off, 0 of 20.
+                if args.mkt_entropy_floor > 0.0 and not frozen:
                     pen, hmkt = _market_entropy_floor(
                         actor_net, mb, args.mkt_entropy_floor, outs=aux_outs)
                     loss = loss + pen

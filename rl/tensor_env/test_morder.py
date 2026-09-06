@@ -68,6 +68,9 @@ def gate_o2(args):
     cls = type("Bound", (MultiOrderMultiHead,),
                {"slot_bias": torch.zeros(K, NM),
                 "couple_m": torch.zeros(NM, NM)})
+    # (the real net opens with slot_bias[1:, 0] = SLOT_NOOP_BIAS; this gate
+    # checks the distribution's algebra at literally zero tables, and gate O5
+    # checks what the initialised net actually plays)
     d1 = MultiHeadMasked(fl, ml, hl, fm, mm, hm)
     dK = cls(fl, ml, hl, fm, mm, hm)
     for k in range(K):
@@ -204,6 +207,170 @@ def gate_d1(args, broken=False):
     return True, "D1: depth 8 == depth 2 at init, bit for bit, in 3 variants"
 
 
+def gate_o5(args, broken=False):
+    """An initialised K>1 net must play exactly ONE order greedily.
+
+    That is the deployment half of "K>1 starts as K=1". It was false: zero
+    tables made every slot argmax the same logits, so an untrained K=4 export
+    opened with four copies of BUY_SEED MELON 8. `broken` zeroes the NOOP bias
+    and must fail.
+    """
+    from trl_policy import MultiActorNet, SLOT_NOOP_BIAS
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import obs as O
+    K = 4
+    torch.manual_seed(11)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 128, 64,
+                        n_hands=12, n_hand_task=A.N_HAND_TASK, market_orders=K)
+    if broken:
+        with torch.no_grad():
+            net.slot_bias.zero_()
+    from trl_env import KGTensorEnv
+    env = KGTensorEnv(4, device="cpu", episode_steps=48, market_orders=K,
+                      multi_head=True, potential="future-mkt", opponent="starter")
+    td = env.reset()
+    with torch.no_grad():
+        ml = net(td["observation"])[1]
+        picks, prev = [], None
+        for j in range(K):
+            lj = ml + net.slot_bias[j]
+            if prev is not None:
+                lj = lj + net.couple_m.t()[prev]
+            a = lj.masked_fill(~td["market_mask"], -1e9).argmax(-1)
+            picks.append(a); prev = a
+    later = torch.stack(picks[1:])
+    n_active = int((later != 0).sum())
+    if n_active:
+        return False, (f"O5: {n_active} of {later.numel()} later slots are not "
+                       f"NOOP at init (bias={float(net.slot_bias[1, 0]):.2f}); "
+                       f"a greedy export would repeat slot 0's order")
+    return True, (f"O5: slots 1..{K-1} all open NOOP "
+                  f"(SLOT_NOOP_BIAS={SLOT_NOOP_BIAS}); slot 0 picks "
+                  f"{picks[0].tolist()}")
+
+
+def gate_o7(args, broken=False):
+    """The tensor slot layout must equal the export's concatenation.
+
+    export_agent builds the deployed list as macro0's orders then macro1's then
+    macro2's, in order. The first tensor version wrote extra macros at S-1-kx,
+    i.e. REVERSED and at the tail, so training and deployment played different
+    order lists -- with [NOOP, SELL_CARROT, BUY_SHEEP] the tensor ran the animal
+    purchase before the sell and it failed for want of cash while the deployed
+    agent sold first and bought it. Nothing compared the two layouts.
+
+    This gate asserts (a) live slots form a PREFIX -- no holes -- and (b) the
+    extra macros land in ascending slot order right after macro0's block.
+    `broken` restores the tail placement and must fail.
+    """
+    K = 3
+    seeds = [64_000 + 5 * i for i in range(args.lanes)]
+    ep = _ep(seeds, args.steps, args.device)
+    orig = X._idx_decode_market
+    bad = {"holes": 0, "order": 0, "checked": 0}
+
+    def spy(self, m_idx, herd, day, t):
+        if m_idx.dim() != 3:
+            return orig(self, m_idx, herd, day, t)
+        base = orig(self, m_idx[..., :1], herd, day, t)
+        full = orig(self, m_idx, herd, day, t)
+        if broken:                      # the shipped layout: tail, reversed
+            S = self.max_market_orders
+            full = tuple(x.clone() for x in base)
+            for kx in range(m_idx.shape[-1] - 1):
+                slot = S - 1 - kx
+                one = orig(self, m_idx[..., kx + 1:kx + 2], herd, day, t)
+                free = full[0][..., slot] == 0
+                for a, b in zip(full, one):
+                    a[..., slot] = torch.where(free, b[..., 0], a[..., slot])
+        live = full[0] != 0
+        n = int(live.sum())
+        if n:
+            bad["checked"] += 1
+            counts = live.sum(-1)
+            prefix = (torch.arange(live.shape[-1], device=live.device)
+                      < counts.unsqueeze(-1))
+            if not torch.equal(live, prefix):
+                bad["holes"] += 1
+            # each extra macro must sit at or after macro0's block end
+            n_base = int((base[0] != 0).sum(-1).max())
+            if n_base and int(counts.max()) < n_base:
+                bad["order"] += 1
+        return full
+
+    X._idx_decode_market = spy
+    engine_t.EpisodeT._idx_decode_market = spy
+    try:
+        g = torch.Generator(device="cpu").manual_seed(99)
+        while not ep.done:
+            f = torch.randint(0, A.N_FARMER, (args.lanes, 2), generator=g)
+            m = torch.randint(1, A.N_MARKET, (args.lanes, 2, K), generator=g)
+            ep.step_idx(f, m)
+    finally:
+        X._idx_decode_market = orig
+        engine_t.EpisodeT._idx_decode_market = orig
+    if bad["checked"] == 0:
+        return False, "O7: no decodes observed"
+    if bad["holes"]:
+        return False, (f"O7: live slots have HOLES in {bad['holes']} of "
+                       f"{bad['checked']} decodes -- the deployed list packs "
+                       f"orders contiguously, so the layouts differ")
+    if bad["order"]:
+        return False, f"O7: extra macros landed before macro0's block"
+    return True, (f"O7: live slots are a contiguous prefix in all "
+                  f"{bad['checked']} decodes (K={K})")
+
+
+def gate_p1(args, broken=False):
+    """The probe must SEE the slot tables.
+
+    Checked on the ACTIONS, not on the returned margin: an untrained policy
+    banks nothing either way, so the margin saturates and two very different
+    policies read the same number. That is how the first "multi-order probe
+    fix" shipped -- it sliced ml[..., j, :] believing the head was
+    (B, K, N_MARKET) when MultiActorNet returns (B, N_MARKET), so it indexed
+    the BATCH and gave every lane one lane's logits, and the probe was bit
+    identical with the tables zeroed or at N(0, 5). `broken` reproduces that
+    slice and must fail.
+    """
+    from trl_policy import MultiActorNet
+    from trl_env import KGTensorEnv
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import obs as O
+    K = 4
+    torch.manual_seed(5)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 128, 64,
+                        n_hands=12, n_hand_task=A.N_HAND_TASK, market_orders=K)
+    env = KGTensorEnv(6, device="cpu", episode_steps=48, market_orders=K,
+                      multi_head=True, potential="future-mkt", opponent="starter")
+    td = env.reset()
+
+    def slots():
+        with torch.no_grad():
+            ml = net(td["observation"])[1]
+            out, prev = [], None
+            for j in range(K):
+                if broken:                        # the shipped bug
+                    lj = ml[..., j, :]
+                else:
+                    lj = ml + net.slot_bias[j]
+                    if prev is not None:
+                        lj = lj + net.couple_m.t()[prev]
+                a = lj.masked_fill(~td["market_mask"], -1e9).argmax(-1)
+                out.append(a.tolist()); prev = a
+            return out
+
+    before = slots()
+    with torch.no_grad():
+        net.slot_bias.add_(torch.randn_like(net.slot_bias) * 5)
+        net.couple_m.add_(torch.randn_like(net.couple_m) * 5)
+    after = slots()
+    if before == after:
+        return False, ("P1: perturbing slot_bias/couple_m did not change the "
+                       "probe's actions -- the probe is blind to the head")
+    return True, f"P1: probe actions move with the tables ({before[1]} -> {after[1]})"
+
+
 def gate_d3(args, broken=False):
     """Depth must actually DO something once the blocks are non-zero.
 
@@ -264,7 +431,8 @@ def main():
     args = ap.parse_args()
     ok = True
     for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
-                     ("S1", gate_s1), ("D1", gate_d1), ("D3", gate_d3)):
+                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("P1", gate_p1),
+                     ("D1", gate_d1), ("D3", gate_d3)):
         try:
             good, msg = fn(args)
         except Exception as exc:                       # noqa: BLE001
@@ -272,7 +440,8 @@ def main():
         print(("PASS " if good else "FAIL ") + msg)
         ok &= good
     for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
-                         ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3")):
+                         ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3"),
+                         ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001

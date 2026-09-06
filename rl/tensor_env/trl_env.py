@@ -295,8 +295,18 @@ def kickstart_labels(ep, player, ops=None):
     it, any_ = first_item(m_op == engine_t.OP_BUYP)
     m = torch.where(any_ & (it == engine_t.WHEAT_I), torch.full_like(m, 15), m)
     m = torch.where(any_ & (it == engine_t.FERT_I), torch.full_like(m, 16), m)
-    it, any_ = first_item(m_op == engine_t.OP_SEED)
-    m = torch.where(any_, 10 + it, m)
+    # OP_SEED: route by QUANTITY the way SELL does, or the bulk actions are
+    # unreachable from every teacher/BC label. n04 buys 23 STRAWBERRY seeds in
+    # one order and the label used to call all 23 a one-seed buy, so a
+    # --kickstart teacher could never demonstrate the action the whole
+    # BUY_SEED_BULK block exists for.
+    seed_hit = m_op == engine_t.OP_SEED
+    idx_s = torch.argmax(seed_hit.to(torch.int64), 1)
+    it = m_item.gather(1, idx_s.view(B, 1)).squeeze(1)
+    qty_s = m_rem.gather(1, idx_s.view(B, 1)).squeeze(1)
+    any_ = seed_hit.any(1)
+    bulk = qty_s >= A.SEED_BULK
+    m = torch.where(any_, torch.where(bulk, 31 + it, 10 + it), m)
     m = torch.where((m_op == X.OP_HIRE).any(1), torch.full_like(m, 21), m)
     m = torch.where((m_op == X.OP_LAND).any(1), torch.full_like(m, 20), m)
     it, any_ = first_item(m_op == engine_t.OP_ANIMAL)
@@ -345,8 +355,17 @@ class FrozenPolicyOpponent:
         sd, _ = adapt_legacy_observation(sd, O.OBS_DIM)
         h1, obs_dim = sd["l1.weight"].shape
         h2 = sd["l2.weight"].shape[0]
+        # Depth has to come from the state dict. Building at the default and
+        # load_state_dict(strict) either raises on the extra.* keys (once
+        # arrays_to_sd started returning them) or, before that, truncated the
+        # policy in silence -- a league snapshot then played a net that was
+        # never trained.
+        blocks = 0
+        while f"extra.{blocks}.0.weight" in sd:
+            blocks += 1
         net = ActorNet(obs_dim, sd["farmer.weight"].shape[0],
-                       sd["market.weight"].shape[0], h1, h2)
+                       sd["market.weight"].shape[0], h1, h2,
+                       depth=2 + blocks)
         net.load_state_dict(sd)
         return net.to(device).eval()
 
@@ -359,6 +378,24 @@ class FrozenPolicyOpponent:
             sd.pop("hands.bias", None)     # separately (see _hands below)
             sd.pop("couple_f", None)       # coupling tables likewise --
             sd.pop("couple_h", None)       # played via self._couple below
+            # Multi-order tables: MORDER_ARRAYS joined arrays_to_sd without
+            # joining this list, so the first league snapshot of a K>1 policy
+            # raised "Unexpected key(s) slot_bias, couple_m" out of
+            # ActorNet.load_state_dict. A frozen opponent plays slot 0 only.
+            if "slot_bias" in sd and int(sd["slot_bias"].shape[0]) > 1:
+                # A frozen opponent has no multi-order machinery, so it plays
+                # SLOT 0 ONLY. Under --league that means the learner trains
+                # against snapshots of itself that are capped at one order a
+                # turn -- the same cap measured at -89,479 on closer_cleo.
+                # Loud, because it changes what the pool means.
+                import warnings
+                warnings.warn(
+                    "league/frozen snapshot of a market_orders>"
+                    f"{1} policy plays slot 0 only: the self-play opponent is "
+                    "one-order and systematically weaker than the learner",
+                    RuntimeWarning, stacklevel=2)
+            sd.pop("slot_bias", None)
+            sd.pop("couple_m", None)
             return sd
 
         # Coupled snapshots (CoupledMultiHeadMasked exports): the market
@@ -403,6 +440,12 @@ class FrozenPolicyOpponent:
     def _hand_logits(self, x):
         owner, hw, hb = self._hands
         trunk = self.net if owner == "net" else self.delta
+        # Must go through ActorNet.trunk: open-coding l1/l2 here skips the
+        # residual blocks, which is the same mistake MultiActorNet.forward
+        # made and that trunk() exists to prevent.
+        if hasattr(trunk, "trunk"):
+            hl = torch.nn.functional.linear(trunk.trunk(x), hw, hb)
+            return hl.view(*x.shape[:-1], -1, A.N_HAND_TASK)
         h = torch.relu(trunk.l1(x))
         h = torch.relu(trunk.l2(h))
         hl = h @ hw.t() + hb

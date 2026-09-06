@@ -874,8 +874,10 @@ def _idx_decode_market(self, m_idx, herd, day, t):
     cnt = shed9.gather(2, item0.unsqueeze(-1)).squeeze(-1)
     sell = op0 == ET.OP_SELL
     # indices 22.. are SELL_HALF_<p>: meter to ceil(half) of the holding
-    # m >= 22 is SELL_HALF; the 31.. block is BUY_SEED_BULK and is not a
-    # sell at all, so the metering test has to be a RANGE, not a floor.
+    # m >= 22 is SELL_HALF. The upper bound is DEFENSIVE only, not a fix:
+    # `sq` is consumed under torch.where(sell, ...) and the 31.. block decodes
+    # to OP_SEED, so `sell` is already False there -- reverting to `m >= 22`
+    # changes nothing on 2,592 (m0,m1) pairs across day 5 and day 29.
     sq = torch.where((m >= 22) & (m < 31), (cnt + 1) // 2, cnt)
     m_op[..., 0] = torch.where(sell & (cnt == 0), torch.zeros_like(op0), op0)
     m_item[..., 0] = item0
@@ -917,10 +919,18 @@ def _idx_decode_market(self, m_idx, herd, day, t):
             m_op[..., j] = torch.where(slot, OP_HIRE, m_op[..., j])
 
     if m_extra is not None:
+        # Extra macros go into the FIRST FREE slot, in order, so the queue is
+        # macro0's block then macro1, macro2, ... -- exactly what the export
+        # template builds with `out["market"] + d["market"]`. The first version
+        # wrote them at S-1-kx, i.e. reversed and at the tail, so training and
+        # deployment played DIFFERENT order lists: with [NOOP, SELL_CARROT,
+        # BUY_SHEEP] the tensor ran the sheep purchase before the sell and it
+        # failed for want of $500, while the deployed agent sold first and
+        # bought the animal. Slot 0's own decode (the HIRE burst, the
+        # liquidation compound) always fills a prefix, so the count of live
+        # slots IS the first free index.
         for kx in range(m_extra.shape[-1]):
-            slot = S - 1 - kx
-            if slot <= 0:
-                break
+            free_ix = (m_op != 0).sum(-1)                 # (B, P)
             mk = m_extra[..., kx]
             op_k = t.mop_lut[mk]
             it_k = t.mitem_lut[mk]
@@ -930,10 +940,14 @@ def _idx_decode_market(self, m_idx, herd, day, t):
             op_k = torch.where(sell_k & (cnt_k == 0), torch.zeros_like(op_k), op_k)
             rem_k = torch.where(sell_k, sq_k, torch.where(
                 mk == 15, (2 * herd).clamp(min=5), t.mrem_lut[mk]))
-            free = m_op[..., slot] == 0
-            m_op[..., slot] = torch.where(free, op_k, m_op[..., slot])
-            m_item[..., slot] = torch.where(free, it_k, m_item[..., slot])
-            m_rem[..., slot] = torch.where(free, rem_k, m_rem[..., slot])
+            room = free_ix < S
+            ix = free_ix.clamp(max=S - 1).unsqueeze(-1)   # (B, P, 1)
+            keep = torch.gather(m_op, -1, ix).squeeze(-1)
+            m_op.scatter_(-1, ix, torch.where(room, op_k, keep).unsqueeze(-1))
+            keep_i = torch.gather(m_item, -1, ix).squeeze(-1)
+            m_item.scatter_(-1, ix, torch.where(room, it_k, keep_i).unsqueeze(-1))
+            keep_r = torch.gather(m_rem, -1, ix).squeeze(-1)
+            m_rem.scatter_(-1, ix, torch.where(room, rem_k, keep_r).unsqueeze(-1))
     return m_op, m_item, m_rem
 
 

@@ -351,6 +351,19 @@ def main():
     if _obs_compat or _hand_compat:
         print(f"export: adapted legacy checkpoint "
               f"(obs={_obs_compat or 'ok'}, hands={_hand_compat or 'ok'})")
+    # Depth cannot survive the plain-Policy export path: rl/policy.Policy has
+    # no `extra` module, so load_state_dict(strict=False) drops every residual
+    # block and the agent exports without a word as a depth-2 net -- plausible
+    # opening action, verification assertion green. Refuse before the branch;
+    # the array path below carries depth and gets its own post-condition.
+    _depth = int(_ck_args.get("depth", 2) or 2)
+    if _depth > 2 and not any(k.startswith(("base.", "hands.")) for k in sd):
+        raise SystemExit(
+            f"refusing to export {args.ckpt}: trained with --depth {_depth}, "
+            f"but a plain two-head checkpoint takes the rl/policy.Policy path, "
+            f"which has no residual blocks and would drop all {_depth - 2} of "
+            f"them silently. Deep exports need --multi-head.")
+
     if any(k.startswith(("base.", "hands.")) for k in sd):
         # residual and/or multi-head checkpoints: ship raw arrays; the
         # main.py template understands every combination (a plain-Policy
@@ -384,6 +397,20 @@ def main():
                 raise SystemExit(
                     f"refusing to export {args.ckpt}: --market-orders {_mo} "
                     f"but msb has {int(arrays['msb'].shape[0])} rows")
+        # Same post-condition for depth. A plain (non-multi-head) deep actor
+        # falls through to rl/policy.Policy, which has no `extra` module, and
+        # load_state_dict(strict=False) drops every residual block without a
+        # word: the agent exports, opens with a plausible action and is a
+        # depth-2 net. Read back what is about to be written.
+        if _depth > 2:
+            _blocks = sum(1 for k in arrays if k.endswith("aw")
+                          and k.startswith("e"))
+            if _blocks != _depth - 2:
+                raise SystemExit(
+                    f"refusing to export {args.ckpt}: trained with --depth "
+                    f"{_depth} but the npz would carry {_blocks} residual "
+                    f"blocks, not {_depth - 2}. The agent would silently be a "
+                    f"depth-2 net.")
         policy = types.SimpleNamespace(
             export_npz=lambda path: np.savez(path, **arrays))
     else:

@@ -90,7 +90,7 @@ MARKET_ACTIONS = (
 SEED_BULK = 8
 
 N_FARMER = len(FARMER_ACTIONS)   # 23
-N_MARKET = len(MARKET_ACTIONS)   # 31
+N_MARKET = len(MARKET_ACTIONS)   # 36
 
 _F_IDX = {name: i for i, name in enumerate(FARMER_ACTIONS)}
 _M_IDX = {name: i for i, name in enumerate(MARKET_ACTIONS)}

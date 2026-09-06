@@ -60,8 +60,10 @@ def run_probe(actor_net, pool, args, device):
 
     multi = bool(getattr(args, "multi_head", False))
     k_mkt = max(1, int(getattr(args, "market_orders", 1)))
+    seat = getattr(args, "seat", 0)
+    seat = 0 if seat == "alt" else int(seat)
     env = KGTensorEnv(
-        args.probe_lanes, device=device, seat=0, market_orders=k_mkt,
+        args.probe_lanes, device=device, seat=seat, market_orders=k_mkt,
         episode_steps=args.steps, base_seed=args.seed + 991,
         opponent=_probe_opponent(pool, args), win_bonus=0.0,
         potential=args.potential, shape_scale=args.shape_scale,
@@ -85,16 +87,34 @@ def run_probe(actor_net, pool, args, device):
             outs = actor_net(x)
             fl, ml = outs[0], outs[1]
             fa = fl.masked_fill(~td["farmer_mask"], -1e9).argmax(-1)
-            # With K market slots the head is (B, K, N_MARKET) and argmax
-            # gives (B, K): unsqueezing that would have produced a (B, K, 1)
-            # block and a wrong-width action. Build the slot columns instead.
-            if k_mkt > 1:
-                mcols = [ml[..., j, :].masked_fill(
-                    ~td["market_mask"], -1e9).argmax(-1).unsqueeze(-1)
-                    for j in range(k_mkt)]
-            else:
-                mcols = [ml.masked_fill(~td["market_mask"], -1e9)
-                         .argmax(-1).unsqueeze(-1)]
+            # The K slots do NOT live in the net: MultiActorNet.forward
+            # returns (B, N_MARKET) and the slots come from the DISTRIBUTION's
+            # slot_bias / couple_m. An earlier version here sliced ml[..., j, :]
+            # believing the head was (B, K, N_MARKET); that indexed the BATCH,
+            # gave every lane one lane's logits, and made the probe bit-identical
+            # whether the tables were zero or N(0, 5) -- i.e. blind to the whole
+            # feature it was meant to measure, while still driving EarlyStopper
+            # and the best.pt ratchet. Reproduce MultiOrderMultiHead.mode here.
+            # --couple-heads conditions the market head on THIS turn's farmer
+            # action and hand tasks. Applying slot_bias/couple_m but not these
+            # is the same blindness one table pair over: the probe would argmax
+            # the base logits while the played policy argmaxes the conditional.
+            if getattr(actor_net, "couple_f", None) is not None:
+                ml = ml + actor_net.couple_f.t()[fa]
+                if multi:
+                    ml = ml + actor_net.couple_h.t()[
+                        outs[2].masked_fill(~td["hand_mask"], -1e9).argmax(-1)
+                    ].mean(-2)
+            mcols, prev = [], None
+            for j in range(k_mkt):
+                lj = ml
+                if k_mkt > 1:
+                    lj = lj + actor_net.slot_bias[j]
+                    if prev is not None:
+                        lj = lj + actor_net.couple_m.t()[prev]
+                aj = lj.masked_fill(~td["market_mask"], -1e9).argmax(-1)
+                mcols.append(aj.unsqueeze(-1))
+                prev = aj
             if multi:
                 ha = outs[2].masked_fill(~td["hand_mask"], -1e9).argmax(-1)
                 td["action"] = torch.cat([fa.unsqueeze(-1)] + mcols + [ha], -1)
@@ -117,7 +137,12 @@ class EarlyStopper:
     string or None. Pure state machine -- no tensors, no I/O."""
 
     def __init__(self, n_stages, advance_at, patience=6,
-                 delta_win=0.01, delta_margin=500.0):
+                 delta_win=0.01, delta_margin=500.0, pinned=False):
+        # pinned: the probe measures a FIXED opponent (--probe-vs) rather than
+        # the stage anchor, which disables curriculum-complete and keeps the
+        # stagnation frontier continuous across advances -- the whole point of
+        # pinning is that the series IS comparable across stages.
+        self.pinned = bool(pinned)
         self.n_stages = int(n_stages)
         self.advance_at = float(advance_at)
         self.patience = int(patience)
@@ -128,10 +153,16 @@ class EarlyStopper:
         self._flat = 0
 
     def update(self, stage, handicap, win, margin):
-        if stage == self.n_stages - 1 and handicap == 0 \
+        # A pinned probe says nothing about having beaten the curriculum:
+        # measured, this stopped a run at iteration 1 with a batch win of 0.000
+        # and money 1 against 2,940, because an argmax policy that does nothing
+        # keeps its starting capital while `starter` spends 60 of its own.
+        if (not self.pinned) and stage == self.n_stages - 1 and handicap == 0 \
                 and win >= self.advance_at:
             return "curriculum-complete"
-        frontier = (stage, handicap)
+        # A pinned series is one frontier: advancing the pool must not reset
+        # the stagnation clock, or the paired series restarts on every advance.
+        frontier = (0, 0) if self.pinned else (stage, handicap)
         if frontier != self._frontier:   # new frontier resets the clock
             self._frontier = frontier
             self._best = (win, margin)

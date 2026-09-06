@@ -160,6 +160,8 @@ COUPLE_ARRAYS = {"cfw": "couple_f", "chw": "couple_h"}
 # while actor_arrays silently dropped both tables (measured: the export
 # emitted one order on all 719 turns).
 MORDER_ARRAYS = {"msb": "slot_bias", "cmw": "couple_m"}
+# Opening bias on market slots 1.. toward NOOP; see MultiActorNet.
+SLOT_NOOP_BIAS = 2.5
 
 
 def _depth_arrays(sd, prefix=""):
@@ -189,11 +191,31 @@ def actor_arrays(sd, prefix="", numpy=False):
     return out
 
 
+def _depth_arrays_from_npz(arrays, prefix=""):
+    """Residual blocks present in an npz array dict -> npz-key -> sd-key.
+
+    The reader side has to discover the blocks from the ARRAYS. A first
+    version called _depth_arrays on the empty dict it was about to fill, so
+    it always returned {} and every deep policy silently loaded as depth 2 --
+    league snapshots, macro_audit and --residual-base priors all played a
+    different net than the one saved, with load_state_dict strict passing
+    because the truncated dict matched exactly.
+    """
+    out, i = {}, 0
+    while f"{prefix}e{i}aw" in arrays:
+        for tag, j in (("a", 0), ("b", 1)):
+            out[f"e{i}{tag}w"] = f"extra.{i}.{j}.weight"
+            out[f"e{i}{tag}b"] = f"extra.{i}.{j}.bias"
+        i += 1
+    return out
+
+
 def arrays_to_sd(arrays, prefix=""):
     """weights.npz arrays (optionally d_-prefixed) -> actor state dict."""
     sd = {}
     for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS,
-                   **MORDER_ARRAYS, **_depth_arrays(sd, prefix)}.items():
+                   **MORDER_ARRAYS,
+                   **_depth_arrays_from_npz(arrays, prefix)}.items():
         k = prefix + ak
         if k in arrays:
             sd[pk] = torch.as_tensor(arrays[k])
@@ -653,6 +675,15 @@ class MultiActorNet(ActorNet):
             # so the init stream of the shared layers is untouched.
             self.slot_bias = nn.Parameter(
                 torch.zeros(self.market_orders, n_market))
+            # Slots 1.. open biased to NOOP (index 0), the way the hand heads
+            # open biased to AUTO. Without it the "K>1 starts as K=1" contract
+            # is true in training and FALSE in deployment: the export decodes
+            # greedily, zero tables make every slot argmax the same logits, and
+            # an untrained K=4 export opened with BUY_SEED MELON 8 four times
+            # over -- 32 seeds where the warm start bought 8. The bias is one
+            # learnable number per slot and training moves off it.
+            with torch.no_grad():
+                self.slot_bias[1:, 0] = SLOT_NOOP_BIAS
             self.couple_m = nn.Parameter(torch.zeros(n_market, n_market))
 
     def forward(self, x):
@@ -755,6 +786,33 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                          "farmer/hand intents, and under a fixed farm tape "
                          "those intents are discarded, so it would condition "
                          "on noise")
+    if market_orders > 1 and not multi:
+        raise ValueError(
+            "market_orders>1 requires multi=True: market_orders is only wired "
+            "inside the multi-head branch, so without it the distribution "
+            "falls through to a width-2 action against a 1+K spec and the "
+            "probe raises AttributeError on slot_bias")
+    if market_only and market_orders > 1:
+        raise ValueError(
+            "market_only=True with market_orders>1 is refused: the elif chain "
+            "in this function would pick MultiOrderMultiHead and silently drop "
+            "MarketOnlyMultiHead, putting the tape-overridden farmer and all "
+            "twelve hand heads back inside the PPO ratio and the entropy bonus "
+            "-- measured 1.95 nats of dead heads in the importance weight at "
+            "init, growing as they drift on the shared trunk.")
+    if couple and market_orders > 1:
+        raise ValueError(
+            "couple=True with market_orders>1 is not implemented: the coupled "
+            "distribution emits width 2+H while the action spec is 1+K+H")
+    if residual_base and market_orders > 1:
+        raise ValueError(
+            "residual_base with market_orders>1 is not implemented: "
+            "MultiResidualActor has no slot_bias/couple_m")
+    if residual_base and depth != 2:
+        raise ValueError(
+            "residual_base with depth>2 is not implemented: the residual "
+            "actors build their base and delta nets at the default depth, and "
+            "the export template only scans e{i}aw, never d_e{i}aw")
     if couple and residual_base:
         raise ValueError("couple=True with a residual prior is not "
                          "implemented; the prior's market logits would be "
