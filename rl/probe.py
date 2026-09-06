@@ -62,8 +62,10 @@ def run_probe(actor_net, pool, args, device):
     k_mkt = max(1, int(getattr(args, "market_orders", 1)))
     seat = getattr(args, "seat", 0)
     seat = 0 if seat == "alt" else int(seat)
+    qty_head = bool(getattr(args, "qty_head", False))
     env = KGTensorEnv(
         args.probe_lanes, device=device, seat=seat, market_orders=k_mkt,
+        qty_head=qty_head,
         episode_steps=args.steps, base_seed=args.seed + 991,
         opponent=_probe_opponent(pool, args), win_bonus=0.0,
         potential=args.potential, shape_scale=args.shape_scale,
@@ -105,21 +107,30 @@ def run_probe(actor_net, pool, args, device):
                     ml = ml + actor_net.couple_h.t()[
                         outs[2].masked_fill(~td["hand_mask"], -1e9).argmax(-1)
                     ].mean(-2)
-            mcols, prev = [], None
+            ql = outs[3] if qty_head and len(outs) > 3 else None
+            mcols, qcols, prev = [], [], None
             for j in range(k_mkt):
                 lj = ml
-                if k_mkt > 1:
+                if k_mkt > 1 or qty_head:
                     lj = lj + actor_net.slot_bias[j]
                     if prev is not None:
                         lj = lj + actor_net.couple_m.t()[prev]
                 aj = lj.masked_fill(~td["market_mask"], -1e9).argmax(-1)
                 mcols.append(aj.unsqueeze(-1))
+                if ql is not None:
+                    # The rung head is the same blindness one table over: a
+                    # probe that skipped it would drive EarlyStopper and the
+                    # best.pt ratchet from a policy that is never played.
+                    qj = (ql[..., j, :] + actor_net.couple_q.t()[aj]).argmax(-1)
+                    qcols.append(qj.unsqueeze(-1))
                 prev = aj
             if multi:
                 ha = outs[2].masked_fill(~td["hand_mask"], -1e9).argmax(-1)
-                td["action"] = torch.cat([fa.unsqueeze(-1)] + mcols + [ha], -1)
+                td["action"] = torch.cat(
+                    [fa.unsqueeze(-1)] + mcols + qcols + [ha], -1)
             else:
-                td["action"] = torch.cat([fa.unsqueeze(-1)] + mcols, -1)
+                td["action"] = torch.cat(
+                    [fa.unsqueeze(-1)] + mcols + qcols, -1)
             td = env.step(td)
             if bool(td["next", "done"].all()):
                 break

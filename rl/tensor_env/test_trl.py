@@ -831,7 +831,7 @@ def gate_farm_tape():
     seen = []
     real_step_idx = env._ep.step_idx
 
-    def spy(f_idx, m_idx, override=None, h_idx=None):
+    def spy(f_idx, m_idx, override=None, h_idx=None, q_idx=None):
         for entry in (override or []):
             if entry[0] == env.seat and "f_op" in entry[1]:
                 seen.append({k: v for k, v in entry[1].items()})

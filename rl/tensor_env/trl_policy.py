@@ -161,11 +161,19 @@ COUPLE_ARRAYS = {"cfw": "couple_f", "chw": "couple_h"}
 # emitted one order on all 719 turns).
 MORDER_ARRAYS = {"msb": "slot_bias", "cmw": "couple_m"}
 # Opening bias on market slots 1.. toward NOOP; see MultiActorNet.
-SLOT_NOOP_BIAS = 2.5
+# 5.75 not 2.5. The claim these biases support is "adding the head changes
+# nothing until it learns", and training SAMPLES: at 2.5 against 35 non-NOOP
+# macros P(NOOP) is only 0.258, so three quarters of the extra slots fired an
+# order on step 0. 5.75 puts it at 0.900. The greedy path was always fine,
+# which is exactly why a gate that only checked argmax could not see this.
+SLOT_NOOP_BIAS = 5.75
 # Quantity head: opening bias toward QTY_OPTS[0] = "the macro's own quantity",
 # so an untrained policy is byte-identical to one without the head.
 QTY_ARRAYS = {"qw": "qty.weight", "qb": "qty.bias", "cqw": "couple_q"}
-QTY_DEFAULT_BIAS = 2.5
+# 4.5 not 2.5, same reason: 10 non-default rungs put P(default) at 0.549 under
+# sampling, and an on-policy collection with a fresh K=3 net drew 42.2% of its
+# rungs off default at step 0. 4.5 puts it at 0.900.
+QTY_DEFAULT_BIAS = 4.5
 
 
 def _depth_arrays(sd, prefix=""):
@@ -219,7 +227,7 @@ def arrays_to_sd(arrays, prefix=""):
     """weights.npz arrays (optionally d_-prefixed) -> actor state dict."""
     sd = {}
     for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS,
-                   **MORDER_ARRAYS,
+                   **MORDER_ARRAYS, **QTY_ARRAYS,
                    **_depth_arrays_from_npz(arrays, prefix)}.items():
         k = prefix + ak
         if k in arrays:
@@ -917,6 +925,17 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
             "inside the multi-head branch, so without it the distribution "
             "falls through to a width-2 action against a 1+K spec and the "
             "probe raises AttributeError on slot_bias")
+    if market_only and qty_head:
+        raise ValueError(
+            "market_only=True with qty_head=True is refused for the same "
+            "reason as market_orders>1: the elif chain picks the quantity "
+            "distribution and silently drops MarketOnlyMultiHead -- measured "
+            "3.678 nats of tape-overridden farmer and hand heads back inside "
+            "the PPO ratio")
+    if couple and qty_head:
+        raise ValueError(
+            "couple=True with qty_head=True is not implemented: "
+            "CoupledMultiHeadMasked takes no qlogits")
     if market_only and market_orders > 1:
         raise ValueError(
             "market_only=True with market_orders>1 is refused: the elif chain "

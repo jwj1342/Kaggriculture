@@ -451,6 +451,55 @@ def gate_q3(args, broken=False):
                   f"(QTY_DEFAULT_BIAS={QTY_DEFAULT_BIAS}), width {m.shape[-1]}")
 
 
+def gate_q5(args, broken=False):
+    """The opening default must dominate under SAMPLING, not just argmax.
+
+    Q3 and O5 check the greedy path, and the greedy path was never the problem:
+    training samples. At SLOT_NOOP_BIAS 2.5 three quarters of the extra slots
+    fired an order on step 0, and 42.2% of rungs came off default -- with both
+    greedy gates green. This one draws and counts. `broken` restores the old
+    biases and must fail.
+    """
+    from trl_policy import (MultiActorNet, MultiOrderQtyHead,
+                            SLOT_NOOP_BIAS, QTY_DEFAULT_BIAS)
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import obs as O
+    K = 4
+    torch.manual_seed(31)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 128, 64, n_hands=12,
+                        n_hand_task=A.N_HAND_TASK, market_orders=K,
+                        qty_head=True)
+    if broken:
+        with torch.no_grad():
+            net.slot_bias[1:, 0] = 2.5
+            net.qty.bias.view(K, A.N_QTY)[:, 0] = 2.5
+    cls = type("B", (MultiOrderQtyHead,),
+               {"slot_bias": net.slot_bias, "couple_m": net.couple_m,
+                "couple_q": net.couple_q})
+    from trl_env import KGTensorEnv
+    env = KGTensorEnv(64, device="cpu", episode_steps=48, market_orders=K,
+                      qty_head=True, multi_head=True, potential="future-mkt",
+                      opponent="starter")
+    td = env.reset()
+    torch.manual_seed(77)
+    with torch.no_grad():
+        fl, ml, hl, ql = net(td["observation"])
+        d = cls(fl, ml, hl, ql, td["farmer_mask"], td["market_mask"],
+                td["hand_mask"])
+        a = d.sample()
+    slots = a[:, 2:1 + K]                       # slots 1.. only
+    rungs = a[:, 1 + K:1 + 2 * K]
+    p_noop = float((slots == 0).double().mean())
+    p_def = float((rungs == 0).double().mean())
+    if p_noop < 0.80 or p_def < 0.80:
+        return False, (f"Q5: sampled defaults are only NOOP {p_noop:.3f} / "
+                       f"rung {p_def:.3f}; an untrained head is already "
+                       f"playing something else")
+    return True, (f"Q5: under SAMPLING, extra slots are NOOP {p_noop:.3f} "
+                  f"(bias {SLOT_NOOP_BIAS}) and rungs default {p_def:.3f} "
+                  f"(bias {QTY_DEFAULT_BIAS})")
+
+
 def gate_l1(args, broken=False):
     """A frozen/league snapshot of a K>1 policy must PLAY K slots.
 
@@ -595,7 +644,7 @@ def main():
     args = ap.parse_args()
     ok = True
     for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
-                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("Q1", gate_q1), ("Q3", gate_q3),
+                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("Q1", gate_q1), ("Q3", gate_q3), ("Q5", gate_q5),
                      ("L1", gate_l1), ("P1", gate_p1),
                      ("D1", gate_d1), ("D3", gate_d3)):
         try:
@@ -607,7 +656,7 @@ def main():
     for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
                          ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3"),
                          ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1"), ("O10", gate_o9, "O9"), ("Q2", gate_q1, "Q1"),
-                         ("Q4", gate_q3, "Q3")):
+                         ("Q4", gate_q3, "Q3"), ("Q6", gate_q5, "Q5")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001

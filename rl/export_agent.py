@@ -430,6 +430,18 @@ def main():
                 raise SystemExit(
                     f"refusing to export {args.ckpt}: --market-orders {_mo} "
                     f"but msb has {int(arrays['msb'].shape[0])} rows")
+        if int(_ck_args.get("qty_head", 0) or 0):
+            # Read back what is about to be written, like msb and the depth
+            # blocks: an npz without the rung head exports an agent that plays
+            # the macros' default quantities, banks money and passes every
+            # existing check.
+            miss = [k for k in ("qw", "qb", "cqw") if k not in arrays]
+            if miss:
+                raise SystemExit(
+                    f"refusing to export {args.ckpt}: trained with --qty-head "
+                    f"but the npz would be missing {miss}, so the agent would "
+                    f"silently play the macros' default quantities.")
+
         # Same post-condition for depth. A plain (non-multi-head) deep actor
         # falls through to rl/policy.Policy, which has no `extra` module, and
         # load_state_dict(strict=False) drops every residual block without a

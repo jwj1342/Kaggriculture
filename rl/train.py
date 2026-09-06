@@ -544,6 +544,17 @@ def train(args, log_fn=None):
                 "and matching barnyard:<profile>/--fixed-market-profile")
     if args.qty_head and not args.multi_head:
         raise ValueError("--qty-head requires --multi-head")
+    if args.qty_head and args.couple_heads:
+        raise ValueError(
+            "--qty-head with --couple-heads is not implemented: the coupled "
+            "distribution takes no qlogits and dies at the first forward")
+    if args.qty_head and args.fixed_farm_tape:
+        raise ValueError(
+            "--qty-head with --fixed-farm-tape is refused: the elif chain in "
+            "build_actor_critic picks the quantity distribution and drops "
+            "MarketOnlyMultiHead, putting the tape-overridden farmer and all "
+            "twelve hand heads back inside the PPO ratio -- measured 3.678 "
+            "nats of dead heads per step")
     if args.market_orders != 1:
         if not 1 <= args.market_orders <= 10:
             raise ValueError("--market-orders must be 1..10 (the engine's "
@@ -620,7 +631,7 @@ def train(args, log_fn=None):
         # residual blocks loads into a net without them, silently discarding
         # them. --resume refuses; --init-from used to accept in silence.
         _src = ck.get("args") or {}
-        _drop = [k for k in ("depth", "market_orders")
+        _drop = [k for k in ("depth", "market_orders", "qty_head")
                  if _src.get(k) is not None
                  and int(_src[k]) != int(getattr(args, k))]
         if _drop:
@@ -698,7 +709,8 @@ def train(args, log_fn=None):
         # policy in silence -- the shape of the --iters chain failure.
         _prev = ck.get("args") or {}
         for _flag, _now in (("depth", args.depth),
-                            ("market_orders", args.market_orders)):
+                            ("market_orders", args.market_orders),
+                            ("qty_head", int(args.qty_head))):
             _was = _prev.get(_flag)
             if _was is not None and int(_was) != int(_now):
                 raise SystemExit(

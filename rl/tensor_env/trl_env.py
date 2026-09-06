@@ -376,6 +376,15 @@ class FrozenPolicyOpponent:
         if "msb" in arrays:
             self._slots = (_t.as_tensor(arrays["msb"]).to(device),
                            _t.as_tensor(arrays["cmw"]).to(device))
+        # Quantity rungs, held aside and played the same way the slot tables
+        # are. A snapshot without them plays the macros' default quantities --
+        # the pre-ladder behaviour -- so under --league the learner would train
+        # against copies of itself that cannot express what the head is for.
+        self._qty = None
+        if "qw" in arrays:
+            self._qty = (_t.as_tensor(arrays["qw"]).to(device),
+                         _t.as_tensor(arrays["qb"]).to(device),
+                         _t.as_tensor(arrays["cqw"]).to(device))
 
         def net_sd(prefix=""):
             sd = arrays_to_sd(arrays, prefix)
@@ -389,6 +398,9 @@ class FrozenPolicyOpponent:
             # opponent would be systematically weaker than the learner.
             sd.pop("slot_bias", None)
             sd.pop("couple_m", None)
+            sd.pop("qty.weight", None)     # rungs played via self._qty
+            sd.pop("qty.bias", None)
+            sd.pop("couple_q", None)
             return sd
 
         # Coupled snapshots (CoupledMultiHeadMasked exports): the market
@@ -454,14 +466,18 @@ class FrozenPolicyOpponent:
             if self._couple is not None:
                 raise ValueError("coupled snapshot without a hand head -- "
                                  "the coupling conditions on hand tasks")
-            return fa, self._market(ml, mm)
+            ma = self._market(ml, mm)
+            self.last_rungs = self._rungs(self._trunk_h(x), ma)
+            return fa, ma
         hl = self._hand_logits(x)
         hm = hand_task_mask_t(ep, player, hl.shape[-2])
         ha = hl.masked_fill(~hm, NEG).argmax(-1)
         if self._couple is not None:
             cfw, chw = self._couple
             ml = ml + cfw.t()[fa] + chw.t()[ha].mean(-2)
-        return fa, self._market(ml, mm), ha
+        ma = self._market(ml, mm)
+        self.last_rungs = self._rungs(self._trunk_h(x), ma)
+        return fa, ma, ha
 
     def _market(self, ml, mm):
         """argmax market action -- (B,) at K=1, (B, K) for a multi-order
@@ -478,6 +494,27 @@ class FrozenPolicyOpponent:
             a = lj.masked_fill(~mm, NEG).argmax(-1)
             cols.append(a); prev = a
         return torch.stack(cols, -1)
+
+    def _trunk_h(self, x):
+        """Trunk activation for the rung head (same net the macros came from)."""
+        net = self.net if self._hands is None or self._hands[0] == "net" \
+            else self.delta
+        return net.trunk(x) if hasattr(net, "trunk") else None
+
+    def _rungs(self, h, macros):
+        """Quantity rung per market slot, or None without a rung head."""
+        q = getattr(self, "_qty", None)
+        if q is None or h is None:
+            return None
+        qw, qb, cqw = q
+        nq = cqw.shape[0]
+        K = macros.shape[-1] if macros.dim() > 1 else 1
+        ql = (h @ qw.t() + qb).view(*h.shape[:-1], K, nq)
+        cols = []
+        for j in range(K):
+            mj = macros[..., j] if macros.dim() > 1 else macros
+            cols.append((ql[..., j, :] + cqw.t()[mj]).argmax(-1))
+        return torch.stack(cols, -1) if macros.dim() > 1 else cols[0]
 
 
 def _make_opponent(spec, device):
@@ -1057,10 +1094,22 @@ class KGTensorEnv(EnvBase):
             m_idx = torch.stack([oma, ma], 1)
         q_idx = None
         if qa is not None:
-            # The opponent has no quantity head; DEFAULT (0) is its historical
-            # behaviour exactly, so a zeros block leaves it unchanged.
             q_idx = torch.zeros_like(m_idx)
             q_idx[:, seat] = qa
+            # A snapshot WITH a rung head plays its own rungs; one without
+            # stays on DEFAULT (0), which is its historical behaviour exactly.
+            orung = getattr(self.opp_fn, "last_rungs", None)
+            if orung is not None:
+                if orung.dim() == 1:
+                    orung = orung.view(self.B, 1)
+                if orung.shape[1] > K:
+                    orung = orung[:, :K]
+                elif orung.shape[1] < K:
+                    orung = torch.cat(
+                        [orung, torch.zeros((self.B, K - orung.shape[1]),
+                                            dtype=torch.int64,
+                                            device=self.device)], 1)
+                q_idx[:, opp] = orung if K > 1 else orung.squeeze(-1)
         ep.step_idx(f_idx, m_idx, override=step_overrides or None,
                     h_idx=h_idx, q_idx=q_idx)
         if self.fixed_market_profile:
