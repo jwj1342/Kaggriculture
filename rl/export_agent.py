@@ -48,6 +48,9 @@ _W = dict(np.load(os.path.join(
     os.path.dirname(os.path.abspath(_O.__file__)), "weights.npz")))
 
 
+_h = None
+
+
 def _trunk_extra(h):
     # Residual blocks (--depth > 2). Zero-init second matrix at birth, so an
     # npz without them is a depth-2 net and this loop is a no-op.
@@ -60,9 +63,11 @@ def _trunk_extra(h):
 
 
 def _forward(x):
+    global _h
     h = np.maximum(0.0, _W["l1w"] @ x + _W["l1b"])
     h = np.maximum(0.0, _W["l2w"] @ h + _W["l2b"])
     h = _trunk_extra(h)
+    _h = h
     f, m = _W["fw"] @ h + _W["fb"], _W["mw"] @ h + _W["mb"]
     hl = _W["hw"] @ h + _W["hb"] if "hw" in _W else None
     if "d_l1w" in _W:  # residual export: frozen prior + learned correction
@@ -180,7 +185,17 @@ def _act(obs_dict):
         # loads-the-unwrapped-agent failure mode, one layer down.
         mlog = mlog + _W["cfw"][:, fa] + _W["chw"][:, tasks].mean(axis=1)
         mlog[~_A.market_mask(obs_dict)] = -1e9
-    if "msb" in _W:
+    def _qty(h, k, macro):
+        # Quantity rung for slot k, conditioned on that slot's macro. Rung 0
+        # is the macro's own quantity; an npz without the head returns 0 and
+        # the decode is unchanged.
+        if "qw" not in _W:
+            return 0
+        nq = _W["cqw"].shape[0]
+        ql = (_W["qw"] @ h + _W["qb"]).reshape(-1, nq)[k] + _W["cqw"][:, macro]
+        return int(np.argmax(ql))
+
+    if "msb" in _W or "qw" in _W:
         # Multi-order head (MultiOrderMultiHead): K market slots, slot k
         # conditioned on slot k-1's action. Emitting slot 0 alone would be a
         # different agent -- and one that looks fine, because a one-order
@@ -189,13 +204,14 @@ def _act(obs_dict):
         mask = _A.market_mask(obs_dict)
         out = None
         prev = None
-        for k in range(_W["msb"].shape[0]):
-            lk = mlog + _W["msb"][k]
+        nslots = _W["msb"].shape[0] if "msb" in _W else 1
+        for k in range(nslots):
+            lk = mlog if "msb" not in _W else mlog + _W["msb"][k]
             if prev is not None:
                 lk = lk + _W["cmw"][:, prev]
             lk[~mask] = -1e9
             a = _pick(lk)
-            d = _A.decode_multi(obs_dict, fa, tasks, a)
+            d = _A.decode_multi(obs_dict, fa, tasks, a, _qty(_h, k, a))
             if out is None:
                 out = d                       # slot 0: the FULL decode
             else:

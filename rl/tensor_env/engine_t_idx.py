@@ -158,7 +158,8 @@ class _Tabs:
                  "dir_lut", "key100_lut", "key1024_lut", "shed_dir",
                  "crop_first_i8", "u_arange", "hand_op_lut", "mfk_lut",
                  "hand_direct_op", "hand_direct_arg", "hand_direct_qty",
-                 "pack_clear", "mop_lut", "mitem_lut", "mrem_lut", "move_lut",
+                 "pack_clear", "mop_lut", "mitem_lut", "mrem_lut", "qty_lut",
+                 "move_lut",
                  "move_code", "plant_deadline", "animal_item")
 
 
@@ -312,6 +313,7 @@ def _tabs(device):
         mrem = [0] + [0] * 9 + [1] * 5 + [0, 1] + [1] * 3 + [0, 0] + [0] * 9 \
             + [A.SEED_BULK] * 5
         assert len(mop) == len(mitem) == len(mrem) == A.N_MARKET == 36
+        t.qty_lut = mk(list(A.QTY_OPTS))
         t.mop_lut = mk(mop)
         t.mitem_lut = mk(mitem)
         t.mrem_lut = mk(mrem)
@@ -845,7 +847,7 @@ def _idx_decode_hands(self, pool_masks, t, h_tasks=None, feed_plane=None,
     return ops, args, qtys
 
 
-def _idx_decode_market(self, m_idx, herd, day, t):
+def _idx_decode_market(self, m_idx, herd, day, t, q_idx=None):
     """actions._market_action to (B, P, S) order-slot tensors. Quantities are
     pre-step by construction (this runs before the unit phase, like the
     caller-side decode). Slot 0 is three LUT gathers on the head index plus
@@ -868,6 +870,22 @@ def _idx_decode_market(self, m_idx, herd, day, t):
         m_extra = m_idx[..., 1:] if m_idx.shape[-1] > 1 else None
         m_idx = m_idx[..., 0]
     m = m_idx
+    # Quantity ladder (actions.QTY_OPTS). Index 0 is the macro's own quantity,
+    # so q_idx=None and an all-zero q_idx are the historical decode. Applies to
+    # SELL / BUY_SEED / BUY_PRODUCT / BUY_ANIMAL only; HIRE, BUY_LAND and NOOP
+    # carry no quantity, and the liquidation compound below ignores it exactly
+    # as actions._market_action does (it returns before the ladder).
+    q_extra = None
+    if q_idx is None:
+        q0 = torch.zeros_like(m)
+    else:
+        q_idx = torch.as_tensor(q_idx, dtype=i64, device=dev)
+        if q_idx.dim() == 3:
+            q_extra = q_idx[..., 1:] if q_idx.shape[-1] > 1 else None
+            q0 = q_idx[..., 0]
+        else:
+            q0 = q_idx
+    qlad = t.qty_lut[q0]                       # 0 where the rung is DEFAULT
 
     op0 = t.mop_lut[m]
     item0 = t.mitem_lut[m]
@@ -879,10 +897,16 @@ def _idx_decode_market(self, m_idx, herd, day, t):
     # to OP_SEED, so `sell` is already False there -- reverting to `m >= 22`
     # changes nothing on 2,592 (m0,m1) pairs across day 5 and day 29.
     sq = torch.where((m >= 22) & (m < 31), (cnt + 1) // 2, cnt)
+    sq = torch.where(qlad > 0, torch.minimum(qlad, cnt), sq)
     m_op[..., 0] = torch.where(sell & (cnt == 0), torch.zeros_like(op0), op0)
     m_item[..., 0] = item0
-    m_rem[..., 0] = torch.where(sell, sq, torch.where(
-        m == 15, (2 * herd).clamp(min=5), t.mrem_lut[m]))   # 15 = BUY_WHEAT
+    buy_rem = torch.where(m == 15, (2 * herd).clamp(min=5), t.mrem_lut[m])
+    # By OP, not by the LUT value: BUY_WHEAT's mrem_lut entry is 0 because its
+    # quantity is computed at decode, so a `mrem_lut > 0` guard would have
+    # excluded exactly the op the ladder exists for (-105,000 margin).
+    qty_op = (op0 == ET.OP_SEED) | (op0 == ET.OP_BUYP) | (op0 == ET.OP_ANIMAL)
+    buy_rem = torch.where((qlad > 0) & qty_op, qlad, buy_rem)
+    m_rem[..., 0] = torch.where(sell, sq, buy_rem)          # 15 = BUY_WHEAT
 
     if day >= R.LIQUIDATE_DAY and bool(sell.any()):
         # liquidation-day compound decode: whole shed, primary product
@@ -934,14 +958,20 @@ def _idx_decode_market(self, m_idx, herd, day, t):
         for kx in range(m_extra.shape[-1]):
             free_ix = (m_op != 0).sum(-1)                 # (B, P)
             mk = m_extra[..., kx]
+            qk = t.qty_lut[q_extra[..., kx]] if q_extra is not None \
+                else torch.zeros_like(mk)
             op_k = t.mop_lut[mk]
             it_k = t.mitem_lut[mk]
             cnt_k = shed9.gather(2, it_k.unsqueeze(-1)).squeeze(-1)
             sell_k = op_k == ET.OP_SELL
             sq_k = torch.where((mk >= 22) & (mk < 31), (cnt_k + 1) // 2, cnt_k)
+            sq_k = torch.where(qk > 0, torch.minimum(qk, cnt_k), sq_k)
             op_k = torch.where(sell_k & (cnt_k == 0), torch.zeros_like(op_k), op_k)
-            rem_k = torch.where(sell_k, sq_k, torch.where(
-                mk == 15, (2 * herd).clamp(min=5), t.mrem_lut[mk]))
+            buy_k = torch.where(mk == 15, (2 * herd).clamp(min=5), t.mrem_lut[mk])
+            qop_k = ((op_k == ET.OP_SEED) | (op_k == ET.OP_BUYP)
+                     | (op_k == ET.OP_ANIMAL))
+            buy_k = torch.where((qk > 0) & qop_k, qk, buy_k)
+            rem_k = torch.where(sell_k, sq_k, buy_k)
             room = free_ix < S
             ix = free_ix.clamp(max=S - 1).unsqueeze(-1)   # (B, P, 1)
             keep = torch.gather(m_op, -1, ix).squeeze(-1)
@@ -1346,7 +1376,7 @@ def _idx_market(self, m_op, m_item, m_rem, t):
 # step_idx
 # ---------------------------------------------------------------------------
 
-def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
+def step_idx(self, f_idx, m_idx, override=None, h_idx=None, q_idx=None):
     """Advance every lane one turn from action-head indices.
 
     f_idx, m_idx: (B, 2) integer tensors / array-likes -- per lane, per
@@ -1491,7 +1521,7 @@ def step_idx(self, f_idx, m_idx, override=None, h_idx=None):
     hand_ops, hand_args, hand_qtys = self._idx_decode_hands(
         [harv_f, unwat_f, uncared_f, fready_f, weed_f], t, h_tasks,
         unfed_f, plant_kit, unfert_f, place_kit)
-    m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t)
+    m_op, m_item, m_rem = self._idx_decode_market(m_idx, herd, day, t, q_idx)
 
     zero = torch.zeros((B, P), dtype=i64, device=dev)
     for entry in ([] if override is None

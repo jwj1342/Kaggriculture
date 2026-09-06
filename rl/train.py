@@ -287,6 +287,17 @@ def build_parser():
                          "Inference is not the constraint: the engine allows "
                          "1 s/turn and a 1024-512 forward costs 0.70 ms "
                          "(0.07%%) -- docs/RUNS.md verdict 37.")
+    ap.add_argument("--qty-head", action="store_true",
+                    help="one quantity rung per market slot "
+                         "(actions.QTY_OPTS). Rung 0 is the macro's own "
+                         "quantity, so an untrained policy is byte-identical "
+                         "without it. The gap it closes is measured: across "
+                         "the mined tapes 6,674 market orders carry a "
+                         "quantity over 66 values and the policy could say "
+                         "two, and truncating n04 to what it can express "
+                         "costs -105,000 margin on BUY_PRODUCT WHEAT, -70,000 "
+                         "on SELL and -33,000 on BUY_ANIMAL against a "
+                         "+-10,000 control band. Requires --multi-head.")
     ap.add_argument("--market-orders", type=int, default=1,
                     help="K market order slots per turn (autoregressive "
                          "multi-order head, rl/TODO.md 20). K=1 is the "
@@ -531,6 +542,8 @@ def train(args, log_fn=None):
             raise ValueError(
                 "--kickstart-only-until requires --multi-head, --ks-every 1, "
                 "and matching barnyard:<profile>/--fixed-market-profile")
+    if args.qty_head and not args.multi_head:
+        raise ValueError("--qty-head requires --multi-head")
     if args.market_orders != 1:
         if not 1 <= args.market_orders <= 10:
             raise ValueError("--market-orders must be 1..10 (the engine's "
@@ -568,7 +581,7 @@ def train(args, log_fn=None):
         opp_noise=args.opp_noise, handicap=args.handicap,
         potential=args.potential, shape_scale=args.shape_scale,
         opp_lambda=args.opp_lambda, multi_head=args.multi_head,
-        market_orders=args.market_orders,
+        market_orders=args.market_orders, qty_head=args.qty_head,
         terminal_cash=getattr(args, "terminal_cash", False),
         kickstart=args.kickstart, build_bonus=args.build_bonus,
         bank=args.bank, bank_frac=args.bank_frac,
@@ -585,6 +598,7 @@ def train(args, log_fn=None):
         v_hidden=args.v_hidden, device=dev,
         residual_base=args.residual_base, multi=args.multi_head,
         market_orders=args.market_orders, depth=args.depth,
+        qty_head=args.qty_head,
         couple=args.couple_heads,
         market_only=bool(args.fixed_farm_tape))
     if args.fixed_farm_tape:

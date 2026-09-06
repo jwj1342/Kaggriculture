@@ -552,7 +552,7 @@ class KGTensorEnv(EnvBase):
                  win_bonus=3.0, margin_bonus=0.0, margin_scale=30000.0,
                  opp_noise=0.0, handicap=0, potential="networth",
                  shape_scale=3000.0, opp_lambda=0.0, multi_head=False,
-                 market_orders=1,
+                 market_orders=1, qty_head=False,
                  kickstart="", build_bonus=0.0, bank="", bank_frac=0.5,
                  shape_gamma=0.0, ks_every=1, fert_credit=0.0,
                  land_value=0.0, fixed_market_profile="",
@@ -769,6 +769,11 @@ class KGTensorEnv(EnvBase):
         # action space byte-for-byte; K > 1 appends K-1 macro slots that land
         # in the tail of the order queue and never displace an existing order.
         self.market_orders = max(1, int(market_orders))
+        # Quantity ladder head (actions.QTY_OPTS), one index per market slot.
+        # Off by default: with it off the action layout is byte-identical to
+        # what it was, and index 0 is the macro's own quantity anyway, so an
+        # all-zero quantity block is also the historical decode.
+        self.qty_head = bool(qty_head)
         bs, dev = self.batch_size, self.device
         obs_entries = dict(
             observation=Unbounded(shape=(*bs, O.OBS_DIM),
@@ -780,6 +785,8 @@ class KGTensorEnv(EnvBase):
             money=Unbounded(shape=(*bs,), dtype=torch.float64, device=dev),
             opp_money=Unbounded(shape=(*bs,), dtype=torch.float64, device=dev))
         nvec = [A.N_FARMER] + [A.N_MARKET] * self.market_orders
+        if self.qty_head:
+            nvec = nvec + [A.N_QTY] * self.market_orders
         if self.multi_head:
             obs_entries["hand_mask"] = Binary(
                 n=A.N_HAND_TASK, shape=(*bs, A.MAX_HANDS, A.N_HAND_TASK),
@@ -904,11 +911,16 @@ class KGTensorEnv(EnvBase):
         K = self.market_orders
         fa = action[..., 0]
         ma = action[..., 1] if K == 1 else action[..., 1:1 + K]
+        qa = None
+        off = 1 + K
+        if self.qty_head:
+            qa = action[..., off] if K == 1 else action[..., off:off + K]
+            off += K
         h_idx = None
         if self.multi_head:
             h_idx = torch.zeros((self.B, 2, A.MAX_HANDS), dtype=torch.int64,
                                 device=self.device)
-            h_idx[:, seat] = action[..., 1 + K:]
+            h_idx[:, seat] = action[..., off:]
         if self.kickstart_force:
             tf = tensordict["teacher_f"]
             tf_safe = tf.clamp(min=0)
@@ -994,8 +1006,13 @@ class KGTensorEnv(EnvBase):
                                  device=self.device))
             f_idx[:, seat] = fa
             m_idx[:, seat] = ma
+            q_idx = None
+            if qa is not None:
+                q_idx = torch.zeros_like(m_idx)   # opponent stays on DEFAULT
+                q_idx[:, seat] = qa
             overrides = [(opp, ops), *step_overrides]
-            ep.step_idx(f_idx, m_idx, override=overrides, h_idx=h_idx)
+            ep.step_idx(f_idx, m_idx, override=overrides, h_idx=h_idx,
+                        q_idx=q_idx)
             if self.fixed_market_profile:
                 self._record_fixed_market_plants(
                     before_kind, before_crop, before_planted)
@@ -1038,7 +1055,14 @@ class KGTensorEnv(EnvBase):
         else:
             f_idx = torch.stack([ofa, fa], 1)
             m_idx = torch.stack([oma, ma], 1)
-        ep.step_idx(f_idx, m_idx, override=step_overrides or None, h_idx=h_idx)
+        q_idx = None
+        if qa is not None:
+            # The opponent has no quantity head; DEFAULT (0) is its historical
+            # behaviour exactly, so a zeros block leaves it unchanged.
+            q_idx = torch.zeros_like(m_idx)
+            q_idx[:, seat] = qa
+        ep.step_idx(f_idx, m_idx, override=step_overrides or None,
+                    h_idx=h_idx, q_idx=q_idx)
         if self.fixed_market_profile:
             self._record_fixed_market_plants(
                 before_kind, before_crop, before_planted)

@@ -104,8 +104,8 @@ def gate_o3(args, broken=False):
     orig = X._idx_decode_market
     tally = {"extra": 0, "destroyed": 0}
 
-    def spy(self, m_idx, herd, day, t):
-        outK = orig(self, m_idx, herd, day, t)
+    def spy(self, m_idx, herd, day, t, q_idx=None):
+        outK = orig(self, m_idx, herd, day, t, q_idx)
         if m_idx.dim() == 3:
             out1 = orig(self, m_idx[..., 0], herd, day, t)
             live1 = int((out1[0] != 0).sum())
@@ -269,9 +269,9 @@ def gate_o7(args, broken=False):
     orig = X._idx_decode_market
     bad = {"holes": 0, "order": 0, "checked": 0}
 
-    def spy(self, m_idx, herd, day, t):
+    def spy(self, m_idx, herd, day, t, q_idx=None):
         if m_idx.dim() != 3:
-            return orig(self, m_idx, herd, day, t)
+            return orig(self, m_idx, herd, day, t, q_idx)
         base = orig(self, m_idx[..., :1], herd, day, t)
         full = orig(self, m_idx, herd, day, t)
         if broken:                      # the shipped layout: tail, reversed
@@ -370,6 +370,85 @@ def gate_o9(args, broken=False):
                        f"e.g. {bad[0][0]}+{bad[0][1]}: tensor {bad[0][2]} "
                        f"orders vs deployed {bad[0][3]}")
     return True, f"O9: tensor and deployed order counts agree on {len(combos)} pairs"
+
+
+def gate_q1(args, broken=False):
+    """Cross-implementation: the tensor quantity ladder == actions'.
+
+    Compares m_rem out of _idx_decode_market against actions._market_action's
+    order for the same macro and the same rung, on a state with stock. `broken`
+    ignores the rung in the reference, which is what a decode that silently
+    dropped q_idx would look like, and must fail.
+    """
+    from kaggle_environments import make
+    env = make("kaggriculture", configuration={"seed": 9}, debug=False)
+    raw = {**env.reset()[0].observation, "player": 0}
+    raw["private"]["shed"]["WHEAT"] = 40
+    ep = _ep([9] * args.lanes, 20, args.device)
+    ep.shed[:, :, A.PRODUCT_LIST.index("WHEAT")] = 40
+    t = X._tabs(args.device)
+    names = ["SELL_WHEAT", "SELL_HALF_WHEAT", "BUY_SEED_WHEAT",
+             "BUY_SEED_BULK_WHEAT", "BUY_WHEAT", "BUY_COW", "BUY_FERT"]
+    bad = []
+    for nm in names:
+        mi_ix = A.MARKET_ACTIONS.index(nm)
+        for q in range(A.N_QTY):
+            mi = torch.full((args.lanes, 2), mi_ix, dtype=torch.int64)
+            qi = torch.full((args.lanes, 2), q, dtype=torch.int64)
+            _op, _it, rem = ep._idx_decode_market(
+                mi, torch.zeros((args.lanes, 2), dtype=torch.int64), 5, t, qi)
+            got = int(rem[0, 0, 0])
+            ref = A._market_action(raw, nm, 0 if broken else q)
+            want = int(ref[0][2]) if ref and len(ref[0]) > 2 else 0
+            if got != want:
+                bad.append((nm, q, got, want))
+    if bad:
+        return False, (f"Q1: {len(bad)} (macro, rung) pairs disagree, e.g. "
+                       f"{bad[0][0]} rung {bad[0][1]}: tensor {bad[0][2]} vs "
+                       f"actions {bad[0][3]}")
+    return True, (f"Q1: tensor and actions agree on {len(names)} macros x "
+                  f"{A.N_QTY} rungs")
+
+
+def gate_q3(args, broken=False):
+    """An initialised quantity head must emit rung 0 everywhere.
+
+    That is the contract "adding the head changes nothing until it learns",
+    and it has to hold in the DECODE, not only in the parameters. `broken`
+    zeroes the opening bias and must fail.
+    """
+    from trl_policy import MultiActorNet, MultiOrderQtyHead, QTY_DEFAULT_BIAS
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import obs as O
+    K = 4
+    torch.manual_seed(21)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 128, 64, n_hands=12,
+                        n_hand_task=A.N_HAND_TASK, market_orders=K,
+                        qty_head=True)
+    if broken:
+        with torch.no_grad():
+            net.qty.bias.zero_()
+    cls = type("B", (MultiOrderQtyHead,),
+               {"slot_bias": net.slot_bias, "couple_m": net.couple_m,
+                "couple_q": net.couple_q})
+    from trl_env import KGTensorEnv
+    env = KGTensorEnv(6, device="cpu", episode_steps=48, market_orders=K,
+                      qty_head=True, multi_head=True, potential="future-mkt",
+                      opponent="starter")
+    td = env.reset()
+    with torch.no_grad():
+        fl, ml, hl, ql = net(td["observation"])
+        d = cls(fl, ml, hl, ql, td["farmer_mask"], td["market_mask"],
+                td["hand_mask"])
+        m = d.mode
+    qblock = m[:, 1 + K:1 + 2 * K]
+    n_off = int((qblock != 0).sum())
+    if n_off:
+        return False, (f"Q3: {n_off}/{qblock.numel()} rungs are not 0 at init "
+                       f"(bias={float(net.qty.bias.view(K, A.N_QTY)[0, 0]):.2f}); "
+                       f"the head changes behaviour before it has learned")
+    return True, (f"Q3: every rung opens at 0 "
+                  f"(QTY_DEFAULT_BIAS={QTY_DEFAULT_BIAS}), width {m.shape[-1]}")
 
 
 def gate_l1(args, broken=False):
@@ -516,7 +595,8 @@ def main():
     args = ap.parse_args()
     ok = True
     for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
-                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("L1", gate_l1), ("P1", gate_p1),
+                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("Q1", gate_q1), ("Q3", gate_q3),
+                     ("L1", gate_l1), ("P1", gate_p1),
                      ("D1", gate_d1), ("D3", gate_d3)):
         try:
             good, msg = fn(args)
@@ -526,7 +606,8 @@ def main():
         ok &= good
     for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
                          ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3"),
-                         ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1"), ("O10", gate_o9, "O9")):
+                         ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1"), ("O10", gate_o9, "O9"), ("Q2", gate_q1, "Q1"),
+                         ("Q4", gate_q3, "Q3")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001

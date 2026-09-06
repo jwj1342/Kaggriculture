@@ -162,6 +162,10 @@ COUPLE_ARRAYS = {"cfw": "couple_f", "chw": "couple_h"}
 MORDER_ARRAYS = {"msb": "slot_bias", "cmw": "couple_m"}
 # Opening bias on market slots 1.. toward NOOP; see MultiActorNet.
 SLOT_NOOP_BIAS = 2.5
+# Quantity head: opening bias toward QTY_OPTS[0] = "the macro's own quantity",
+# so an untrained policy is byte-identical to one without the head.
+QTY_ARRAYS = {"qw": "qty.weight", "qb": "qty.bias", "cqw": "couple_q"}
+QTY_DEFAULT_BIAS = 2.5
 
 
 def _depth_arrays(sd, prefix=""):
@@ -179,7 +183,8 @@ def actor_arrays(sd, prefix="", numpy=False):
     """State dict (keys under `prefix`) -> weights.npz array dict."""
     out = {}
     for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS,
-                   **MORDER_ARRAYS, **_depth_arrays(sd, prefix)}.items():
+                   **MORDER_ARRAYS, **QTY_ARRAYS,
+                   **_depth_arrays(sd, prefix)}.items():
         k = prefix + pk
         if k in sd:
             v = sd[k]
@@ -528,6 +533,105 @@ class MultiOrderMultiHead(D.Distribution):
         return self.mode
 
 
+class MultiOrderQtyHead(MultiOrderMultiHead):
+    """MultiOrderMultiHead plus one QUANTITY rung per market slot.
+
+    Action is (..., 1 + 2K + H): [farmer, m_0..m_{K-1}, q_0..q_{K-1}, hands].
+    Slot k draws its macro first, then its rung conditioned on that macro --
+    what you buy decides how much -- so the order is
+    f, h, (m_0, q_0), (m_1, q_1), ... with m_k also conditioned on m_{k-1}.
+
+    Why (docs/RUNS.md verdict 38): across the 13 mined tapes 6,674 market
+    orders carry a quantity over 66 distinct values and the policy could say
+    two of them. Truncating n04's own orders to what it can express costs
+    -105,000 margin on BUY_PRODUCT WHEAT, -70,000 on SELL and -33,000 on
+    BUY_ANIMAL, against a +-10,000 control band.
+
+    Contract, load-bearing like the others: couple_q is ZERO and the rung bias
+    favours QTY_OPTS[0] = "the macro's own quantity", so an untrained policy
+    emits exactly what a policy without this head emits, in training and in a
+    greedy export alike.
+    """
+
+    couple_q = None    # (n_qty, n_market), bound by build_actor_critic
+
+    def __init__(self, flogits, mlogits, hlogits, qlogits,
+                 fmask, mmask, hmask):
+        super().__init__(flogits, mlogits, hlogits, fmask, mmask, hmask)
+        self._qraw = qlogits                       # (..., K, n_qty)
+        H = self.hlp.shape[-2]
+        self._event = 1 + 2 * self.K + H
+        super(MultiOrderMultiHead, self).__init__(
+            batch_shape=self.flp.shape[:-1],
+            event_shape=torch.Size([self._event]), validate_args=False)
+
+    def _qlp(self, k, macro):
+        """log-probs for slot k's rung given that slot's sampled macro."""
+        return F.log_softmax(self._qraw[..., k, :]
+                             + self.couple_q.t()[macro], -1)
+
+    def _draw(self, greedy=False):
+        ms, qs, prev = [], [], None
+        for k in range(self.K):
+            lp = self._slot_lp(k, prev)
+            a = (lp.argmax(-1) if greedy else torch.multinomial(
+                lp.reshape(-1, lp.shape[-1]).exp(), 1
+            ).squeeze(-1).reshape(self.batch_shape))
+            qlp = self._qlp(k, a)
+            q = (qlp.argmax(-1) if greedy else torch.multinomial(
+                qlp.reshape(-1, qlp.shape[-1]).exp(), 1
+            ).squeeze(-1).reshape(self.batch_shape))
+            ms.append(a); qs.append(q); prev = a
+        return ms, qs
+
+    def sample(self, sample_shape=torch.Size()):
+        flp2 = self.flp.reshape(-1, self.flp.shape[-1])
+        hlp2 = self.hlp.reshape(-1, self.hlp.shape[-1])
+        fa = torch.multinomial(flp2.exp(), 1).squeeze(-1).reshape(self.batch_shape)
+        ha = torch.multinomial(hlp2.exp(), 1).squeeze(-1).reshape(
+            self.hlp.shape[:-1])
+        ms, qs = self._draw()
+        return torch.cat([fa.unsqueeze(-1)]
+                         + [a.unsqueeze(-1) for a in ms]
+                         + [q.unsqueeze(-1) for q in qs] + [ha], -1)
+
+    def log_prob(self, action):
+        K = self.K
+        fa, ha = action[..., 0], action[..., 1 + 2 * K:]
+        lp = (self.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
+              + self.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))
+        prev = None
+        for k in range(K):
+            a = action[..., 1 + k]
+            q = action[..., 1 + K + k]
+            lp = lp + self._slot_lp(k, prev).gather(
+                -1, a.unsqueeze(-1)).squeeze(-1)
+            lp = lp + self._qlp(k, a).gather(-1, q.unsqueeze(-1)).squeeze(-1)
+            prev = a
+        return lp
+
+    def entropy(self):
+        ent = (-(self.flp.exp() * self.flp).sum(-1)
+               - (self.hlp.exp() * self.hlp).sum((-1, -2)))
+        prev = None
+        for k in range(self.K):
+            lp = self._slot_lp(k, prev)
+            ent = ent - (lp.exp() * lp).sum(-1)
+            mode = lp.argmax(-1)
+            qlp = self._qlp(k, mode)
+            ent = ent - (qlp.exp() * qlp).sum(-1)
+            prev = mode
+        return ent
+
+    @property
+    def mode(self):
+        ms, qs = self._draw(greedy=True)
+        return torch.cat([self.flp.argmax(-1, keepdim=True)]
+                         + [a.unsqueeze(-1) for a in ms]
+                         + [q.unsqueeze(-1) for q in qs]
+                         + [self.hlp.argmax(-1)], -1)
+
+
 class CoupledMultiHeadMasked(D.Distribution):
     """MultiHeadMasked with the market head CONDITIONED on the same turn's
     farmer action and hand tasks (autoregressive order f, h -> m).
@@ -640,7 +744,7 @@ class MultiActorNet(ActorNet):
 
     def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                  n_hands=12, n_hand_task=None, auto_bias=2.5, couple=False,
-                 market_orders=1, depth=2):
+                 market_orders=1, depth=2, qty_head=False):
         super().__init__(obs_dim, n_farmer, n_market, hidden1, hidden2,
                          depth=depth)
         self.market_orders = max(1, int(market_orders))
@@ -658,7 +762,8 @@ class MultiActorNet(ActorNet):
             # not shift the init stream of the shared layers either.
             self.couple_f = nn.Parameter(torch.zeros(n_market, n_farmer))
             self.couple_h = nn.Parameter(torch.zeros(n_market, n_hand_task))
-        if self.market_orders > 1:
+        self.qty_head = bool(qty_head)
+        if self.market_orders > 1 or self.qty_head:
             # Multi-order market head (rl/TODO.md 20). The gap it closes is
             # measured, not assumed: capping closer_cleo at ONE market order a
             # turn costs it -89,479 margin and bankrupts the farm (money 80,647
@@ -685,10 +790,26 @@ class MultiActorNet(ActorNet):
             with torch.no_grad():
                 self.slot_bias[1:, 0] = SLOT_NOOP_BIAS
             self.couple_m = nn.Parameter(torch.zeros(n_market, n_market))
+        if self.qty_head:
+            # One rung index per market slot, conditioned on that slot's macro
+            # (what you buy decides how much). couple_q is ZERO-init and the
+            # bias favours rung 0, so an untrained policy emits the macro's own
+            # quantity everywhere and is byte-identical to no head at all.
+            import actions as _A
+            self.n_qty = _A.N_QTY
+            self.qty = _ortho(
+                nn.Linear(hidden2, self.market_orders * self.n_qty), 1e-4)
+            with torch.no_grad():
+                self.qty.bias.view(self.market_orders,
+                                   self.n_qty)[:, 0] = QTY_DEFAULT_BIAS
+            self.couple_q = nn.Parameter(torch.zeros(self.n_qty, n_market))
 
     def forward(self, x):
         h = self.trunk(x)
         hl = self.hands(h).view(*x.shape[:-1], self.n_hands, self.n_hand_task)
+        if getattr(self, "qty_head", False):
+            ql = self.qty(h).view(*x.shape[:-1], self.market_orders, self.n_qty)
+            return self.farmer(h), self.market(h), hl, ql
         return self.farmer(h), self.market(h), hl
 
     def state_np(self):
@@ -698,6 +819,10 @@ class MultiActorNet(ActorNet):
         if hasattr(self, "couple_f"):
             out["cfw"] = self.couple_f.detach().cpu().float().numpy()
             out["chw"] = self.couple_h.detach().cpu().float().numpy()
+        if getattr(self, "qty_head", False):
+            out["qw"] = self.qty.weight.detach().cpu().float().numpy()
+            out["qb"] = self.qty.bias.detach().cpu().float().numpy()
+            out["cqw"] = self.couple_q.detach().cpu().float().numpy()
         if hasattr(self, "slot_bias"):
             # Multi-order head. Both arrays MUST ship: an export that drops
             # them plays slot 0 only, which is a different agent that scores
@@ -759,7 +884,7 @@ except ImportError:  # torchrl absent: the raw nets are still importable
 
 def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                        v_hidden=256, device="cpu", residual_base="",
-                       market_orders=1, depth=2,
+                       market_orders=1, depth=2, qty_head=False,
                        multi=False, n_hands=12, n_hand_task=None,
                        couple=False, market_only=False):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
@@ -827,13 +952,17 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                                       hidden2, n_hands, n_hand_task,
                                       couple=couple,
                                       market_orders=market_orders,
-                                      depth=depth).to(device)
-        logits_mod = TensorDictModule(
-            actor_net, in_keys=["observation"],
-            out_keys=["flogits", "mlogits", "hlogits"])
+                                      depth=depth,
+                                      qty_head=qty_head).to(device)
+        out_keys = ["flogits", "mlogits", "hlogits"]
         dist_keys = {"flogits": "flogits", "mlogits": "mlogits",
                      "hlogits": "hlogits", "fmask": "farmer_mask",
                      "mmask": "market_mask", "hmask": "hand_mask"}
+        if qty_head:
+            out_keys = out_keys + ["qlogits"]
+            dist_keys["qlogits"] = "qlogits"
+        logits_mod = TensorDictModule(
+            actor_net, in_keys=["observation"], out_keys=out_keys)
         if couple:
             # A per-build subclass binds the coupling PARAMETERS as class
             # attributes: ProbabilisticActor instantiates the distribution
@@ -851,11 +980,13 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                 HAS_ENTROPY[dist_cls] = True
             except ImportError:
                 pass
-        elif market_orders > 1:
-            dist_cls = type("MultiOrderMultiHeadBound",
-                            (MultiOrderMultiHead,),
-                            {"slot_bias": actor_net.slot_bias,
-                             "couple_m": actor_net.couple_m})
+        elif market_orders > 1 or qty_head:
+            base = MultiOrderQtyHead if qty_head else MultiOrderMultiHead
+            attrs = {"slot_bias": actor_net.slot_bias,
+                     "couple_m": actor_net.couple_m}
+            if qty_head:
+                attrs["couple_q"] = actor_net.couple_q
+            dist_cls = type("MultiOrderMultiHeadBound", (base,), attrs)
             try:
                 from torchrl.modules.distributions import HAS_ENTROPY
                 HAS_ENTROPY[dist_cls] = True
