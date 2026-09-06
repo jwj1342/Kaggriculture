@@ -64,3 +64,14 @@ echo "[Kaggriculture] root       = ${PROJECT_ROOT}"
 echo "[Kaggriculture] python     = $(python -V 2>&1)"
 echo "[Kaggriculture] kaggle CLI = $(kaggle --version 2>/dev/null | tail -1)"
 echo "[Kaggriculture] credentials= ${KAGGLE_CONFIG_DIR}"
+
+# Slurm client on PATH must match the controller's plugins. 2026-09-06: the
+# cluster moved to 25.11.8 while the default PATH still resolved sbatch/squeue
+# from 24.11.7, and a 24.x binary loading 25.x plugins dies with
+# "Incompatible Slurm plugin ... auth_munge.so" -- squeue then prints to stderr
+# and `| wc -l` reads a FALSE EMPTY QUEUE. Guarded on existence, so a personal
+# machine without Slurm is unaffected.
+if [ -d /opt/software/slurm/current/bin ]; then
+    PATH="/opt/software/slurm/current/bin:$PATH"
+    export PATH
+fi
