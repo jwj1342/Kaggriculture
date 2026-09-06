@@ -98,12 +98,22 @@ HANDS_ARRAYS = {"hw": "hands.weight", "hb": "hands.bias"}
 # the factored policy exactly (that identity is the load/lane contract,
 # gated by test_couple.py).
 COUPLE_ARRAYS = {"cfw": "couple_f", "chw": "couple_h"}
+# Multi-order head (MultiOrderMultiHead). Both arrays ship or none does:
+# an npz carrying only the eight mandatory arrays plays SLOT 0 ALONE, a
+# one-order agent that banks money and passes every existing check.
+# export_agent.py asserts msb is present whenever the checkpoint says
+# --market-orders > 1, and asserts it AFTER building the arrays -- the
+# first version of that guard read the checkpoint instead and passed
+# while actor_arrays silently dropped both tables (measured: the export
+# emitted one order on all 719 turns).
+MORDER_ARRAYS = {"msb": "slot_bias", "cmw": "couple_m"}
 
 
 def actor_arrays(sd, prefix="", numpy=False):
     """State dict (keys under `prefix`) -> weights.npz array dict."""
     out = {}
-    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS}.items():
+    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS,
+                   **MORDER_ARRAYS}.items():
         k = prefix + pk
         if k in sd:
             v = sd[k]
@@ -118,7 +128,8 @@ def actor_arrays(sd, prefix="", numpy=False):
 def arrays_to_sd(arrays, prefix=""):
     """weights.npz arrays (optionally d_-prefixed) -> actor state dict."""
     sd = {}
-    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS}.items():
+    for ak, pk in {**ACTOR_ARRAYS, **HANDS_ARRAYS, **COUPLE_ARRAYS,
+                   **MORDER_ARRAYS}.items():
         k = prefix + ak
         if k in arrays:
             sd[pk] = torch.as_tensor(arrays[k])
@@ -592,6 +603,14 @@ class MultiActorNet(ActorNet):
         if hasattr(self, "couple_f"):
             out["cfw"] = self.couple_f.detach().cpu().float().numpy()
             out["chw"] = self.couple_h.detach().cpu().float().numpy()
+        if hasattr(self, "slot_bias"):
+            # Multi-order head. Both arrays MUST ship: an export that drops
+            # them plays slot 0 only, which is a different agent that scores
+            # silently -- the same shape as the wrapped-agent trap, one layer
+            # down. export_agent.py refuses a multi-order checkpoint whose npz
+            # lacks msb.
+            out["msb"] = self.slot_bias.detach().cpu().float().numpy()
+            out["cmw"] = self.couple_m.detach().cpu().float().numpy()
         return out
 
 

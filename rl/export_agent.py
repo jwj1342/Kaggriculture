@@ -168,6 +168,28 @@ def _act(obs_dict):
         # loads-the-unwrapped-agent failure mode, one layer down.
         mlog = mlog + _W["cfw"][:, fa] + _W["chw"][:, tasks].mean(axis=1)
         mlog[~_A.market_mask(obs_dict)] = -1e9
+    if "msb" in _W:
+        # Multi-order head (MultiOrderMultiHead): K market slots, slot k
+        # conditioned on slot k-1's action. Emitting slot 0 alone would be a
+        # different agent -- and one that looks fine, because a one-order
+        # policy still banks money. Orders are concatenated in slot order and
+        # capped at MAX_ORDERS; the engine drops extras silently.
+        mask = _A.market_mask(obs_dict)
+        out = None
+        prev = None
+        for k in range(_W["msb"].shape[0]):
+            lk = mlog + _W["msb"][k]
+            if prev is not None:
+                lk = lk + _W["cmw"][:, prev]
+            lk[~mask] = -1e9
+            a = _pick(lk)
+            d = _A.decode_multi(obs_dict, fa, tasks, a)
+            if out is None:
+                out = d
+            else:
+                out["market"] = (out["market"] + d["market"])[:10]
+            prev = a
+        return _sheep_option(obs_dict, out)
     return _sheep_option(
         obs_dict, _A.decode_multi(obs_dict, fa, tasks, _pick(mlog)))
 
@@ -290,6 +312,13 @@ def main():
             f"macro from the net, and merge buys-first under the 10-order "
             f"cap.")
 
+    # Multi-order head (2026-09-06, docs/RUNS.md verdict 33). K market slots
+    # live in two extra arrays, msb and cmw. An npz without them plays slot 0
+    # alone -- a one-order agent that banks money and passes every existing
+    # check, so nothing downstream would notice: package.sh asserts money >
+    # 3000 and tests/test_export_agent.py only covers the sheep option. Refuse.
+    _mo = int(_ck_args.get("market_orders", 1) or 1)
+
     # 2026-08-28 (docs/RUNS.md 79c98d4). trl_env.py and macro_audit.py both run
     # the legacy adaptations here; this path did not, so any checkpoint predating
     # the hand-vocabulary expansion (anvil, chisel, cropper, longcredit -- 10
@@ -325,6 +354,24 @@ def main():
                            actor_arrays(sd, "delta.", numpy=True).items()})
         else:
             arrays = actor_arrays(sd, numpy=True)
+        if _mo > 1:
+            # Checked on the ARRAYS, not on the checkpoint. The first version of
+            # this guard read ck["args"] and sd["slot_bias"], both of which were
+            # present, and passed while actor_arrays -- which did not yet know
+            # the two tables -- dropped them: the exported agent emitted one
+            # order on all 719 turns. A pre-condition cannot catch a lossy
+            # writer; only reading back what was written can.
+            if "msb" not in arrays or "cmw" not in arrays:
+                raise SystemExit(
+                    f"refusing to export {args.ckpt}: trained with "
+                    f"--market-orders {_mo} but the npz would carry "
+                    f"{sorted(arrays)} -- no msb/cmw, so the agent would "
+                    f"silently play slot 0 alone. Capping closer_cleo at one "
+                    f"order a turn measures -89,479 (docs/RUNS.md verdict 33).")
+            if int(arrays["msb"].shape[0]) != _mo:
+                raise SystemExit(
+                    f"refusing to export {args.ckpt}: --market-orders {_mo} "
+                    f"but msb has {int(arrays['msb'].shape[0])} rows")
         policy = types.SimpleNamespace(
             export_npz=lambda path: np.savez(path, **arrays))
     else:
