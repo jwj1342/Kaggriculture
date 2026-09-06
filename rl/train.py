@@ -274,6 +274,12 @@ def build_parser():
                     help="frozen prior (npz / checkpoint): the actor learns "
                          "logit corrections over it instead of a policy "
                          "from scratch")
+    ap.add_argument("--probe-vs", default="",
+                    help="pin the deterministic probe to ONE fixed opponent "
+                         "(e.g. tape:agents/newlines/n04.py). Without it a "
+                         "curriculum probe measures the current stage anchor, "
+                         "so the yardstick moves on every advance and probes "
+                         "from different stages are not comparable.")
     ap.add_argument("--depth", type=int, default=2,
                     help="actor trunk depth. 2 is the historical net; each "
                          "extra layer is a ZERO-init residual block over the "
@@ -910,7 +916,9 @@ def train(args, log_fn=None):
             rec["probe_win"], rec["probe_margin"] = pw, pm
             stop_reason = stopper.update(stage, hc, pw, pm)
             log_fn(f"      probe: win {pw:.3f}  margin {pm:+,.0f}  "
-                   f"vs stage {stage + 1} @handicap {hc}"
+                   + (f"vs {args.probe_vs} (pinned) @handicap {hc}"
+                      if args.probe_vs
+                      else f"vs stage {stage + 1} @handicap {hc}")
                    + (f"  -> STOP ({stop_reason})" if stop_reason else ""))
         probe_done = _stamp()
         rec["t_metrics"] = metrics_done - update_done

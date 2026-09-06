@@ -34,7 +34,17 @@ import torch
 
 
 def _probe_opponent(pool, args):
-    """Use the configured single opponent; pools replace this after init."""
+    """Use the configured single opponent; pools replace this after init.
+
+    --probe-vs pins it instead: a curriculum probe measures against the CURRENT
+    stage anchor, so the yardstick moves every time the pool advances and two
+    probes from different stages are not comparable. Pinning one fixed
+    opponent -- normally a mined tape -- makes the whole run one paired series
+    against the same field, which is what "is it losing less money" needs.
+    """
+    pinned = getattr(args, "probe_vs", "")
+    if pinned:
+        return pinned
     return "starter" if pool is not None else getattr(args, "opponent", "starter")
 
 
@@ -49,8 +59,9 @@ def run_probe(actor_net, pool, args, device):
     from trl_env import KGTensorEnv
 
     multi = bool(getattr(args, "multi_head", False))
+    k_mkt = max(1, int(getattr(args, "market_orders", 1)))
     env = KGTensorEnv(
-        args.probe_lanes, device=device, seat=0,
+        args.probe_lanes, device=device, seat=0, market_orders=k_mkt,
         episode_steps=args.steps, base_seed=args.seed + 991,
         opponent=_probe_opponent(pool, args), win_bonus=0.0,
         potential=args.potential, shape_scale=args.shape_scale,
@@ -65,7 +76,7 @@ def run_probe(actor_net, pool, args, device):
         # gate_probe_graft.
         fixed_farm_tape=getattr(args, "fixed_farm_tape", ""),
         farm_tape_market=getattr(args, "farm_tape_market", "buys"))
-    if pool is not None:
+    if pool is not None and not getattr(args, "probe_vs", ""):
         env.opp_fn = pool.anchors[pool.stage][1]
     td = env.reset()
     with torch.no_grad():
@@ -74,13 +85,21 @@ def run_probe(actor_net, pool, args, device):
             outs = actor_net(x)
             fl, ml = outs[0], outs[1]
             fa = fl.masked_fill(~td["farmer_mask"], -1e9).argmax(-1)
-            ma = ml.masked_fill(~td["market_mask"], -1e9).argmax(-1)
+            # With K market slots the head is (B, K, N_MARKET) and argmax
+            # gives (B, K): unsqueezing that would have produced a (B, K, 1)
+            # block and a wrong-width action. Build the slot columns instead.
+            if k_mkt > 1:
+                mcols = [ml[..., j, :].masked_fill(
+                    ~td["market_mask"], -1e9).argmax(-1).unsqueeze(-1)
+                    for j in range(k_mkt)]
+            else:
+                mcols = [ml.masked_fill(~td["market_mask"], -1e9)
+                         .argmax(-1).unsqueeze(-1)]
             if multi:
                 ha = outs[2].masked_fill(~td["hand_mask"], -1e9).argmax(-1)
-                td["action"] = torch.cat(
-                    [fa.unsqueeze(-1), ma.unsqueeze(-1), ha], -1)
+                td["action"] = torch.cat([fa.unsqueeze(-1)] + mcols + [ha], -1)
             else:
-                td["action"] = torch.stack([fa, ma], -1)
+                td["action"] = torch.cat([fa.unsqueeze(-1)] + mcols, -1)
             td = env.step(td)
             if bool(td["next", "done"].all()):
                 break
