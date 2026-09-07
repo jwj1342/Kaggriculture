@@ -548,13 +548,6 @@ def train(args, log_fn=None):
         raise ValueError(
             "--qty-head with --couple-heads is not implemented: the coupled "
             "distribution takes no qlogits and dies at the first forward")
-    if args.qty_head and args.fixed_farm_tape:
-        raise ValueError(
-            "--qty-head with --fixed-farm-tape is refused: the elif chain in "
-            "build_actor_critic picks the quantity distribution and drops "
-            "MarketOnlyMultiHead, putting the tape-overridden farmer and all "
-            "twelve hand heads back inside the PPO ratio -- measured 3.678 "
-            "nats of dead heads per step")
     if args.market_orders != 1:
         if not 1 <= args.market_orders <= 10:
             raise ValueError("--market-orders must be 1..10 (the engine's "

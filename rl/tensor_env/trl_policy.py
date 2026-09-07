@@ -465,6 +465,13 @@ class MultiOrderMultiHead(D.Distribution):
     has_enumerate_support = False
     slot_bias = None   # (K, n_market), bound by build_actor_critic
     couple_m = None    # (n_market, n_market)
+    # Under --fixed-farm-tape the farmer and hand draws are overridden at the
+    # raw-op level and cannot influence the reward, so leaving their log-probs
+    # in the PPO ratio adds pure noise -- MarketOnlyMultiHead exists for that.
+    # It composes here rather than excluding this class: the first version
+    # REFUSED the combination, which locked the tape arms out of the very
+    # action-space fixes the tape arms are for.
+    market_only = False
 
     def __init__(self, flogits, mlogits, hlogits, fmask, mmask, hmask):
         self.flp = F.log_softmax(flogits.masked_fill(~fmask, NEG), -1)
@@ -510,8 +517,10 @@ class MultiOrderMultiHead(D.Distribution):
     def log_prob(self, action):
         K = self.K
         fa, ha = action[..., 0], action[..., 1 + K:]
-        lp = (self.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
-              + self.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))
+        lp = torch.zeros_like(self.flp[..., 0])
+        if not self.market_only:
+            lp = (self.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
+                  + self.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))
         prev = None
         for k in range(K):
             a = action[..., 1 + k]
@@ -521,8 +530,10 @@ class MultiOrderMultiHead(D.Distribution):
         return lp
 
     def entropy(self):
-        ent = (-(self.flp.exp() * self.flp).sum(-1)
-               - (self.hlp.exp() * self.hlp).sum((-1, -2)))
+        ent = torch.zeros_like(self.flp[..., 0])
+        if not self.market_only:
+            ent = (-(self.flp.exp() * self.flp).sum(-1)
+                   - (self.hlp.exp() * self.hlp).sum((-1, -2)))
         prev = None
         for k in range(self.K):
             lp = self._slot_lp(k, prev)
@@ -606,8 +617,10 @@ class MultiOrderQtyHead(MultiOrderMultiHead):
     def log_prob(self, action):
         K = self.K
         fa, ha = action[..., 0], action[..., 1 + 2 * K:]
-        lp = (self.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
-              + self.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))
+        lp = torch.zeros_like(self.flp[..., 0])
+        if not self.market_only:
+            lp = (self.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
+                  + self.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))
         prev = None
         for k in range(K):
             a = action[..., 1 + k]
@@ -619,8 +632,10 @@ class MultiOrderQtyHead(MultiOrderMultiHead):
         return lp
 
     def entropy(self):
-        ent = (-(self.flp.exp() * self.flp).sum(-1)
-               - (self.hlp.exp() * self.hlp).sum((-1, -2)))
+        ent = torch.zeros_like(self.flp[..., 0])
+        if not self.market_only:
+            ent = (-(self.flp.exp() * self.flp).sum(-1)
+                   - (self.hlp.exp() * self.hlp).sum((-1, -2)))
         prev = None
         for k in range(self.K):
             lp = self._slot_lp(k, prev)
@@ -925,25 +940,10 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
             "inside the multi-head branch, so without it the distribution "
             "falls through to a width-2 action against a 1+K spec and the "
             "probe raises AttributeError on slot_bias")
-    if market_only and qty_head:
-        raise ValueError(
-            "market_only=True with qty_head=True is refused for the same "
-            "reason as market_orders>1: the elif chain picks the quantity "
-            "distribution and silently drops MarketOnlyMultiHead -- measured "
-            "3.678 nats of tape-overridden farmer and hand heads back inside "
-            "the PPO ratio")
     if couple and qty_head:
         raise ValueError(
             "couple=True with qty_head=True is not implemented: "
             "CoupledMultiHeadMasked takes no qlogits")
-    if market_only and market_orders > 1:
-        raise ValueError(
-            "market_only=True with market_orders>1 is refused: the elif chain "
-            "in this function would pick MultiOrderMultiHead and silently drop "
-            "MarketOnlyMultiHead, putting the tape-overridden farmer and all "
-            "twelve hand heads back inside the PPO ratio and the entropy bonus "
-            "-- measured 1.95 nats of dead heads in the importance weight at "
-            "init, growing as they drift on the shared trunk.")
     if couple and market_orders > 1:
         raise ValueError(
             "couple=True with market_orders>1 is not implemented: the coupled "
@@ -1002,7 +1002,8 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
         elif market_orders > 1 or qty_head:
             base = MultiOrderQtyHead if qty_head else MultiOrderMultiHead
             attrs = {"slot_bias": actor_net.slot_bias,
-                     "couple_m": actor_net.couple_m}
+                     "couple_m": actor_net.couple_m,
+                     "market_only": bool(market_only)}
             if qty_head:
                 attrs["couple_q"] = actor_net.couple_q
             dist_cls = type("MultiOrderMultiHeadBound", (base,), attrs)

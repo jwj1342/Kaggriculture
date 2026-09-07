@@ -500,6 +500,58 @@ def gate_q5(args, broken=False):
                   f"(bias {QTY_DEFAULT_BIAS})")
 
 
+def gate_m1(args, broken=False):
+    """market_only must COMPOSE with the multi-order and quantity heads.
+
+    Under --fixed-farm-tape the farmer and hand draws are overridden at the
+    raw-op level and cannot influence the reward, so their log-probs are noise
+    in the PPO ratio. The first version REFUSED the combination instead of
+    composing it, which locked the tape arms out of the action-space fixes the
+    tape arms exist for. `broken` ignores the flag -- what the elif chain did
+    before -- and must fail.
+    """
+    from trl_policy import MultiActorNet, MultiOrderQtyHead
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import obs as O
+    K = 3
+    torch.manual_seed(4)
+    net = MultiActorNet(O.OBS_DIM, A.N_FARMER, A.N_MARKET, 64, 32, n_hands=12,
+                        n_hand_task=A.N_HAND_TASK, market_orders=K,
+                        qty_head=True)
+    x = torch.randn(4, O.OBS_DIM)
+    with torch.no_grad():
+        fl, ml, hl, ql = net(x)
+    fm = torch.ones(4, A.N_FARMER, dtype=torch.bool)
+    mm = torch.ones(4, A.N_MARKET, dtype=torch.bool)
+    hm = torch.ones(4, 12, A.N_HAND_TASK, dtype=torch.bool)
+
+    def mk(mo):
+        cls = type("B", (MultiOrderQtyHead,),
+                   {"slot_bias": net.slot_bias, "couple_m": net.couple_m,
+                    "couple_q": net.couple_q,
+                    "market_only": False if broken else mo})
+        return cls(fl, ml, hl, ql, fm, mm, hm)
+
+    full, only = mk(False), mk(True)
+    a = full.mode
+    lp_full = float(full.log_prob(a)[0])
+    lp_only = float(only.log_prob(a)[0])
+    # the dropped part is exactly the farmer + hand terms
+    fa, ha = a[..., 0], a[..., 1 + 2 * K:]
+    dead = float((full.flp.gather(-1, fa.unsqueeze(-1)).squeeze(-1)
+                  + full.hlp.gather(-1, ha.unsqueeze(-1)).squeeze(-1).sum(-1))[0])
+    if abs((lp_full - lp_only) - dead) > 1e-4:
+        return False, (f"M1: market_only dropped {lp_full - lp_only:.4f} but "
+                       f"the farmer+hand terms are {dead:.4f}")
+    if abs(dead) < 1e-3:
+        return False, "M1: the dead heads contribute ~0; the gate is vacuous"
+    if abs(float(full.entropy()[0]) - float(only.entropy()[0])) < 1e-3:
+        return False, "M1: entropy is unchanged by market_only"
+    return True, (f"M1: market_only drops exactly the farmer+hand terms "
+                  f"({dead:.3f} nats), entropy {float(full.entropy()[0]):.2f} "
+                  f"-> {float(only.entropy()[0]):.2f}")
+
+
 def gate_l1(args, broken=False):
     """A frozen/league snapshot of a K>1 policy must PLAY K slots.
 
@@ -644,7 +696,7 @@ def main():
     args = ap.parse_args()
     ok = True
     for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
-                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("Q1", gate_q1), ("Q3", gate_q3), ("Q5", gate_q5),
+                     ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("Q1", gate_q1), ("Q3", gate_q3), ("Q5", gate_q5), ("M1", gate_m1),
                      ("L1", gate_l1), ("P1", gate_p1),
                      ("D1", gate_d1), ("D3", gate_d3)):
         try:
@@ -656,7 +708,7 @@ def main():
     for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
                          ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3"),
                          ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1"), ("O10", gate_o9, "O9"), ("Q2", gate_q1, "Q1"),
-                         ("Q4", gate_q3, "Q3"), ("Q6", gate_q5, "Q5")):
+                         ("Q4", gate_q3, "Q3"), ("Q6", gate_q5, "Q5"), ("M2", gate_m1, "M1")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001
