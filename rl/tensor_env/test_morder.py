@@ -984,8 +984,12 @@ def gate_n6(args, broken=False):
     if not torch.equal(base_old, base_new):
         return False, "N6(a): shed_animals=0.0 is not bit-identical"
 
-    # (b) cash -> one shed animal, at weight 1.0, must leave phi unchanged
+    # (b) cash -> one shed animal, at weight 1.0, must leave phi unchanged --
+    # but ONLY up to placeable capacity, so give the board a free coop first.
+    # Without one the credit is capped at zero and the buy costs its full cash,
+    # which is the point of (d) below.
     w = 0.0 if broken else 1.0
+    ep.kind[:, 0, 0, 1] = engine_t.K_COOP
     before = phi(w).clone()
     ep.money[:, 0] -= cost
     ep.shed[:, 0, a_i] += 1
@@ -998,6 +1002,7 @@ def gate_n6(args, broken=False):
     # (c) placing it must still RAISE phi (put it on a free coop tile)
     ep.shed[:, 0, a_i] -= 1
     ep.kind[:, 0, 0, 0] = engine_t.K_COOP
+    ep.kind[:, 0, 0, 1] = engine_t.K_EMPTY      # (b) 造的那个空 coop 收回
     ep.animal[:, 0, 0, 0] = 0
     ep.fed[:, 0, 0, 0] = True
     ep.cared[:, 0, 0, 0] = True
@@ -1006,8 +1011,38 @@ def gate_n6(args, broken=False):
     if d_place <= 0.0:
         return False, (f"N6(c): placing the animal changed phi by "
                        f"{d_place:,.1f} -- the chain has no forward gradient")
-    return True, (f"N6 shed-animals: buy is phi-neutral (|d| {d_buy:.2e} on a "
-                  f"{cost:,.0f} cost), placing adds {d_place:,.0f}, "
+
+    # (d) the credit is CAPPED at placeable capacity: an animal bought with no
+    # free structure to take it is a full cash loss again. Without this, an
+    # uncapped credit made buying FREE and the measured policies bought 20.50
+    # (shedanim) / 27.00 (invgraft) animals and placed 0.38 -- 6,000-10,000 of
+    # cash converted into shed hoard that --terminal-cash writes off at the
+    # buzzer, with own money stuck at 13-62.
+    ep.animal[:, 0, 0, 0] = -1          # free the coop again
+    ep.kind[:, 0, :, :] = engine_t.K_EMPTY
+    ep.kind[:, 0, 0, 0] = engine_t.K_COOP        # exactly ONE free coop
+    base_cap = phi(w).clone()
+    before_money = ep.money[:, 0].clone()
+    ep.money[:, 0] -= cost
+    ep.shed[:, 0, a_i] += 1             # 1st animal: fits the free coop
+    one = phi(w)
+    ep.money[:, 0] -= cost
+    ep.shed[:, 0, a_i] += 1             # 2nd animal: NO structure for it
+    two = phi(w)
+    d1 = float((one - base_cap).abs().max())
+    d2 = float((two - one).max())
+    if d1 > 1e-6:
+        return False, (f"N6(d): the 1st buy (capacity 1) moved phi by {d1:,.1f}"
+                       f" -- it should be neutral")
+    if d2 > -cost * 0.99:
+        return False, (f"N6(d): the 2nd buy with NO free structure moved phi by"
+                       f" {d2:,.1f}; an unplaceable animal must cost its cash "
+                       f"({-cost:,.0f})")
+    ep.money[:, 0] = before_money
+    ep.shed[:, 0, a_i] -= 2
+    return True, (f"N6 shed-animals: buy phi-neutral (|d| {d_buy:.2e} on a "
+                  f"{cost:,.0f} cost), placing adds {d_place:,.0f}, capped at "
+                  f"capacity (2nd buy with no structure costs {d2:,.0f}), "
                   f"w=0 bit-identical")
 
 

@@ -82,6 +82,7 @@ _ONGOING = [bool(c.get("ongoing")) for c in _CROPS]
 _INTERVAL = [max(1.0, float(c.get("interval") or 1)) for c in _CROPS]
 _FIRSTY = [float(c["first_yield_day"]) for c in _CROPS]
 _A_COST = [float(a["cost"]) for a in _ANIMALS]
+_A_STRUCT = [a["structure"] for a in _ANIMALS]
 _A_BASE = [float(R.MARKET_PARAMS[a["product"]]["base"]) for a in _ANIMALS]
 _A_INT = [max(1.0, float(a.get("interval") or 1)) for a in _ANIMALS]
 _A_FIRST = [float(a["first_yield_day"]) for a in _ANIMALS]
@@ -192,9 +193,37 @@ def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE,
     # priced dead PRODUCT above market); placing is still strictly better,
     # since a placed animal earns rem_a * a_base * animal_credit on top.
     if shed_animals:
+        # ...CAPPED at the number of FREE STRUCTURES that could actually take
+        # them. Measured 2026-09-08 on shedanim iter 50 / invgraft iter 51 with
+        # an uncapped credit: the policy bought 20.50 / 27.00 animals and left
+        # ALL of them in the shed (placed 0.38, escapes only 7 / 4), because a
+        # phi-neutral buy is a FREE buy while placing is worth just +240
+        # (0.08 reward units). Real cost: 20-27 animals at 300-500 each is
+        # 6,000-10,000 of cash, which is why own money sat at 13-62. The dense
+        # potential said the buy was free; --terminal-cash said at the buzzer
+        # it was a total loss; PPO optimises the dense signal. Capping at
+        # placeable capacity keeps the unlock (buying up to the coops you own
+        # is phi-neutral) and makes hoarding beyond it a full cash loss again.
         n_p = len(_BASE9)
         shed_a = ep.shed[:, player, n_p:].to(f64)            # (B, 3)
-        phi = phi + (shed_a * L["a_cost"]).sum(-1) * shed_animals
+        kind_a = ep.kind[:, player]
+        anim_a = ep.animal[:, player] >= 0
+        free = {
+            ET.K_COOP: ((kind_a == ET.K_COOP) & ~anim_a).to(f64).sum((-1, -2)),
+            ET.K_PASTURE: ((kind_a == ET.K_PASTURE)
+                           & ~anim_a).to(f64).sum((-1, -2)),
+        }
+        # allocate cheapest-first within each structure so the cap cannot
+        # over-credit when two species share one structure type
+        order = sorted(range(len(_A_COST)), key=lambda i: _A_COST[i])
+        credit = torch.zeros_like(shed_a[:, 0])
+        rem = {k: v.clone() for k, v in free.items()}
+        for i in order:
+            code = ET.STRUCT_CODE[_A_STRUCT[i]]
+            take = torch.minimum(shed_a[:, i], rem[code])
+            credit = credit + take * float(_A_COST[i])
+            rem[code] = rem[code] - take
+        phi = phi + credit * shed_animals
     phi = phi + (ep.seeds_t[:, player].to(f64) * L["seedc"]).sum(-1) * SEED_RESIDUAL
     phi = phi + ep.money[:, player]
     return phi
