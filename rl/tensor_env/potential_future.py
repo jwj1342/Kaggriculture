@@ -109,7 +109,7 @@ def _luts(device):
 
 def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE,
                    plant_credit=PLANT_CREDIT,
-                   animal_credit=ANIMAL_CREDIT):
+                   animal_credit=ANIMAL_CREDIT, shed_animals=0.0):
     """(B,) float64 future-credit potential for one seat.
 
     shed_at_market: value shed PRODUCTS at min(current market price, base)
@@ -175,6 +175,26 @@ def future_worth_t(ep, player, shed_at_market=False, land_value=LAND_VALUE,
     else:
         phi = phi + (ep.shed[:, player].to(f64)
                      * L["base12"]).sum(-1) * SHED_DISCOUNT
+    # shed_animals: the shed's three ANIMAL slots are weighted 0.0 in base12
+    # (Kilo's loop ranges over PRODUCTS), so BUYING an animal converts cash --
+    # phi weight 1.0 -- into an object phi prices at nothing. Measured on
+    # herd1 (pure RL, 421 iterations, 2026-09-08): BUY_GOOSE/COW/SHEEP are
+    # LEGAL on 27-28% of turns and the policy assigns them a conditional
+    # probability of 3e-6 to 7e-6, four thousand times below uniform, while
+    # BUY_LAND -- also a masked purchase -- gets 0.0127 and HIRE 0.112. That
+    # is not missing opportunity, it is correct optimisation of a potential
+    # that charges the first step of the only chain that decides ladder games:
+    # across 546 real ladder episodes our win rate is 0.966 against opponents
+    # ending with <=7 animals and 0.147 against those with 16+. PLACE_*, FEED
+    # and CARE are then legal on 0.000% of turns, because nothing is ever
+    # held. Pricing a shed animal at its PURCHASE COST makes the buy
+    # phi-neutral rather than a loss -- it is not a hoarding subsidy (that bug
+    # priced dead PRODUCT above market); placing is still strictly better,
+    # since a placed animal earns rem_a * a_base * animal_credit on top.
+    if shed_animals:
+        n_p = len(_BASE9)
+        shed_a = ep.shed[:, player, n_p:].to(f64)            # (B, 3)
+        phi = phi + (shed_a * L["a_cost"]).sum(-1) * shed_animals
     phi = phi + (ep.seeds_t[:, player].to(f64) * L["seedc"]).sum(-1) * SEED_RESIDUAL
     phi = phi + ep.money[:, player]
     return phi

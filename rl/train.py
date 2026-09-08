@@ -339,6 +339,19 @@ def build_parser():
                          "ceiling (nothing trainable); \"none\" is the inert "
                          "farm and is kept only so the measurement is "
                          "reproducible"),
+    ap.add_argument("--shed-animals", type=float, default=0.0,
+                    metavar="W",
+                    help="value an animal HELD IN THE SHED at W x its "
+                         "purchase cost in the potential. 0.0 (default) "
+                         "keeps Kilo's path bit-exact, where the shed's "
+                         "three animal slots weigh 0.0 -- so buying an "
+                         "animal converts cash (phi weight 1.0) into "
+                         "something phi prices at nothing. Measured on "
+                         "herd1: BUY_GOOSE/COW/SHEEP legal on 27-28% of "
+                         "turns, policy conditional probability 3e-6 to "
+                         "7e-6 (uniform is 0.0278), and PLACE/FEED/CARE "
+                         "legal on 0.000%. At 1.0 the buy is phi-neutral "
+                         "and placing is still strictly better.")
     ap.add_argument("--slot0-noop", action="store_true",
                     help="give market slot 0 the same NOOP prior slots 1.. "
                          "already get (SLOT_NOOP_BIAS). Off by default: a run "
@@ -611,7 +624,8 @@ def train(args, log_fn=None):
         animal_credit=args.animal_credit,
         fixed_farm_tape=args.fixed_farm_tape,
         farm_tape_market=args.farm_tape_market,
-        farm_tape_side=args.farm_tape_side)
+        farm_tape_side=args.farm_tape_side,
+        shed_animals=args.shed_animals)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],

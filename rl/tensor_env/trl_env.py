@@ -597,7 +597,7 @@ class KGTensorEnv(EnvBase):
                  land_value=0.0, fixed_market_profile="",
                  plant_credit=0.0, animal_credit=0.0, fixed_farm_tape="",
                  farm_tape_market="buys", terminal_cash=False,
-                 farm_tape_side="farm"):
+                 farm_tape_side="farm", shed_animals=0.0):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -635,7 +635,8 @@ class KGTensorEnv(EnvBase):
             pc = float(plant_credit) or potential_future.PLANT_CREDIT
             ac = float(animal_credit) or potential_future.ANIMAL_CREDIT
             self._pot = lambda ep, p: potential_future.future_worth_t(
-                ep, p, land_value=lv, plant_credit=pc, animal_credit=ac)
+                ep, p, land_value=lv, plant_credit=pc, animal_credit=ac,
+                shed_animals=float(shed_animals))
         elif potential == "future-mkt":
             # future-credit with the HOARDING SUBSIDY removed: shed stock
             # valued at min(current market price, base) x 0.9, so selling
@@ -648,7 +649,8 @@ class KGTensorEnv(EnvBase):
             ac = float(animal_credit) or potential_future.ANIMAL_CREDIT
             self._pot = lambda ep, p: potential_future.future_worth_t(
                 ep, p, shed_at_market=True, land_value=lv,
-                plant_credit=pc, animal_credit=ac)
+                plant_credit=pc, animal_credit=ac,
+                shed_animals=float(shed_animals))
         else:
             raise ValueError(f"unknown potential {potential!r}")
         # Ng-correct shaping: r = gamma*phi(s') - phi(s). The plain

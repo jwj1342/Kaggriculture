@@ -701,7 +701,7 @@ def main():
                      ("D1", gate_d1), ("D3", gate_d3),
                      ("N1", gate_n1), ("N2", gate_n2),
                      ("N3", gate_n3), ("N4", gate_n4),
-                     ("N5", gate_n5)):
+                     ("N5", gate_n5), ("N6", gate_n6)):
         try:
             good, msg = fn(args)
         except Exception as exc:                       # noqa: BLE001
@@ -716,7 +716,8 @@ def main():
                          ("N2c", gate_n2, "N2"),
                          ("N3c", gate_n3, "N3"),
                          ("N4c", gate_n4, "N4"),
-                         ("N5c", gate_n5, "N5")):
+                         ("N5c", gate_n5, "N5"),
+                         ("N6c", gate_n6, "N6")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001
@@ -942,6 +943,72 @@ def gate_n5(args, broken=False):
     if "exported tape market mode disagrees with training" not in src:
         return False, "N5: the export does not check the tape MODE matches"
     return True, "N5 export: a grafted checkpoint must emit an embedded tape"
+
+
+def gate_n6(args, broken=False):
+    """shed_animals prices a shed animal at its purchase cost.
+
+    Three things, each load-bearing:
+      (a) at 0.0 the potential is BIT-identical to before the flag existed;
+      (b) at 1.0, moving `cost` of cash into one shed animal leaves phi
+          unchanged -- the buy stops being a loss;
+      (c) placing that animal still RAISES phi -- so this is not a hoarding
+          subsidy, the chain still has a gradient pointing forward.
+
+    Why: measured on herd1 (pure RL, 421 iterations, 2026-09-08) BUY_GOOSE /
+    BUY_COW / BUY_SHEEP are LEGAL on 27-28% of turns while the policy assigns
+    them a conditional probability of 3e-6 to 7e-6 -- four thousand times
+    below uniform (0.0278) -- against BUY_LAND's 0.0127 and HIRE's 0.112 on
+    the same head. PLACE_*, FEED and CARE are then legal on 0.000% of turns
+    because nothing is ever held. base12 weights the shed's three animal
+    slots 0.0, so the buy converted cash at phi weight 1.0 into an object phi
+    priced at nothing: PPO was optimising the potential correctly. And the
+    chain matters more than any other: over 546 real ladder episodes our win
+    rate is 0.966 against opponents ending with <=7 animals and 0.147 against
+    those with 16+.
+    """
+    import potential_future as PF
+    import engine_t_idx as _X          # noqa: F401  (attaches step_idx)
+    dev = "cpu"
+    ep = engine_t.EpisodeT([11, 12, 13, 14], device=dev)
+    n_p = len(PF._BASE9)
+    a_i = n_p                          # first animal slot on the shed axis
+    cost = float(PF._A_COST[0])        # that animal's purchase cost
+
+    def phi(w):
+        return PF.future_worth_t(ep, 0, shed_at_market=True, shed_animals=w)
+
+    # (a) 0.0 must be bit-identical to the pre-flag call
+    base_old = PF.future_worth_t(ep, 0, shed_at_market=True)
+    base_new = phi(0.0)
+    if not torch.equal(base_old, base_new):
+        return False, "N6(a): shed_animals=0.0 is not bit-identical"
+
+    # (b) cash -> one shed animal, at weight 1.0, must leave phi unchanged
+    w = 0.0 if broken else 1.0
+    before = phi(w).clone()
+    ep.money[:, 0] -= cost
+    ep.shed[:, 0, a_i] += 1
+    after = phi(w)
+    d_buy = float((after - before).abs().max())
+    if d_buy > 1e-6:
+        return False, (f"N6(b): the buy moved phi by {d_buy:,.1f} "
+                       f"(cost {cost:,.0f}); it should be neutral")
+
+    # (c) placing it must still RAISE phi (put it on a free coop tile)
+    ep.shed[:, 0, a_i] -= 1
+    ep.kind[:, 0, 0, 0] = engine_t.K_COOP
+    ep.animal[:, 0, 0, 0] = 0
+    ep.fed[:, 0, 0, 0] = True
+    ep.cared[:, 0, 0, 0] = True
+    placed = phi(w)
+    d_place = float((placed - after).min())
+    if d_place <= 0.0:
+        return False, (f"N6(c): placing the animal changed phi by "
+                       f"{d_place:,.1f} -- the chain has no forward gradient")
+    return True, (f"N6 shed-animals: buy is phi-neutral (|d| {d_buy:.2e} on a "
+                  f"{cost:,.0f} cost), placing adds {d_place:,.0f}, "
+                  f"w=0 bit-identical")
 
 
 if __name__ == "__main__":
