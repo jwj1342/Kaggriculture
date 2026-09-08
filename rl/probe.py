@@ -79,7 +79,12 @@ def run_probe(actor_net, pool, args, device):
         # EarlyStopper and the best.pt ratchet. Gate: test_trl.py
         # gate_probe_graft.
         fixed_farm_tape=getattr(args, "fixed_farm_tape", ""),
-        farm_tape_market=getattr(args, "farm_tape_market", "buys"))
+        farm_tape_market=getattr(args, "farm_tape_market", "buys"),
+        # ...and the SIDE. Forgetting this is the same failure as forgetting
+        # the graft itself (gate_probe_graft): with side='market' an unforwarded
+        # probe would freeze the farmer and hand heads it is meant to measure,
+        # and that reading drives EarlyStopper and the best.pt ratchet.
+        farm_tape_side=getattr(args, "farm_tape_side", "farm"))
     if pool is not None and not getattr(args, "probe_vs", ""):
         env.opp_fn = pool.anchors[pool.stage][1]
     td = env.reset()

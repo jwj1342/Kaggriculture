@@ -339,6 +339,21 @@ def build_parser():
                          "ceiling (nothing trainable); \"none\" is the inert "
                          "farm and is kept only so the measurement is "
                          "reproducible"),
+    ap.add_argument("--slot0-noop", action="store_true",
+                    help="give market slot 0 the same NOOP prior slots 1.. "
+                         "already get (SLOT_NOOP_BIAS). Off by default: a run "
+                         "that must SELL needs slot 0 free. Measured on "
+                         "oppl05: without it slot 0 fired on 92.6% of turns "
+                         "against its siblings' 1.67%, and after 200 iters "
+                         "slot_bias[:,0] read [0.0135, 5.7467, 5.7306].")
+    ap.add_argument("--farm-tape-side", choices=("farm", "market"),
+                    default="farm",
+                    help="which side of the tape is grafted. 'farm' (default) "
+                         "freezes farmer+hands and trains the market head -- "
+                         "the dimension measured at -461..+1,358 paired, "
+                         "against a gate needing +5,000. 'market' grafts the "
+                         "tape's market orders only and trains the FARM, where "
+                         "the +7,650 six-tier sign-stable goose lever lives.")
     ap.add_argument("--potential",
                     choices=("networth", "future", "future-mkt"),
                     default="networth",
@@ -595,7 +610,8 @@ def train(args, log_fn=None):
         plant_credit=args.plant_credit,
         animal_credit=args.animal_credit,
         fixed_farm_tape=args.fixed_farm_tape,
-        farm_tape_market=args.farm_tape_market)
+        farm_tape_market=args.farm_tape_market,
+        farm_tape_side=args.farm_tape_side)
     actor, critic, actor_net, critic_net = build_actor_critic(
         O.OBS_DIM, A.N_FARMER, A.N_MARKET,
         hidden1=args.hidden[0], hidden2=args.hidden[1],
@@ -604,8 +620,19 @@ def train(args, log_fn=None):
         market_orders=args.market_orders, depth=args.depth,
         qty_head=args.qty_head,
         couple=args.couple_heads,
-        market_only=bool(args.fixed_farm_tape))
-    if args.fixed_farm_tape:
+        market_only=bool(args.fixed_farm_tape
+                         and args.farm_tape_side == "farm"),
+        # slot 0 was the only market slot with no NOOP prior; under a graft
+        # whose market is already complete, silence is the optimum and the
+        # policy had to learn its way there from a 92.6% fire rate.
+        slot0_noop=bool(args.slot0_noop))
+    if args.fixed_farm_tape and args.farm_tape_side == "market":
+        log_fn(f"fixed-farm-tape INVERSE: only the tape's MARKET orders are "
+               f"grafted from {args.fixed_farm_tape} "
+               f"(market={args.farm_tape_market}); farmer and all "
+               f"{A.MAX_HANDS} hand slots stay with the policy, so ratio and "
+               f"entropy count every head")
+    elif args.fixed_farm_tape:
         log_fn(f"fixed-farm-tape: farm program grafted from "
                f"{args.fixed_farm_tape} (raw ops, farmer + all "
                f"{A.MAX_HANDS} hand slots) with market={args.farm_tape_market}; "
@@ -703,7 +730,12 @@ def train(args, log_fn=None):
         _prev = ck.get("args") or {}
         for _flag, _now in (("depth", args.depth),
                             ("market_orders", args.market_orders),
-                            ("qty_head", int(args.qty_head))):
+                            ("qty_head", int(args.qty_head)),
+                            # slot0_noop changes an INIT value, so a lost flag
+                            # resumes the same shapes with a different learned
+                            # table and nothing errors; farm_tape_side changes
+                            # which heads receive an objective at all.
+                            ("slot0_noop", int(args.slot0_noop))):
             _was = _prev.get(_flag)
             if _was is not None and int(_was) != int(_now):
                 raise SystemExit(
@@ -711,6 +743,13 @@ def train(args, log_fn=None):
                     f"--{_flag.replace('_', '-')} {_was} and this link passes "
                     f"{_now}. The state dict would load without error and play "
                     f"a different policy.")
+        _was_side = _prev.get("farm_tape_side")
+        if _was_side is not None and _was_side != args.farm_tape_side:
+            raise SystemExit(
+                f"refusing to resume {args.resume}: it was trained with "
+                f"--farm-tape-side {_was_side} and this link passes "
+                f"{args.farm_tape_side}. The heads that receive an objective "
+                f"would change mid-run.")
         if ck.get("stopped"):
             log_fn(f"run already stopped ({ck['stopped']}) -- "
                    "nothing to resume; exiting cleanly")
@@ -1013,9 +1052,20 @@ def train(args, log_fn=None):
                 # frontiers are not comparable (a 0.97-win probe vs stage 2
                 # outranks every 0-win probe vs the last-stage wall and
                 # freezes best.pt in the past -- observed on breach)
+                # A PINNED probe (--probe-vs) is one fixed opponent, so its
+                # series IS comparable across stages -- that is the whole point
+                # of pinning, and EarlyStopper already honours it
+                # (frontier = (0,0) if pinned). This ratchet did not, so with
+                # --probe-vs on, best.pt was unreachable unless the curriculum
+                # happened to reach its last stage: five arms (morder4,
+                # residord4, leafval4, oppl05, oppl10b) each ran their whole
+                # length at stage 2/3 and wrote ZERO best checkpoints while the
+                # pinned probe improved ~10x (-157,728 -> -12,874). 56081484
+                # went to the ladder exported from latest.pt for that reason.
+                pinned = stopper is not None and stopper.pinned
                 final_stage = (pool is None
                                or pool.stage == len(pool.anchors) - 1)
-                if rec.get("probe_win") is not None and final_stage:
+                if rec.get("probe_win") is not None and (pinned or final_stage):
                     pscore = rec["probe_win"] * 1e9 + rec["probe_margin"]
                     if pscore > best_probe:
                         best_probe = pscore

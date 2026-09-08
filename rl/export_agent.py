@@ -421,7 +421,7 @@ def main():
             f"refusing to export {args.ckpt}: it was trained with "
             f"--fixed-farm-tape {_tape}, which is not on disk, so the graft "
             f"cannot be reproduced at inference.")
-    if False:
+    if False:   # superseded by the post-condition at the write site below
         raise SystemExit(
             f"refusing to export {args.ckpt}: it was trained with\n"
             f"  --fixed-farm-tape {_ck_args['fixed_farm_tape']}\n"
@@ -547,6 +547,24 @@ def main():
         sheep_min_day=args.sheep_min_day, sheep_timeout=args.sheep_timeout,
         tape_path=(_tape if os.path.isabs(_tape) else os.path.join(_ROOT, _tape)) if _tape else "",
         tape_market=_tape_market)
+    # 2026-09-08: the `if False:` guard above was dead -- the refusal meant to
+    # stop a grafted checkpoint exporting as a plain 14-head agent (the 8db606f
+    # failure, -33%) never ran. Restoring it as a refusal is now wrong, because
+    # write_agent_dir DOES embed the tape whenever one was trained; what was
+    # missing is proof that it happened. So: a post-condition on the artefact.
+    # Nothing else downstream can see this -- tests/test_export_agent.py covers
+    # only the sheep option, and package.sh asserts money > 3000 while the tape
+    # alone banks ~186k, so a dead market head passes both.
+    if _tape:
+        _src = open(main_path).read()
+        assert "_TAPE_MARKET" in _src and "_TAPE = " in _src, (
+            f"{args.ckpt} was trained with --fixed-farm-tape {_tape} but the "
+            f"exported {main_path} embeds no tape: it would hand the farmer "
+            f"and every hand slot back to untrained, drifted heads (8db606f, "
+            f"measured -33%).")
+        assert f'_TAPE_MARKET = "{_tape_market}"' in _src, (
+            f"exported tape market mode disagrees with training "
+            f"(--farm-tape-market {_tape_market})")
     fn = get_last_callable(main_path)
     from kg_env import KGEnv
     raw = KGEnv(opponent="starter").reset(seed=123)

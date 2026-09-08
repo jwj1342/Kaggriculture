@@ -322,6 +322,8 @@ class FrozenPolicyOpponent:
     are summed exactly like the export template does -- a snapshot of a
     ResidualActor must play the combined policy, never just the prior."""
 
+    is_policy_snapshot = True
+
     def __init__(self, path, device="cpu"):
         if path.endswith(".npz"):
             arrays = dict(np.load(path))
@@ -594,7 +596,8 @@ class KGTensorEnv(EnvBase):
                  shape_gamma=0.0, ks_every=1, fert_credit=0.0,
                  land_value=0.0, fixed_market_profile="",
                  plant_credit=0.0, animal_credit=0.0, fixed_farm_tape="",
-                 farm_tape_market="buys", terminal_cash=False):
+                 farm_tape_market="buys", terminal_cash=False,
+                 farm_tape_side="farm"):
         super().__init__(device=torch.device(device),
                          batch_size=torch.Size([int(B)]))
         self.B = int(B)
@@ -797,6 +800,37 @@ class KGTensorEnv(EnvBase):
             elif farm_tape_market == "none":
                 m.zero_()
             tab["m_graft"] = m
+            # WHICH SIDE the tape owns. Every arm so far grafted the FARM and
+            # trained the market head -- and the value of market-layer work on
+            # this plan was measured, paired over 576 episodes, at -461 to
+            # +1,358 across the contention strata, against a gate demanding
+            # +5,000. The farm side is where the only regime-invariant lever
+            # this project has measured lives: extra geese on top of existing
+            # output, +6,893/+8,690/+7,668/+10,437/+7,636/+7,635 -- same sign
+            # in all six tiers, because EGG is log-absorbed and nobody in the
+            # field produces it (1,998 ladder episodes: seven products in the
+            # opponents' median sell mix, EGG absent). That lever cannot be
+            # bolted onto a tape -- only 8 (unit, turn) slots all season ever
+            # stood on an empty coop and none was a PASS -- so the program has
+            # to own its own labour schedule.
+            #   "farm"   -- graft farmer + hands (+ market per farm_tape_market)
+            #   "market" -- graft ONLY the tape's market orders; farmer and
+            #               hands stay with the policy. The tape becomes a
+            #               funding and selling backbone: its buys keep the
+            #               seed/animal supply coming and its sells clear the
+            #               shed, which is what free-farm RL could never do
+            #               (measured -148,185 on gate 1), while the -85,894
+            #               dimension (replacing the tape's own sells) stays
+            #               out of the policy's reach. The policy keeps its own
+            #               market slots because m_add MERGES, so BUILD_COOP /
+            #               BUY_ANIMAL GOOSE remain sayable.
+            if farm_tape_side not in ("farm", "market"):
+                raise ValueError(f"farm_tape_side={farm_tape_side!r}")
+            if farm_tape_side == "market" and farm_tape_market == "none":
+                raise ValueError(
+                    "farm_tape_side='market' with farm_tape_market='none' "
+                    "grafts nothing at all -- that is a no-graft run")
+            self.farm_tape_side = farm_tape_side
             self._farm_tape = tab
         self._pending_teacher_ops = None
         self.kickstart_force = False
@@ -995,14 +1029,25 @@ class KGTensorEnv(EnvBase):
             f = tab["f"][t]
             h = tab["h"][t]
             B = self.B
-            ops = {
-                "f_op": f[0].expand(B).clone(),
-                "f_arg": f[1].expand(B).clone(),
-                "f_qty": f[2].expand(B).clone(),
-                "h_op": [h[u, 0].expand(B).clone() for u in range(tab["H"])],
-                "h_arg": [h[u, 1].expand(B).clone() for u in range(tab["H"])],
-                "h_qty": [h[u, 2].expand(B).clone() for u in range(tab["H"])],
-            }
+            if getattr(self, "farm_tape_side", "farm") == "market":
+                # inverse graft: the tape owns the market only. Omitting the
+                # farmer/hand keys leaves those slots carrying the POLICY's
+                # decoded actions, which is the whole point here -- and is
+                # exactly the leak the hand-block padding above guards against
+                # in the "farm" direction, so it must stay deliberate.
+                ops = {}
+            else:
+                ops = {
+                    "f_op": f[0].expand(B).clone(),
+                    "f_arg": f[1].expand(B).clone(),
+                    "f_qty": f[2].expand(B).clone(),
+                    "h_op": [h[u, 0].expand(B).clone()
+                             for u in range(tab["H"])],
+                    "h_arg": [h[u, 1].expand(B).clone()
+                              for u in range(tab["H"])],
+                    "h_qty": [h[u, 2].expand(B).clone()
+                              for u in range(tab["H"])],
+                }
             mg = tab["m_graft"][t]                            # (S, 3)
             if bool((mg[:, 0] != engine_t.OP_DEAD).any()):
                 S = ep.max_market_orders
@@ -1011,7 +1056,25 @@ class KGTensorEnv(EnvBase):
                 k = min(S, mg.shape[0])
                 blk[:, :k] = mg[:k].unsqueeze(0)
                 ops["m_add"] = blk                # MERGE, not replace
-            step_overrides.append((seat, ops))
+            if ops:
+                step_overrides.append((seat, ops))
+            # ...and the OPPONENT seat gets it too when the opponent is a
+            # network snapshot. Without this the league is degenerate: a
+            # snapshot plays a FREE farm (its farmer/hand heads receive no
+            # objective under a graft), which measured -148,185 on gate 1,
+            # so every self-play matchup is won by construction -- ema 0.99
+            # to 1.00 against every snap-*, 0.00 against the tape anchor for
+            # 140 straight iterations. Measured off pool.counts (NOT off
+            # opp_money, which merges the deliberate `starter` anchor into the
+            # artefact): oppl05 spent 31.4% of its batches on snapshots,
+            # oppl10b 32.3%. Grafting both seats makes self-play the MIRROR,
+            # which is also the deployment matchup (34.9% same-slot
+            # contestation). Tape opponents already replay their own farm, so
+            # they are excluded: only a policy snapshot needs the graft.
+            if ops and getattr(self.opp_fn, "is_policy_snapshot", False):
+                step_overrides.append((opp, {k: (v.clone() if torch.is_tensor(v)
+                                                 else [x.clone() for x in v])
+                                             for k, v in ops.items()}))
         if getattr(self.opp_fn, "provides_ops", False):
             # raw-encoding opponent (barnyard_t): its seat bypasses the
             # macro decode via the step_idx override. --opp-noise here is

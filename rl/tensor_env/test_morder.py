@@ -698,7 +698,10 @@ def main():
     for name, fn in (("O1", gate_o1), ("O2", gate_o2), ("O3", gate_o3),
                      ("S1", gate_s1), ("O5", gate_o5), ("O7", gate_o7), ("O9", gate_o9), ("Q1", gate_q1), ("Q3", gate_q3), ("Q5", gate_q5), ("M1", gate_m1),
                      ("L1", gate_l1), ("P1", gate_p1),
-                     ("D1", gate_d1), ("D3", gate_d3)):
+                     ("D1", gate_d1), ("D3", gate_d3),
+                     ("N1", gate_n1), ("N2", gate_n2),
+                     ("N3", gate_n3), ("N4", gate_n4),
+                     ("N5", gate_n5)):
         try:
             good, msg = fn(args)
         except Exception as exc:                       # noqa: BLE001
@@ -708,7 +711,12 @@ def main():
     for tag, fn, src in (("O4", gate_o3, "O3"), ("S2", gate_s1, "S1"),
                          ("D2", gate_d1, "D1"), ("D4", gate_d3, "D3"),
                          ("O6", gate_o5, "O5"), ("P2", gate_p1, "P1"), ("O8", gate_o7, "O7"), ("L2", gate_l1, "L1"), ("O10", gate_o9, "O9"), ("Q2", gate_q1, "Q1"),
-                         ("Q4", gate_q3, "Q3"), ("Q6", gate_q5, "Q5"), ("M2", gate_m1, "M1")):
+                         ("Q4", gate_q3, "Q3"), ("Q6", gate_q5, "Q5"), ("M2", gate_m1, "M1"),
+                         ("N1c", gate_n1, "N1"),
+                         ("N2c", gate_n2, "N2"),
+                         ("N3c", gate_n3, "N3"),
+                         ("N4c", gate_n4, "N4"),
+                         ("N5c", gate_n5, "N5")):
         try:
             good, msg = fn(args, broken=True)
         except Exception as exc:                       # noqa: BLE001
@@ -719,6 +727,221 @@ def main():
         ok &= not good
     print("ALL PASS" if ok else "GATES FAILED")
     return 0 if ok else 1
+
+
+# ---------------------------------------------------------------- 2026-09-08
+# The four defects the 09-07 adversarial review confirmed, plus the inverse
+# graft. Each gate doubles as its own counterexample under broken=True, which
+# flips the implementation the gate is meant to be sensitive to -- gate (xiii)
+# shipped a first version that passed two broken implementations, and that is
+# worse than having no gate at all.
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# The gates run with cwd = rl/tensor_env, so a tape path relative to the
+# repo root does not resolve. N4c first "passed" on that FileNotFoundError
+# rather than on the broken implementation -- a false pass in BOTH
+# directions, the same trap O3/O7 fell into over a spy signature.
+_TAPE_N04 = os.path.join(_HERE, "..", "..", "agents", "newlines", "n04.py")
+
+def gate_n1(args, broken=False):
+    """slot0_noop gives market slot 0 the NOOP prior slots 1.. already have,
+    and OFF stays byte-identical to before the flag existed.
+
+    Why: slot_bias[1:, 0] = SLOT_NOOP_BIAS left slot 0 as the only slot with no
+    NOOP prior. Under a graft whose market is already complete, silence is the
+    optimum: measured on oppl05 the objective preferred the do-nothing policy
+    by 12.1 units of return, yet after 200 iterations slot_bias[:, 0] read
+    [0.0135, 5.7467, 5.7306] -- slot 0 had moved 0.0135 nats of the ~6 it
+    needed, fired on 92.6% of turns against its siblings' 1.67%, and the run
+    sat at -38,100 margin against a 0 baseline.
+    """
+    import trl_policy as P
+    import obs as O
+
+    def build(flag):
+        torch.manual_seed(7)
+        _, _, net, _ = P.build_actor_critic(
+            O.OBS_DIM, A.N_FARMER, A.N_MARKET, hidden1=64, hidden2=32,
+            v_hidden=32, multi=True, market_orders=3, qty_head=True,
+            slot0_noop=flag)
+        return net
+
+    off = build(False)
+    # broken=True asks for the prior but builds the slots-1..-only version,
+    # i.e. exactly the pre-fix default. The ON assertions must reject it.
+    on = build(False if broken else True)
+    if float(off.slot_bias[0, 0]) != 0.0:
+        return False, "N1: OFF no longer preserves the pre-fix default"
+    if float(off.slot_bias[1, 0]) != P.SLOT_NOOP_BIAS:
+        return False, "N1: OFF lost the slots-1.. prior"
+    for k in range(3):
+        if float(on.slot_bias[k, 0]) != P.SLOT_NOOP_BIAS:
+            return False, ("N1: slot %d has no NOOP prior with slot0_noop on "
+                           "(%.4f)" % (k, float(on.slot_bias[k, 0])))
+    for (na, a), (nb, b) in zip(off.state_dict().items(),
+                                on.state_dict().items()):
+        if na != nb:
+            return False, "N1: key order changed (%s vs %s)" % (na, nb)
+        if na == "slot_bias":
+            continue
+        if not torch.equal(a, b):
+            return False, "N1: slot0_noop perturbed %s" % na
+    # p(NOOP) from the bias alone: e^5.75 / (e^5.75 + 35) = 0.8998. The gate
+    # asks that slot 0's prior EQUALS its siblings', not that it clears an
+    # arbitrary bar -- the first version used > 0.9 and failed on the 4th
+    # decimal of the number it was asserting about.
+    p0 = torch.softmax(on.slot_bias[0], -1)[0].item()
+    p1 = torch.softmax(on.slot_bias[1], -1)[0].item()
+    if abs(p0 - p1) > 1e-9:
+        return False, ("N1: slot 0 prior %.4f != siblings' %.4f" % (p0, p1))
+    if p0 <= 0.85:
+        return False, "N1: prior too weak to reach argmax (p=%.4f)" % p0
+    return True, ("N1 slot0-noop: off preserves the defect, on covers all 3 "
+                  "slots (p(NOOP)=%.3f), nothing else moved" % p0)
+
+
+def gate_n2(args, broken=False):
+    """The best.pt ratchet fires for a PINNED probe below the final stage.
+
+    Why: train.py gated it on final_stage alone, so with --probe-vs pinning the
+    pool below its last stage the ratchet never bit. Ground truth on disk:
+    best_probe == -inf and no best.pt in morder4, residord4, leafval4, oppl05
+    and oppl10b, while 49 of 233 older runs do have one. Submission 56081484
+    went to the ladder exported from latest.pt for this reason.
+    """
+    import probe as PR
+
+    def fires(pinned, stage, n_stages):
+        st = PR.EarlyStopper(n_stages, 0.6, pinned=pinned)
+        final = (stage == n_stages - 1)
+        if broken:
+            return bool(final)              # the pre-fix condition
+        return bool(st.pinned or final)
+
+    cases = ((True, 1, 3, True, "pinned below final stage"),
+             (True, 2, 3, True, "pinned at final stage"),
+             (False, 2, 3, True, "unpinned at final stage"),
+             (False, 1, 3, False, "unpinned below final stage"))
+    for pinned, stage, n, want, what in cases:
+        got = fires(pinned, stage, n)
+        if got != want:
+            return False, "N2: %s -> %s, wanted %s" % (what, got, want)
+    src = open(os.path.join(_HERE, "..", "train.py")).read()
+    if "pinned = stopper is not None and stopper.pinned" not in src:
+        return False, "N2: train.py no longer computes `pinned` for the ratchet"
+    if "(pinned or final_stage)" not in src:
+        return False, "N2: train.py's ratchet condition is not pinned-aware"
+    return True, "N2 ratchet: a pinned probe ratchets below the final stage"
+
+
+def gate_n3(args, broken=False):
+    """A policy-snapshot opponent gets the graft; a tape opponent does not.
+
+    Why: every step_overrides.append targeted the learner's seat, so a
+    snap-*.npz league member played a FREE farm -- and a free farm measured
+    -148,185 on gate 1. Off pool.counts, oppl05 spent 31.4% of its batches
+    there and won them by construction (ema 0.99-1.00), while its ema against
+    the tape anchor was 0.00 for 140 straight iterations.
+    """
+    import trl_env as E
+    has = getattr(E.FrozenPolicyOpponent, "is_policy_snapshot", False)
+    if broken:
+        has = False                         # pretend the marker was never added
+    if not has:
+        return False, "N3: FrozenPolicyOpponent does not self-identify"
+    src = open(E.__file__).read()
+    needle = 'if ops and getattr(self.opp_fn, "is_policy_snapshot", False):'
+    if needle not in src:
+        return False, "N3: the opponent-seat graft is not in _step"
+    tape = E._make_opponent("tape:" + _TAPE_N04, "cpu")
+    if getattr(tape, "is_policy_snapshot", False):
+        return False, "N3: a tape opponent is marked for grafting"
+    return True, "N3 mirror: snapshots grafted, tape opponents left alone"
+
+
+def gate_n4(args, broken=False):
+    """side='market' grafts the market only; side='farm' is unchanged.
+
+    Measured against the alternative: every arm so far grafted the FARM and
+    trained the market head, and market-layer work on this plan is worth
+    -461..+1,358 paired across the contention strata, against a gate demanding
+    +5,000. The farm side carries the only regime-invariant lever measured
+    here (extra geese, +6,893..+10,437, same sign in all six tiers).
+    """
+    import trl_env as E
+    # step_idx is ATTACHED to engine_t.EpisodeT by engine_t_idx (see that
+    # module's tail), so the patch target is the class, not the module. The
+    # first version patched engine_t_idx.EpisodeT, which does not exist, and
+    # N4c then "passed" on the AttributeError -- a false pass in both
+    # directions again.
+    seen = {}
+    for side in ("farm", "market"):
+        env = E.KGTensorEnv(4, device="cpu", seat=0, market_orders=3,
+                            qty_head=True, episode_steps=14, base_seed=5,
+                            opponent="starter", multi_head=True,
+                            fixed_farm_tape=_TAPE_N04,
+                            farm_tape_market="all", farm_tape_side=side)
+        if broken and side == "market":
+            env.farm_tape_side = "farm"     # the un-implemented version
+        keys = set()
+        real = engine_t.EpisodeT.step_idx
+
+        def spy(self, *a, _real=real, _keys=keys, **kw):
+            for entry in (kw.get("override") or []):
+                if entry[0] == 0:
+                    _keys.update(entry[1].keys())
+            return _real(self, *a, **kw)
+
+        engine_t.EpisodeT.step_idx = spy
+        try:
+            td = env.reset()
+            width = 1 + 3 + 3 + A.MAX_HANDS
+            for _ in range(5):
+                td["action"] = torch.zeros((4, width), dtype=torch.int64)
+                td = env.step(td)
+                if bool(td["next", "done"].all()):
+                    break
+                td = td["next"].exclude("reward")
+        finally:
+            engine_t.EpisodeT.step_idx = real
+        seen[side] = keys
+    if "f_op" not in seen["farm"] or "h_op" not in seen["farm"]:
+        return False, "N4: side='farm' stopped grafting the farm %s" % (
+            sorted(seen["farm"]),)
+    if "f_op" in seen["market"]:
+        return False, "N4: side='market' still grafts the farmer %s" % (
+            sorted(seen["market"]),)
+    if "h_op" in seen["market"]:
+        return False, "N4: side='market' still grafts the hands %s" % (
+            sorted(seen["market"]),)
+    if "m_add" not in seen["market"]:
+        return False, "N4: side='market' grafts no market %s" % (
+            sorted(seen["market"]),)
+    return True, "N4 inverse graft: farm=%s market=%s" % (
+        sorted(seen["farm"]), sorted(seen["market"]))
+
+
+def gate_n5(args, broken=False):
+    """A grafted checkpoint's export must PROVE it embedded the tape.
+
+    Why: the refusal meant to stop a grafted checkpoint exporting as a plain
+    14-head agent (the 8db606f failure, measured -33%) sat behind `if False:`
+    and never ran. Nothing downstream sees it -- tests/test_export_agent.py
+    covers only the sheep option, and tools/package.sh asserts money > 3000
+    while the tape alone banks ~186k, so a dead market head passes both.
+    """
+    src = open(os.path.join(_HERE, "..", "export_agent.py")).read()
+    if broken:
+        src = src.replace(
+            'assert "_TAPE_MARKET" in _src and "_TAPE = " in _src',
+            "if False:  # dead again")
+    if 'assert "_TAPE_MARKET" in _src and "_TAPE = " in _src' not in src:
+        return False, "N5: the grafted-export post-condition is missing"
+    if "if _tape:" not in src or "_src = open(main_path).read()" not in src:
+        return False, "N5: the post-condition does not read the emitted main.py"
+    if "exported tape market mode disagrees with training" not in src:
+        return False, "N5: the export does not check the tape MODE matches"
+    return True, "N5 export: a grafted checkpoint must emit an embedded tape"
 
 
 if __name__ == "__main__":

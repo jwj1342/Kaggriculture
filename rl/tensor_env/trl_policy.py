@@ -767,7 +767,7 @@ class MultiActorNet(ActorNet):
 
     def __init__(self, obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                  n_hands=12, n_hand_task=None, auto_bias=2.5, couple=False,
-                 market_orders=1, depth=2, qty_head=False):
+                 market_orders=1, depth=2, qty_head=False, slot0_noop=False):
         super().__init__(obs_dim, n_farmer, n_market, hidden1, hidden2,
                          depth=depth)
         self.market_orders = max(1, int(market_orders))
@@ -812,6 +812,20 @@ class MultiActorNet(ActorNet):
             # learnable number per slot and training moves off it.
             with torch.no_grad():
                 self.slot_bias[1:, 0] = SLOT_NOOP_BIAS
+                # ...and slot 0 too, when the caller asks. The `1:` above is
+                # deliberate for the K>1 contract, but it leaves slot 0 as the
+                # ONLY slot with no NOOP prior -- and under a farm graft whose
+                # market is already complete, silence IS the optimum. Measured
+                # on oppl05 (2026-09-07): the objective prefers the do-nothing
+                # policy by 12.1 units of return, yet after 200 iterations
+                # slot_bias[:, 0] read [0.0135, 5.7467, 5.7306] -- slot 0 had
+                # moved 0.0135 nats of the ~6 it needed, so it fired on 92.6%
+                # of turns against its siblings' 1.67% and the run sat at
+                # -38,100 margin against a 0 baseline. Off by default: a run
+                # that must SELL (--farm-tape-market buys, or no graft at all)
+                # needs slot 0 free, and at 5.75 the prior is p(NOOP)=0.954.
+                if slot0_noop:
+                    self.slot_bias[0, 0] = SLOT_NOOP_BIAS
             self.couple_m = nn.Parameter(torch.zeros(n_market, n_market))
         if self.qty_head:
             # One rung index per market slot, conditioned on that slot's macro
@@ -909,7 +923,7 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                        v_hidden=256, device="cpu", residual_base="",
                        market_orders=1, depth=2, qty_head=False,
                        multi=False, n_hands=12, n_hand_task=None,
-                       couple=False, market_only=False):
+                       couple=False, market_only=False, slot0_noop=False):
     """(actor, critic, actor_net, critic_net): TorchRL modules + raw nets.
 
     Construction order (actor layers, then critic layers) matches PolicyT's
@@ -925,6 +939,9 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
     if couple and not multi:
         raise ValueError("couple=True requires multi=True: the coupling "
                          "conditions on hand-task intents")
+    if slot0_noop and not multi:
+        raise ValueError("slot0_noop=True needs multi=True: the slot_bias "
+                         "table only exists on the multi-order head")
     if market_only and not multi:
         raise ValueError("market_only=True requires multi=True: the hand "
                          "heads have to exist to be excluded")
@@ -972,7 +989,8 @@ def build_actor_critic(obs_dim, n_farmer, n_market, hidden1=512, hidden2=256,
                                       couple=couple,
                                       market_orders=market_orders,
                                       depth=depth,
-                                      qty_head=qty_head).to(device)
+                                      qty_head=qty_head,
+                                      slot0_noop=slot0_noop).to(device)
         out_keys = ["flogits", "mlogits", "hlogits"]
         dist_keys = {"flogits": "flogits", "mlogits": "mlogits",
                      "hlogits": "hlogits", "fmask": "farmer_mask",
