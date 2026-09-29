@@ -19,7 +19,7 @@
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 工具、数据流、集群操作与交付规范 | 工具接口变化时更新 |
 | [`ONBOARDING.md`](ONBOARDING.md) | 新协作者从零跑通项目 | 安装或主入口变化时更新 |
 
-最短阅读顺序：`ONBOARDING.md` -> `SUBMISSION_POLICY.md` -> `VALIDATING.md`；
+最短阅读顺序：`ONBOARDING.md` -> `SUBMISSION_POLICY.md` -> `VALIDATING.md`。
 
 
 ## 证据与架构
@@ -31,7 +31,7 @@
 
 ## 历史快照
 
-已归档的文档（`data/releases/rl-line-archive-2026-09-29.tar.gz`，或 `git show <精简前的 commit>:<路径>`）：
+已归档的文档（`data/releases/rl-line-archive-2026-09-29.tar.gz`，或 `git show 7a5e91e^:<路径>`）：
 `RUNS.md`（18,920 行实验台账）、`CEILING.md`、`ROADMAP.md`、`INFRA.md`、`GAP-2000.md`、
 `ACCEPTANCE-2026-08-21.md`、`MORNING-2026-08-21/22.md`、`TODO.md`，以及 `rl/` 全部内容。
 

@@ -130,6 +130,12 @@ registering a manifest concurrently corrupted it (recovered in full — see
 `docs/LEADERBOARD.md` + `site/leaderboard.html`. README "How it fits together"
 has the diagram.
 
+`agents/newlines/` holds the mined meta plans — `n04.py` is the one on the ladder, and it
+carries the third-party MIT adaptive market layer inside it; `tools/wrap.py` puts that same
+layer around any other mined plan. **Those two are the scoring line.** (Both live under
+`agents/*/`, which `.gitignore` excludes, so the versioned copy is the submission snapshot
+`submissions/2026-09-04-sharedmeta-cleo/main.py` — byte-identical to `n04.py`.)
+
 `agents/spar/` is the same generator on the `ladder` plan: opponents
 reconstructed from real ladder replays. Keep it in every field — before it
 existed, every measurement here was against strategies we wrote ourselves, and

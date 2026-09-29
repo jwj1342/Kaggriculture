@@ -11,7 +11,7 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
   排行榜约 2026-10-15 收敛。
 - **天梯历史口径**：`docs/LADDER_STATE.md` 保存 2026-08-14 快照及 08-23 的收敛后更正，
   **不是实时榜单**；当前读数用 `python tools/ladder.py stats` 获取。
-- **本地累计** 参考引擎 **3,397,241 局**（87 个 run，`data/arena.sqlite`）。
+- **本地累计** 参考引擎 **3,624,881 局**（98 个 run，`data/arena.sqlite`）。
 - **当前主线**：挖来的计划 + 自适应包装层（`agents/newlines/`、`tools/wrap.py`）。
   **RL 线已于 2026-09-29 归档**（`data/releases/rl-line-archive-2026-09-29.tar.gz`，
   以及该 commit 之前的 git 历史），连同它的台账 `docs/RUNS.md`、天花板测量与实验脚手架。
@@ -27,8 +27,6 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
 ## 环境搭建
 
 **一台普通笔记本就够了** —— 唯一的硬性要求是 Python 3.9+。
-（RL 训练线另需 `requirements/rl.txt` 的 torch 栈，见下表；GPU 只在集群训练作业里用，
-本地 CPU 一样能跑全部功能与全部验收门。）
 
 ```bash
 bash tools/bootstrap.sh          # 建立 venv/，用一局真实对局验证
@@ -249,61 +247,58 @@ smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
 
 ## 目录结构
 
+2026-09-29「冲刺前的精简」之后：131 个已跟踪文件 / 15M。留下的都是**得分线**用得到的。
+
 ```
 agents/
   _engine.py       策略：唯一的执行路径；它的 CONFIG 块是生成的
   kg_rules.py      规则：作物表、价格模型、商店图 —— 无策略，引擎再平衡时只改这里
-  lib/             生成的策略 + manifest.json  (git-ignored)
-  spar/            从天梯回放重建的陪练场地  (git-ignored)
-  ref/             第三方参考 agent (MIT，见其 NOTICE)  (git-ignored)
-  ghosts/          回放真实榜首轨迹的开环对手  (git-ignored)
-  lines/           天梯上每条不同剧本的一个代表  (git-ignored)
-  bench3/          标准参考场地  (git-ignored)
+  newlines/        ★ 从公开回放重建的 meta 计划（n04.py = 在榜那条，自带 cleo 卖出层）
+  lib/ spar/ ref/ ghosts/ lines/ bench3/   生成或快照的对手场地  (git-ignored)
   barnyard.py      手工调优的最初版本
   legacy/          被取代的临时 agent，因为文档引用而保留
-tools/
-  bootstrap.sh     从零建立 venv/
-  registry.py      原子定义、组合方案、代码生成
-  tournament.py    面板 / 循环赛，持久化到 SQLite
-  leaderboard.py   从数据库渲染 docs/LEADERBOARD.md + site/leaderboard.html
-  db.py            所有对局的 schema 和查询
-  eval.py          带 Wilson 区间和配对 bootstrap 的 A/B
-  stress.py        28 个病态环境配置
-  trace.py         一局的逐日追踪
-  ladder.py        拉取我们自己的天梯对局，19 MB 回放压成 1.4 KB 摘要
-  topeps.py        消化 Kaggle 每日的榜首对局数据集
-  ghost.py         把榜首轨迹变成本地对手
-  lines.py         把那些轨迹聚类成它们实际在跑的"线"
+
+tools/             28 个，按用途分四组
+  ── 提交与打包 ──
+  package.sh       打成 Kaggle 要的 tar.gz（.py/.npz 平铺在归档根）
+  kaggle_cli.py    提交与拉分
+  stress.py        28 个病态环境配置，提交前必跑
+  wrap.py        ★ 把同一个自适应层套到任意挖来的计划上（得分线的另一半）
   hybrid.py        把录制的开局拼接到我们的引擎上，测量开局的价值
-  fetch_fields.sh  重建新克隆没有的全部对手场地
-  package.sh       把 agent 打成 Kaggle 要的 tar.gz（.py 和 .npz 平铺在归档根 —— RL 导出靠后者）
-  datalake.py      数据卫生：数据库 vs 分片 vs dist/ 一屏对账（status / sync --prune）
+  ── 测量 ──
+  eval.py          带 Wilson 区间和配对 bootstrap 的 A/B（h2h / pool 两种模式）
+  tournament.py    面板 / 循环赛，持久化到 SQLite
   stats.py         Bradley-Terry 和 Wilson —— 仓库里唯一的纯模块，有单元测试
-  （节选；完整清单见 docs/CONTRIBUTING.md《工具参考》）
-rl/                RL 主线（自带 README/TODO）
-  train.py         TorchRL 统一训练入口（--algo 换 loss，--device 换 CPU/GPU，--config yaml）
-  export_agent.py  checkpoint -> 纯 numpy 提交 agent（main.py + weights.npz）
-  eval_summary.py / plot_run.py / probe.py   计分卡 / 每 run 图表 / 定点评估+early stop
-  obs.py actions.py policy.py kg_env.py scripted.py league.py   公共件
-  configs/         yaml 预设   tensor_env/  张量引擎+验证链+TorchRL 层
-  bc/              行为克隆    legacy/      第一代 CPU 栈（保留的记录）
-docs/              全部知识与结果 —— 见下方表格
-data/arena.sqlite  证据层  (git-ignored；用 tools/sync.py 分享)
+  ruler_calib.py   把本地尺子对着天梯分校准
+  variance.py factorial.py   方差分解 / 析因设计
+  trace.py tracelib.py board.py   一局的逐日追踪、轨迹库、棋盘打印
+  ── 数据 ──
+  ladder.py        拉取我们自己的天梯对局，19 MB 回放压成 1.4 KB 摘要
+  db.py            所有对局的 schema 和查询
+  datalake.py      数据卫生：数据库 vs 分片 vs dist/ 一屏对账（status / sync --prune）
+  topeps.py        消化 Kaggle 每日的榜首对局数据集
+  sync.py          在机器之间同步 arena.sqlite
+  leaderboard.py   从数据库渲染 docs/LEADERBOARD.md
+  ── 生成与环境 ──
+  registry.py      原子定义、组合方案、代码生成
+  ghost.py lines.py fieldtable.py   榜首轨迹 → 本地对手 / 聚类成"线" / 场地表
+  make_probes.py   定点评估用的探针局面
+  bootstrap.sh     从零建立 venv/
+  fetch_fields.sh  重建新克隆没有的全部对手场地
+  publish.sh       发布 release 资产
+  build_notebook.py  生成 notebooks/baseline.ipynb
+  d1.py            Kaggle 数据集/凭据的小工具
+
+slurm/             3 个，全部 CPU
+  eval.sh tournament.sh tournament_array.sh
+
+docs/              8 份 —— 见下方表格
+data/arena.sqlite  证据层，3,624,881 局  (git-ignored；用 tools/sync.py 分享)
+data/releases/     对手场快照 + rl-line-archive-2026-09-29.tar.gz  (git-ignored)
 reference/
-  engine/          kaggriculture.py 的副本 —— 实际运行的规则
+  engine/          kaggriculture.py 的副本 —— **实际运行的规则，比览页可信**
   docs/            比赛数据集里的官方 README.md 和 AGENTS.md
-requirements/      base.txt、nodeps.txt、rl.txt、lock.txt —— 按安装语义拆分
-submissions/       每一份发给 Kaggle 的文件的精确快照
-slurm/             集群作业封装（锦标赛/评估 CPU + RL CPU/GPU 模板）
-site/              生成的排行榜页面
 ```
-
-**生成物，永不手编辑：** `agents/lib/`、`agents/spar/`、`docs/LEADERBOARD.md`、
-`site/leaderboard.html`、`notebooks/baseline.ipynb`。**git-ignored：** 以上加
-`venv/`、`.cache/`、`.kaggle/`、`data/`、`rl/runs/`（含每 run 的 `plots/`）、
-`rl/out/`、以及 `agents/` 下所有生成的对手场地。
-
-**新克隆一个对手都没有** —— 先跑 `bash tools/fetch_fields.sh`。
 
 ## 对手一览
 
@@ -466,7 +461,7 @@ bash tools/fetch_fields.sh           # 对手 —— 新克隆一个都没有，
 
 它还会把 `agents/CHAMPION` 指向的那条拷成 `champion.py`。**你的对手里必须有它。**
 
-不需要 Kaggle key —— 371 条剧本的快照（`dist/tracelib.json.xz`，3 MB）已提交进 git。
+不需要 Kaggle key —— 371 条剧本的快照（`dist/tracelib.json.xz`，12.4 MB）已提交进 git。
 
 然后，从便宜到贵：
 
@@ -521,7 +516,7 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 
 ## 文档
 
-这个项目知道的一切都在 [`docs/`](docs/) 与 `rl/` 的文档里。先看
+这个项目知道的一切都在 [`docs/`](docs/) 的 8 份文档里（RL 线的文档已随 `rl/` 归档）。先看
 [`docs/INDEX.md`](docs/INDEX.md) 判断一份文件是当前合同、证据档案、历史快照还是生成物，
 再按问题查：
 
@@ -530,11 +525,10 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 | **历史榜单提交是什么，我怎么在本地复现** | [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 08-14/08-23 快照，不是实时榜单 |
 | **这个比赛里到底什么决定输赢** | [`docs/ANALYSIS.md`](docs/ANALYSIS.md) —— 引擎经济学 + 312,000 局受控实验 |
 | 怎么把环境跑起来 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) —— 第一个小时 |
-| 剧本线走到哪、哪些结论被推翻了、哪些路线停了 | `docs/ROADMAP.md`（已归档）（覆盖到 2026-08-14） |
 | **我的改动是真的吗** | [`docs/VALIDATING.md`](docs/VALIDATING.md) —— 出任何数字之前读 |
 | 命名约定、工具用法、集群、怎么交东西 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
 | 什么时候提交、提交什么、额度怎么算 | [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) |
-| 某一个具体数字是哪次跑出来的 | `docs/RUNS.md`（已归档） —— 台账，只增不改 |
+| 某一个具体数字是哪次跑出来的 | `docs/RUNS.md`、`docs/ROADMAP.md`、`docs/CEILING.md` —— **已随 RL 线归档**，见 `data/releases/rl-line-archive-2026-09-29.tar.gz` 或 `git show 7a5e91e^:<路径>` |
 | 原子库的本地排名 | [`docs/LEADERBOARD.md`](docs/LEADERBOARD.md) —— **生成物**（run #2 的快照），别手改 |
 | 哪些文档只是旧交班/验收快照 | [`docs/INDEX.md`](docs/INDEX.md)《历史快照》 |
 
@@ -589,22 +583,3 @@ COLLECT_FERTILIZER、HARVEST 四个动作。从同一份回放读出的三个**�
 **两个参考场地都已经在顶端饱和。** 八个 `closer_cleo` 量级的变体在幽灵场地上并列
 99.4%，分不出高下。在这个层级唯一还有分辨率的，是**带外包装的 agent 互相打** ——
 92.7 / 73.8 / 54.1 / 29.3，间距干净。
-
-RL 线截至 2026-08-24 的结论（证据索引在 `docs/RUNS.md` 顶部）：
-
-**TorchRL 换代零损失。** 同预算 44.2M 步 A/B：手写循环与 TorchRL 均至对 starter
-win 1.000，框架吞吐税只有 -5.6%，终局收益反而更高。换算法从此是换一个 loss 模块。
-
-**自博弈出不了自己的盆地。** 把自己的先验打到 96% 胜率、快照池全面压制，
-花名册上一分不涨（foothold）——league 的多样性不能替代盆地外的真对手。
-
-**容量、对手与动作表达力都曾经有用，但不是剩余主墙。** 宽网把 barnyard 从 0 胜推到
-56.8%，PLANT/FEED/逐雇工等词表也带来跃迁；继续延长、扩词表或加墙最终都停在 7/12。
-
-**flat PPO 缺的是稀有长期建设决策的信用。** BUY_LAND/BUY_SEED 等动作极少采样，收益
-跨数百回合；调高 GAE 长信用、potential、模仿权重和同时买卖均未让建设规模起来。
-当前路线因此转为配对反事实 rollout、持久 option、离线宏观搜索，最后才联合训练 HRL。
-
-**基础设施不是当前研究瓶颈。** 固定 probe 可早停；profiling 显示训练时间约 98% 在
-rollout，H100 并非长时间空转。当前因队列周转默认 CPU，正式作业统一走
-

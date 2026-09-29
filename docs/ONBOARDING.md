@@ -166,7 +166,7 @@ ls agents/lib | head                   # 生成的库
 export KG_FAST_ENV=1               # 跳过 schema 校验，结果相同，快 17%
 
 python tools/tournament.py roundrobin \
-    --agents agents/barnyard.py agents/lib/homestead-crew-orchardherd-flood-blind-muck.py starter \
+    --agents agents/barnyard.py agents/lib/estate-company-mixedfarm-flood-blind-muck-fixed.py starter \
     --seeds 8 --label "my-first-run" -j $(python -c 'import os;print(os.cpu_count())')
 ```
 
@@ -232,7 +232,7 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 ## 7. 目前的状况
 
 **这一节故意不写具体数字** —— 上一版（截至 08-12）在一周内全部过时。
-现状的单点真相只有三处，按需要查：
+现状的单点真相只有两处，按需要查：
 
 - **天梯历史**：`docs/LADDER_STATE.md`（08-14 快照与 08-23 更正）；实时读数跑
   `python tools/ladder.py stats`。

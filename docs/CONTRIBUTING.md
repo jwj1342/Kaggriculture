@@ -1,5 +1,9 @@
 # Contributing
 
+> **⚠️ 2026-09-29：RL 线已归档**（`data/releases/rl-line-archive-2026-09-29.tar.gz`，
+> 或 `git show 7a5e91e^:<路径>`）。本文中所有涉及 `rl/`、`slurm/rl_*`、
+> `tools/submit_rl.py`、`requirements/rl.txt` 的段落**只描述归档内容，不可执行**。
+
 Conventions and workflows. Read `docs/ONBOARDING.md` first if you have not set up
 the environment yet.
 
