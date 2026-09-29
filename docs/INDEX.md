@@ -28,6 +28,7 @@
 |---|---|
 | [`ANALYSIS.md`](ANALYSIS.md) | 2026-08-13 市场/胜负机制研究；**含最终评分规则**（截止时锁定 active 两个 → 再跑约两周 → 一次 Bradley-Terry 整体拟合，host 确认） |
 | [`LADDER_STATE.md`](LADDER_STATE.md) | 08-14 快照及 08-23 复读更正；**不是实时榜单**，实时用 `python tools/ladder.py stats` |
+| [`DISCUSSIONS.md`](DISCUSSIONS.md) | **2026-09-29 拉取的竞赛讨论区情报**（166 帖 / 446 条发言）：评分机制与路径依赖、别人成功与失败的路径、两条指向动物经济的外部证据。**全部是他人自述，未经我们复现** |
 
 ## 历史快照
 

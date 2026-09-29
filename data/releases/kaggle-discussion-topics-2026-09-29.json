@@ -1,0 +1,1662 @@
+[
+ {
+  "id": 736219,
+  "title": "1st Place(previously)- Submission Strategy for beginners",
+  "author": "",
+  "votes": 91,
+  "comments": 11,
+  "post": "2026-08-19",
+  "last": "2026-09-27",
+  "url": "/competitions/kaggriculture/discussion/736219"
+ },
+ {
+  "id": 737885,
+  "title": "Beware of scammers asking for source code",
+  "author": "",
+  "votes": 54,
+  "comments": 7,
+  "post": "2026-08-27",
+  "last": "2026-09-26",
+  "url": "/competitions/kaggriculture/discussion/737885"
+ },
+ {
+  "id": 741743,
+  "title": "Finally reached the silver medal zone with Reinforcement Learning",
+  "author": "",
+  "votes": 49,
+  "comments": 29,
+  "post": "2026-09-17",
+  "last": "2026-09-28",
+  "url": "/competitions/kaggriculture/discussion/741743"
+ },
+ {
+  "id": 731215,
+  "title": "Daily Top Episodes Dataset",
+  "author": "",
+  "votes": 48,
+  "comments": 8,
+  "post": "2026-07-31",
+  "last": "2026-09-27",
+  "url": "/competitions/kaggriculture/discussion/731215"
+ },
+ {
+  "id": 733431,
+  "title": "Balance Changes",
+  "author": "",
+  "votes": 42,
+  "comments": 13,
+  "post": "2026-08-06",
+  "last": "2026-08-13",
+  "url": "/competitions/kaggriculture/discussion/733431"
+ },
+ {
+  "id": 739273,
+  "title": "I came here to build a farming agent. I ended up building a replay-measurement pipeline",
+  "author": "",
+  "votes": 41,
+  "comments": 21,
+  "post": "2026-09-03",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/739273"
+ },
+ {
+  "id": 740022,
+  "title": "My experimentation with RL",
+  "author": "",
+  "votes": 35,
+  "comments": 26,
+  "post": "2026-09-07",
+  "last": "2026-09-16",
+  "url": "/competitions/kaggriculture/discussion/740022"
+ },
+ {
+  "id": 738079,
+  "title": "If I’m Going to Write Rules Anyway, Why Train a Model? — What I’ve Learned and Still Don’t Understand About Behavior Cloning",
+  "author": "",
+  "votes": 35,
+  "comments": 16,
+  "post": "2026-08-29",
+  "last": "2026-09-01",
+  "url": "/competitions/kaggriculture/discussion/738079"
+ },
+ {
+  "id": 734000,
+  "title": "How path dependent is the current leaderboard rating?",
+  "author": "",
+  "votes": 33,
+  "comments": 18,
+  "post": "2026-08-09",
+  "last": "2026-09-23",
+  "url": "/competitions/kaggriculture/discussion/734000"
+ },
+ {
+  "id": 742035,
+  "title": "⚠️ Scam alert: fake \"Kaggle Staff\" account (bovarddd) asking Kaggriculture participants for their code",
+  "author": "",
+  "votes": 33,
+  "comments": 3,
+  "post": "2026-09-19",
+  "last": "2026-09-20",
+  "url": "/competitions/kaggriculture/discussion/742035"
+ },
+ {
+  "id": 732450,
+  "title": "Crucial Information for Starters and Organizers: Documentation vs. Engine Discrepancies",
+  "author": "",
+  "votes": 29,
+  "comments": 6,
+  "post": "2026-08-03",
+  "last": "2026-08-14",
+  "url": "/competitions/kaggriculture/discussion/732450"
+ },
+ {
+  "id": 742130,
+  "title": "I guess we will have 30 gold medals",
+  "author": "",
+  "votes": 28,
+  "comments": 10,
+  "post": "2026-09-20",
+  "last": "2026-09-25",
+  "url": "/competitions/kaggriculture/discussion/742130"
+ },
+ {
+  "id": 742111,
+  "title": " 🪰 I let a fruit fly's brain play Kaggriculture",
+  "author": "",
+  "votes": 28,
+  "comments": 3,
+  "post": "2026-09-19",
+  "last": "2026-09-21",
+  "url": "/competitions/kaggriculture/discussion/742111"
+ },
+ {
+  "id": 741258,
+  "title": "RL finally starts learning something!",
+  "author": "",
+  "votes": 28,
+  "comments": 17,
+  "post": "2026-09-14",
+  "last": "2026-09-17",
+  "url": "/competitions/kaggriculture/discussion/741258"
+ },
+ {
+  "id": 735311,
+  "title": "Small balance change",
+  "author": "",
+  "votes": 27,
+  "comments": 7,
+  "post": "2026-08-15",
+  "last": "2026-08-25",
+  "url": "/competitions/kaggriculture/discussion/735311"
+ },
+ {
+  "id": 731587,
+  "title": "Comment on the final evaluation for this competition",
+  "author": "",
+  "votes": 24,
+  "comments": 3,
+  "post": "2026-07-31",
+  "last": "2026-09-19",
+  "url": "/competitions/kaggriculture/discussion/731587"
+ },
+ {
+  "id": 738619,
+  "title": "Learnings from PPO to 80k terminal cash",
+  "author": "",
+  "votes": 23,
+  "comments": 13,
+  "post": "2026-09-01",
+  "last": "2026-09-20",
+  "url": "/competitions/kaggriculture/discussion/738619"
+ },
+ {
+  "id": 736567,
+  "title": "End-to-End RL Is Harder Than It Looks: Many Replays from Leaderboard, but Not Much to Learn From",
+  "author": "",
+  "votes": 21,
+  "comments": 29,
+  "post": "2026-08-21",
+  "last": "2026-08-29",
+  "url": "/competitions/kaggriculture/discussion/736567"
+ },
+ {
+  "id": 734212,
+  "title": "How I Keep Iterating Kaggriculture Agents",
+  "author": "",
+  "votes": 21,
+  "comments": 4,
+  "post": "2026-08-10",
+  "last": "2026-08-11",
+  "url": "/competitions/kaggriculture/discussion/734212"
+ },
+ {
+  "id": 734952,
+  "title": "Is Pure Self-Play PPO viable?",
+  "author": "",
+  "votes": 20,
+  "comments": 28,
+  "post": "2026-08-13",
+  "last": "2026-08-28",
+  "url": "/competitions/kaggriculture/discussion/734952"
+ },
+ {
+  "id": 744219,
+  "title": "Unusual long pending time",
+  "author": "",
+  "votes": 19,
+  "comments": 11,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744219"
+ },
+ {
+  "id": 730708,
+  "title": "How to get started + Competition's Official Discord",
+  "author": "",
+  "votes": 18,
+  "comments": 11,
+  "post": "2026-07-30",
+  "last": "2026-09-26",
+  "url": "/competitions/kaggriculture/discussion/730708"
+ },
+ {
+  "id": 744218,
+  "title": "Is Kaggle lagging? I’ve had as many as 14 matches queued up at the same time.",
+  "author": "",
+  "votes": 16,
+  "comments": 11,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744218"
+ },
+ {
+  "id": 743716,
+  "title": "My RL Won, But Also Failed: Two Days of Training on a 196-Core Server",
+  "author": "",
+  "votes": 15,
+  "comments": 14,
+  "post": "2026-09-26",
+  "last": "2026-09-28",
+  "url": "/competitions/kaggriculture/discussion/743716"
+ },
+ {
+  "id": 738343,
+  "title": "Proposal: Reset leaderboard",
+  "author": "",
+  "votes": 15,
+  "comments": 6,
+  "post": "2026-08-31",
+  "last": "2026-09-02",
+  "url": "/competitions/kaggriculture/discussion/738343"
+ },
+ {
+  "id": 736439,
+  "title": "RL of Meta Agent: 960 Matchups and a PPO Plateau",
+  "author": "",
+  "votes": 15,
+  "comments": 6,
+  "post": "2026-08-20",
+  "last": "2026-08-25",
+  "url": "/competitions/kaggriculture/discussion/736439"
+ },
+ {
+  "id": 744277,
+  "title": "[RESOLVED] Servers Overloaded -> Queue times",
+  "author": "",
+  "votes": 14,
+  "comments": 4,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744277"
+ },
+ {
+  "id": 737955,
+  "title": "Leaderboard is by nature obsolete at all times",
+  "author": "",
+  "votes": 14,
+  "comments": 8,
+  "post": "2026-08-28",
+  "last": "2026-08-29",
+  "url": "/competitions/kaggriculture/discussion/737955"
+ },
+ {
+  "id": 737545,
+  "title": "(Resolved) obs[\"step\"] is missing for seat 1 in env.step()/env.steps -- not a live env.run() match issue",
+  "author": "",
+  "votes": 12,
+  "comments": 5,
+  "post": "2026-08-26",
+  "last": "2026-08-30",
+  "url": "/competitions/kaggriculture/discussion/737545"
+ },
+ {
+  "id": 743009,
+  "title": "Why there are still public notebook being shared？",
+  "author": "",
+  "votes": 11,
+  "comments": 6,
+  "post": "2026-09-24",
+  "last": "2026-09-25",
+  "url": "/competitions/kaggriculture/discussion/743009"
+ },
+ {
+  "id": 743249,
+  "title": "10k teams!",
+  "author": "",
+  "votes": 9,
+  "comments": 3,
+  "post": "2026-09-25",
+  "last": "2026-09-26",
+  "url": "/competitions/kaggriculture/discussion/743249"
+ },
+ {
+  "id": 742943,
+  "title": "[Tool] A byte-identical Rust simulator for Kaggriculture: ~550k steps/s, parallel tournaments, self-play data",
+  "author": "",
+  "votes": 9,
+  "comments": 1,
+  "post": "2026-09-24",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/742943"
+ },
+ {
+  "id": 741414,
+  "title": "Final week tool: replay analyzer to squeeze points before the deadline",
+  "author": "",
+  "votes": 9,
+  "comments": 3,
+  "post": "2026-09-15",
+  "last": "2026-09-16",
+  "url": "/competitions/kaggriculture/discussion/741414"
+ },
+ {
+  "id": 737937,
+  "title": "Determinism is an argument against RL here, not for it",
+  "author": "",
+  "votes": 9,
+  "comments": 10,
+  "post": "2026-08-28",
+  "last": "2026-09-09",
+  "url": "/competitions/kaggriculture/discussion/737937"
+ },
+ {
+  "id": 736932,
+  "title": "Could the game’s rating system be improved?",
+  "author": "",
+  "votes": 9,
+  "comments": 7,
+  "post": "2026-08-22",
+  "last": "2026-08-25",
+  "url": "/competitions/kaggriculture/discussion/736932"
+ },
+ {
+  "id": 744261,
+  "title": "Pending + in process",
+  "author": "",
+  "votes": 8,
+  "comments": 9,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744261"
+ },
+ {
+  "id": 744255,
+  "title": "why is submission taking too long",
+  "author": "",
+  "votes": 8,
+  "comments": 3,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744255"
+ },
+ {
+  "id": 738799,
+  "title": "First simulation comp, what should I actually be learning?",
+  "author": "",
+  "votes": 8,
+  "comments": 6,
+  "post": "2026-09-01",
+  "last": "2026-09-14",
+  "url": "/competitions/kaggriculture/discussion/738799"
+ },
+ {
+  "id": 741281,
+  "title": "Will code sharing also be closed in this competition, as it was in the PTCG Competition ?",
+  "author": "",
+  "votes": 7,
+  "comments": 9,
+  "post": "2026-09-14",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/741281"
+ },
+ {
+  "id": 741730,
+  "title": "RL Progress update : self play",
+  "author": "",
+  "votes": 7,
+  "comments": 8,
+  "post": "2026-09-17",
+  "last": "2026-09-21",
+  "url": "/competitions/kaggriculture/discussion/741730"
+ },
+ {
+  "id": 740606,
+  "title": "Is the current ranking system reasonable?",
+  "author": "",
+  "votes": 7,
+  "comments": 2,
+  "post": "2026-09-10",
+  "last": "2026-09-10",
+  "url": "/competitions/kaggriculture/discussion/740606"
+ },
+ {
+  "id": 740004,
+  "title": "could we please increase the k factor of the elo?",
+  "author": "",
+  "votes": 7,
+  "comments": 1,
+  "post": "2026-09-07",
+  "last": "2026-09-08",
+  "url": "/competitions/kaggriculture/discussion/740004"
+ },
+ {
+  "id": 742246,
+  "title": "Neurosymbolic RL for Kaggriculture: what actually moved the needle [WIP]",
+  "author": "",
+  "votes": 6,
+  "comments": 6,
+  "post": "2026-09-20",
+  "last": "2026-09-21",
+  "url": "/competitions/kaggriculture/discussion/742246"
+ },
+ {
+  "id": 737480,
+  "title": "How do you perform behavioral cloning?",
+  "author": "",
+  "votes": 6,
+  "comments": 2,
+  "post": "2026-08-25",
+  "last": "2026-08-25",
+  "url": "/competitions/kaggriculture/discussion/737480"
+ },
+ {
+  "id": 734412,
+  "title": "The price table ranks the crops backwards — the town's appetite is what sets the price",
+  "author": "",
+  "votes": 6,
+  "comments": 3,
+  "post": "2026-08-11",
+  "last": "2026-08-17",
+  "url": "/competitions/kaggriculture/discussion/734412"
+ },
+ {
+  "id": 733392,
+  "title": "C++ rewrite",
+  "author": "",
+  "votes": 6,
+  "comments": 5,
+  "post": "2026-08-06",
+  "last": "2026-08-15",
+  "url": "/competitions/kaggriculture/discussion/733392"
+ },
+ {
+  "id": 740847,
+  "title": "My Journey So Far — Mechanics, Breakdowns, and What's Actually Working",
+  "author": "",
+  "votes": 5,
+  "comments": 0,
+  "post": "2026-09-11",
+  "last": "2026-09-11",
+  "url": "/competitions/kaggriculture/discussion/740847"
+ },
+ {
+  "id": 740055,
+  "title": "A Three-Layer Brain for Kaggriculture",
+  "author": "",
+  "votes": 5,
+  "comments": 0,
+  "post": "2026-09-08",
+  "last": "2026-09-08",
+  "url": "/competitions/kaggriculture/discussion/740055"
+ },
+ {
+  "id": 739534,
+  "title": "Here are a few observations I’ve made about how the rating system behaves.",
+  "author": "",
+  "votes": 5,
+  "comments": 7,
+  "post": "2026-09-04",
+  "last": "2026-09-07",
+  "url": "/competitions/kaggriculture/discussion/739534"
+ },
+ {
+  "id": 737663,
+  "title": "Small environment change proposal: split weeds and shop randomness",
+  "author": "",
+  "votes": 5,
+  "comments": 3,
+  "post": "2026-08-26",
+  "last": "2026-08-27",
+  "url": "/competitions/kaggriculture/discussion/737663"
+ },
+ {
+  "id": 736407,
+  "title": "RL model release (working link)",
+  "author": "",
+  "votes": 5,
+  "comments": 0,
+  "post": "2026-08-20",
+  "last": "2026-08-20",
+  "url": "/competitions/kaggriculture/discussion/736407"
+ },
+ {
+  "id": 743214,
+  "title": "Slow Rank Climb-up",
+  "author": "",
+  "votes": 4,
+  "comments": 7,
+  "post": "2026-09-25",
+  "last": "2026-09-27",
+  "url": "/competitions/kaggriculture/discussion/743214"
+ },
+ {
+  "id": 740282,
+  "title": "how much time does it take for submission to converge?",
+  "author": "",
+  "votes": 4,
+  "comments": 9,
+  "post": "2026-09-08",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/740282"
+ },
+ {
+  "id": 740588,
+  "title": "does copying opponent help?",
+  "author": "",
+  "votes": 4,
+  "comments": 15,
+  "post": "2026-09-10",
+  "last": "2026-09-15",
+  "url": "/competitions/kaggriculture/discussion/740588"
+ },
+ {
+  "id": 740792,
+  "title": "How are people making RL work in Kaggriculture?",
+  "author": "",
+  "votes": 4,
+  "comments": 2,
+  "post": "2026-09-11",
+  "last": "2026-09-11",
+  "url": "/competitions/kaggriculture/discussion/740792"
+ },
+ {
+  "id": 740510,
+  "title": "Automating strategy experiments in Kaggriculture",
+  "author": "",
+  "votes": 4,
+  "comments": 0,
+  "post": "2026-09-09",
+  "last": "2026-09-09",
+  "url": "/competitions/kaggriculture/discussion/740510"
+ },
+ {
+  "id": 740437,
+  "title": "Your opponents are probably replaying the same tapes you are (I measured it)",
+  "author": "",
+  "votes": 4,
+  "comments": 0,
+  "post": "2026-09-09",
+  "last": "2026-09-09",
+  "url": "/competitions/kaggriculture/discussion/740437"
+ },
+ {
+  "id": 739410,
+  "title": "Final Bradley-Terry scoring: three clarifications (team score, ties, play rate)",
+  "author": "",
+  "votes": 4,
+  "comments": 1,
+  "post": "2026-09-04",
+  "last": "2026-09-04",
+  "url": "/competitions/kaggriculture/discussion/739410"
+ },
+ {
+  "id": 739179,
+  "title": "Why are the strongest agents being retired from the leaderboard?",
+  "author": "",
+  "votes": 4,
+  "comments": 6,
+  "post": "2026-09-03",
+  "last": "2026-09-03",
+  "url": "/competitions/kaggriculture/discussion/739179"
+ },
+ {
+  "id": 737879,
+  "title": "Kaggriculture - Hillclimbing",
+  "author": "",
+  "votes": 4,
+  "comments": 1,
+  "post": "2026-08-27",
+  "last": "2026-08-28",
+  "url": "/competitions/kaggriculture/discussion/737879"
+ },
+ {
+  "id": 736917,
+  "title": "RL seems to have a very low ceiling and is extremely prone to noise interference.",
+  "author": "",
+  "votes": 4,
+  "comments": 6,
+  "post": "2026-08-22",
+  "last": "2026-08-24",
+  "url": "/competitions/kaggriculture/discussion/736917"
+ },
+ {
+  "id": 736369,
+  "title": "Any High-Ranking Entries Using RL?",
+  "author": "",
+  "votes": 4,
+  "comments": 7,
+  "post": "2026-08-20",
+  "last": "2026-08-23",
+  "url": "/competitions/kaggriculture/discussion/736369"
+ },
+ {
+  "id": 736625,
+  "title": "The Daily Top Episodes dumps and my API-crawled corpus stopped overlapping on Aug 9 (measured)",
+  "author": "",
+  "votes": 4,
+  "comments": 0,
+  "post": "2026-08-21",
+  "last": "2026-08-21",
+  "url": "/competitions/kaggriculture/discussion/736625"
+ },
+ {
+  "id": 736011,
+  "title": "Eligibility for Participant under 18",
+  "author": "",
+  "votes": 4,
+  "comments": 5,
+  "post": "2026-08-19",
+  "last": "2026-08-20",
+  "url": "/competitions/kaggriculture/discussion/736011"
+ },
+ {
+  "id": 734384,
+  "title": "Am I just feeding RL ?",
+  "author": "",
+  "votes": 4,
+  "comments": 2,
+  "post": "2026-08-11",
+  "last": "2026-08-19",
+  "url": "/competitions/kaggriculture/discussion/734384"
+ },
+ {
+  "id": 735366,
+  "title": "Farming strategies (I'm new)",
+  "author": "",
+  "votes": 4,
+  "comments": 2,
+  "post": "2026-08-15",
+  "last": "2026-08-18",
+  "url": "/competitions/kaggriculture/discussion/735366"
+ },
+ {
+  "id": 744287,
+  "title": " Submission sent! ",
+  "author": "",
+  "votes": 3,
+  "comments": 0,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744287"
+ },
+ {
+  "id": 743231,
+  "title": "Six things I wish I'd known before trusting my local win rates",
+  "author": "",
+  "votes": 3,
+  "comments": 0,
+  "post": "2026-09-25",
+  "last": "2026-09-25",
+  "url": "/competitions/kaggriculture/discussion/743231"
+ },
+ {
+  "id": 742737,
+  "title": "How long does RL training usually take for agents?",
+  "author": "",
+  "votes": 3,
+  "comments": 7,
+  "post": "2026-09-23",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/742737"
+ },
+ {
+  "id": 742329,
+  "title": "Tips for beginners getting started",
+  "author": "",
+  "votes": 3,
+  "comments": 3,
+  "post": "2026-09-21",
+  "last": "2026-09-23",
+  "url": "/competitions/kaggriculture/discussion/742329"
+ },
+ {
+  "id": 742120,
+  "title": "I think agents are becoming more and more like thieves. ",
+  "author": "",
+  "votes": 3,
+  "comments": 0,
+  "post": "2026-09-19",
+  "last": "2026-09-19",
+  "url": "/competitions/kaggriculture/discussion/742120"
+ },
+ {
+  "id": 739788,
+  "title": "Proposal: Show provisional Bradley-Terry rating.",
+  "author": "",
+  "votes": 3,
+  "comments": 2,
+  "post": "2026-09-06",
+  "last": "2026-09-10",
+  "url": "/competitions/kaggriculture/discussion/739788"
+ },
+ {
+  "id": 739972,
+  "title": "From replay orders to actual trades: a cash-flow breakdown",
+  "author": "",
+  "votes": 3,
+  "comments": 0,
+  "post": "2026-09-07",
+  "last": "2026-09-07",
+  "url": "/competitions/kaggriculture/discussion/739972"
+ },
+ {
+  "id": 739699,
+  "title": "Report a bug：Winners are deducted points, losers are added points",
+  "author": "",
+  "votes": 3,
+  "comments": 1,
+  "post": "2026-09-05",
+  "last": "2026-09-05",
+  "url": "/competitions/kaggriculture/discussion/739699"
+ },
+ {
+  "id": 739388,
+  "title": "Reverse engineering the seed",
+  "author": "",
+  "votes": 3,
+  "comments": 4,
+  "post": "2026-09-03",
+  "last": "2026-09-04",
+  "url": "/competitions/kaggriculture/discussion/739388"
+ },
+ {
+  "id": 737699,
+  "title": "Experiences on LLM Usage",
+  "author": "",
+  "votes": 3,
+  "comments": 10,
+  "post": "2026-08-27",
+  "last": "2026-09-02",
+  "url": "/competitions/kaggriculture/discussion/737699"
+ },
+ {
+  "id": 738563,
+  "title": "X-ray your agent, or what one submission id gives away",
+  "author": "",
+  "votes": 3,
+  "comments": 0,
+  "post": "2026-08-31",
+  "last": "2026-08-31",
+  "url": "/competitions/kaggriculture/discussion/738563"
+ },
+ {
+  "id": 737736,
+  "title": "Price curves differ wildly by product — data from 5 top-agent replays",
+  "author": "",
+  "votes": 3,
+  "comments": 2,
+  "post": "2026-08-27",
+  "last": "2026-08-29",
+  "url": "/competitions/kaggriculture/discussion/737736"
+ },
+ {
+  "id": 737788,
+  "title": "Rules clarification: using a publicly published agent as a submission",
+  "author": "",
+  "votes": 3,
+  "comments": 3,
+  "post": "2026-08-27",
+  "last": "2026-08-29",
+  "url": "/competitions/kaggriculture/discussion/737788"
+ },
+ {
+  "id": 737764,
+  "title": "Code & Dataset archives for Replay analysis, BC, RL and more",
+  "author": "",
+  "votes": 3,
+  "comments": 0,
+  "post": "2026-08-27",
+  "last": "2026-08-27",
+  "url": "/competitions/kaggriculture/discussion/737764"
+ },
+ {
+  "id": 737459,
+  "title": "Any Tips for Someone Starting the Competition Now?",
+  "author": "",
+  "votes": 3,
+  "comments": 8,
+  "post": "2026-08-25",
+  "last": "2026-08-26",
+  "url": "/competitions/kaggriculture/discussion/737459"
+ },
+ {
+  "id": 735209,
+  "title": "4-players? 8-players?",
+  "author": "",
+  "votes": 3,
+  "comments": 1,
+  "post": "2026-08-14",
+  "last": "2026-08-15",
+  "url": "/competitions/kaggriculture/discussion/735209"
+ },
+ {
+  "id": 743760,
+  "title": "RL discussion",
+  "author": "",
+  "votes": 2,
+  "comments": 0,
+  "post": "2026-09-26",
+  "last": "2026-09-26",
+  "url": "/competitions/kaggriculture/discussion/743760"
+ },
+ {
+  "id": 742449,
+  "title": "Why aren't these agents planting in the southeast?",
+  "author": "",
+  "votes": 2,
+  "comments": 8,
+  "post": "2026-09-22",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/742449"
+ },
+ {
+  "id": 742856,
+  "title": "What actually predicted the ladder, and 15 things that didn't",
+  "author": "",
+  "votes": 2,
+  "comments": 0,
+  "post": "2026-09-23",
+  "last": "2026-09-23",
+  "url": "/competitions/kaggriculture/discussion/742856"
+ },
+ {
+  "id": 742341,
+  "title": "BUG？I had more coins but was marked as the loser",
+  "author": "",
+  "votes": 2,
+  "comments": 8,
+  "post": "2026-09-21",
+  "last": "2026-09-23",
+  "url": "/competitions/kaggriculture/discussion/742341"
+ },
+ {
+  "id": 742005,
+  "title": "Use of Gurobi or other optimization algorithms in the submission",
+  "author": "",
+  "votes": 2,
+  "comments": 2,
+  "post": "2026-09-18",
+  "last": "2026-09-20",
+  "url": "/competitions/kaggriculture/discussion/742005"
+ },
+ {
+  "id": 741722,
+  "title": "Evaluation of agent generalization and prevent overfitting?",
+  "author": "",
+  "votes": 2,
+  "comments": 4,
+  "post": "2026-09-16",
+  "last": "2026-09-19",
+  "url": "/competitions/kaggriculture/discussion/741722"
+ },
+ {
+  "id": 741988,
+  "title": "Pre-lock public notebook reminder (share lock 23 Sep 23:59 UTC)",
+  "author": "",
+  "votes": 2,
+  "comments": 2,
+  "post": "2026-09-18",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/741988"
+ },
+ {
+  "id": 741653,
+  "title": "this competition is more like AI  coding agents competing against each other",
+  "author": "",
+  "votes": 2,
+  "comments": 5,
+  "post": "2026-09-16",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/741653"
+ },
+ {
+  "id": 741797,
+  "title": "Has anyone tried shared action heads or autoregressive decoding for BC to RL?",
+  "author": "",
+  "votes": 2,
+  "comments": 1,
+  "post": "2026-09-17",
+  "last": "2026-09-17",
+  "url": "/competitions/kaggriculture/discussion/741797"
+ },
+ {
+  "id": 741003,
+  "title": "Has anyone had success with optimization-based planning?",
+  "author": "",
+  "votes": 2,
+  "comments": 9,
+  "post": "2026-09-12",
+  "last": "2026-09-17",
+  "url": "/competitions/kaggriculture/discussion/741003"
+ },
+ {
+  "id": 741596,
+  "title": "Fast Local H2H Arena & P&L Curve Analyzer (Squeeze Points Before the Deadline)",
+  "author": "",
+  "votes": 2,
+  "comments": 0,
+  "post": "2026-09-16",
+  "last": "2026-09-16",
+  "url": "/competitions/kaggriculture/discussion/741596"
+ },
+ {
+  "id": 740650,
+  "title": "Selling fertilizer",
+  "author": "",
+  "votes": 2,
+  "comments": 1,
+  "post": "2026-09-10",
+  "last": "2026-09-10",
+  "url": "/competitions/kaggriculture/discussion/740650"
+ },
+ {
+  "id": 740550,
+  "title": "Reproducible Kaggriculture environment and observation audit",
+  "author": "",
+  "votes": 2,
+  "comments": 0,
+  "post": "2026-09-10",
+  "last": "2026-09-10",
+  "url": "/competitions/kaggriculture/discussion/740550"
+ },
+ {
+  "id": 738075,
+  "title": "Melon isn't in any shop menu - town demand is exactly 1/day on every seed",
+  "author": "",
+  "votes": 2,
+  "comments": 0,
+  "post": "2026-08-29",
+  "last": "2026-08-29",
+  "url": "/competitions/kaggriculture/discussion/738075"
+ },
+ {
+  "id": 737833,
+  "title": "BC + RL and Rule-based, what is an accessible guide for beginners?",
+  "author": "",
+  "votes": 2,
+  "comments": 0,
+  "post": "2026-08-27",
+  "last": "2026-08-27",
+  "url": "/competitions/kaggriculture/discussion/737833"
+ },
+ {
+  "id": 736314,
+  "title": "Evaluation time longer",
+  "author": "",
+  "votes": 2,
+  "comments": 9,
+  "post": "2026-08-20",
+  "last": "2026-08-27",
+  "url": "/competitions/kaggriculture/discussion/736314"
+ },
+ {
+  "id": 737805,
+  "title": "Your \"GPU\" Kaggle kernel may be silently running on CPU (P100 vs PyTorch 2.10) — check + fix",
+  "author": "",
+  "votes": 2,
+  "comments": 0,
+  "post": "2026-08-27",
+  "last": "2026-08-27",
+  "url": "/competitions/kaggriculture/discussion/737805"
+ },
+ {
+  "id": 736189,
+  "title": "Claude Code",
+  "author": "",
+  "votes": 2,
+  "comments": 13,
+  "post": "2026-08-19",
+  "last": "2026-08-23",
+  "url": "/competitions/kaggriculture/discussion/736189"
+ },
+ {
+  "id": 737013,
+  "title": "Discussion of the education value of my Kaggle experience. ",
+  "author": "",
+  "votes": 2,
+  "comments": 1,
+  "post": "2026-08-22",
+  "last": "2026-08-23",
+  "url": "/competitions/kaggriculture/discussion/737013"
+ },
+ {
+  "id": 736187,
+  "title": "Midterm full evaluation",
+  "author": "",
+  "votes": 2,
+  "comments": 1,
+  "post": "2026-08-19",
+  "last": "2026-08-20",
+  "url": "/competitions/kaggriculture/discussion/736187"
+ },
+ {
+  "id": 736127,
+  "title": "Rate of convergence?",
+  "author": "",
+  "votes": 2,
+  "comments": 3,
+  "post": "2026-08-19",
+  "last": "2026-08-19",
+  "url": "/competitions/kaggriculture/discussion/736127"
+ },
+ {
+  "id": 734613,
+  "title": "My first competition",
+  "author": "",
+  "votes": 2,
+  "comments": 3,
+  "post": "2026-08-12",
+  "last": "2026-08-17",
+  "url": "/competitions/kaggriculture/discussion/734613"
+ },
+ {
+  "id": 734684,
+  "title": "Match outcome contradicts stated win condition (higher coin total recorded as loss)",
+  "author": "",
+  "votes": 2,
+  "comments": 1,
+  "post": "2026-08-12",
+  "last": "2026-08-12",
+  "url": "/competitions/kaggriculture/discussion/734684"
+ },
+ {
+  "id": 743993,
+  "title": "Will the submissions be open sourced after the competition ends?",
+  "author": "",
+  "votes": 1,
+  "comments": 6,
+  "post": "2026-09-28",
+  "last": "2026-09-28",
+  "url": "/competitions/kaggriculture/discussion/743993"
+ },
+ {
+  "id": 743772,
+  "title": "game theory died years ago. just need more core and more core…",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-09-27",
+  "last": "2026-09-27",
+  "url": "/competitions/kaggriculture/discussion/743772"
+ },
+ {
+  "id": 742025,
+  "title": "How do you decide which crops to plant?",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-09-19",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/742025"
+ },
+ {
+  "id": 742886,
+  "title": "If you tried BC at the micro level, how did your agent perform?",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-09-23",
+  "last": "2026-09-23",
+  "url": "/competitions/kaggriculture/discussion/742886"
+ },
+ {
+  "id": 742742,
+  "title": "Question about submission name",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-09-23",
+  "last": "2026-09-23",
+  "url": "/competitions/kaggriculture/discussion/742742"
+ },
+ {
+  "id": 742571,
+  "title": "Tournament Question ",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-22",
+  "last": "2026-09-22",
+  "url": "/competitions/kaggriculture/discussion/742571"
+ },
+ {
+  "id": 742083,
+  "title": "Disproportionate Rating Drop After a Close Defeat",
+  "author": "",
+  "votes": 1,
+  "comments": 5,
+  "post": "2026-09-19",
+  "last": "2026-09-19",
+  "url": "/competitions/kaggriculture/discussion/742083"
+ },
+ {
+  "id": 742078,
+  "title": "Minimize time, and maximaze money",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-09-19",
+  "last": "2026-09-19",
+  "url": "/competitions/kaggriculture/discussion/742078"
+ },
+ {
+  "id": 742063,
+  "title": "Overview game discrepancies.",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-09-19",
+  "last": "2026-09-19",
+  "url": "/competitions/kaggriculture/discussion/742063"
+ },
+ {
+  "id": 737568,
+  "title": "Reached ~$15K average — what should I investigate next?",
+  "author": "",
+  "votes": 1,
+  "comments": 3,
+  "post": "2026-08-26",
+  "last": "2026-09-19",
+  "url": "/competitions/kaggriculture/discussion/737568"
+ },
+ {
+  "id": 742009,
+  "title": "Best strategy for choosing crops?",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-09-18",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/742009"
+ },
+ {
+  "id": 741891,
+  "title": "Validated the market price formula against the spec's P(I0±T) numbers — sharing the implementation",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-18",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/741891"
+ },
+ {
+  "id": 741935,
+  "title": "Handling Pathfinding Overhead: A Look-Ahead Heuristic Approach",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-18",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/741935"
+ },
+ {
+  "id": 741792,
+  "title": "A question about players using the same pattern",
+  "author": "",
+  "votes": 1,
+  "comments": 5,
+  "post": "2026-09-17",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/741792"
+ },
+ {
+  "id": 740969,
+  "title": "I have only reached 20$k can we and if yes then how to use ml or other things to get started?",
+  "author": "",
+  "votes": 1,
+  "comments": 11,
+  "post": "2026-09-12",
+  "last": "2026-09-15",
+  "url": "/competitions/kaggriculture/discussion/740969"
+ },
+ {
+  "id": 741390,
+  "title": "submission trend -- is everyone catching up that fast really?",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-14",
+  "last": "2026-09-14",
+  "url": "/competitions/kaggriculture/discussion/741390"
+ },
+ {
+  "id": 740823,
+  "title": "How can I use the city’s shops more effectively to increase my profits?",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-11",
+  "last": "2026-09-12",
+  "url": "/competitions/kaggriculture/discussion/740823"
+ },
+ {
+  "id": 739084,
+  "title": "RNG seed recovery?",
+  "author": "",
+  "votes": 1,
+  "comments": 6,
+  "post": "2026-09-02",
+  "last": "2026-09-07",
+  "url": "/competitions/kaggriculture/discussion/739084"
+ },
+ {
+  "id": 739874,
+  "title": "runTimeout is inherited at 1200s — is that intentional for 720 steps ? ",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-06",
+  "last": "2026-09-07",
+  "url": "/competitions/kaggriculture/discussion/739874"
+ },
+ {
+  "id": 739746,
+  "title": "Why is there such a strict bonus point system?",
+  "author": "",
+  "votes": 1,
+  "comments": 6,
+  "post": "2026-09-06",
+  "last": "2026-09-06",
+  "url": "/competitions/kaggriculture/discussion/739746"
+ },
+ {
+  "id": 739283,
+  "title": "Quickstart isn't working",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-09-03",
+  "last": "2026-09-03",
+  "url": "/competitions/kaggriculture/discussion/739283"
+ },
+ {
+  "id": 738727,
+  "title": "Proposal: No new shops at end of month",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-01",
+  "last": "2026-09-02",
+  "url": "/competitions/kaggriculture/discussion/738727"
+ },
+ {
+  "id": 738837,
+  "title": "Is replaying action sequences extracted from public episode replays permitted under kaggle competiton Rules 3.14.a?",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-09-01",
+  "last": "2026-09-01",
+  "url": "/competitions/kaggriculture/discussion/738837"
+ },
+ {
+  "id": 737570,
+  "title": "Can game parameters change mid-competition or on final evaluation?",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-08-26",
+  "last": "2026-09-01",
+  "url": "/competitions/kaggriculture/discussion/737570"
+ },
+ {
+  "id": 738325,
+  "title": "Beyond Replay Cloning: What is the True End-Game Strategy for Kaggriculture? (Stuck despite PPO, GA, & Beam Search)",
+  "author": "",
+  "votes": 1,
+  "comments": 6,
+  "post": "2026-08-31",
+  "last": "2026-09-01",
+  "url": "/competitions/kaggriculture/discussion/738325"
+ },
+ {
+  "id": 738290,
+  "title": "Questions on rendering, yields, and input arguments",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-08-31",
+  "last": "2026-08-31",
+  "url": "/competitions/kaggriculture/discussion/738290"
+ },
+ {
+  "id": 737916,
+  "title": "confused about how to infer agent's score locally",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-08-28",
+  "last": "2026-08-28",
+  "url": "/competitions/kaggriculture/discussion/737916"
+ },
+ {
+  "id": 737801,
+  "title": "Is there a time limit on each agent's turn?",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-08-27",
+  "last": "2026-08-27",
+  "url": "/competitions/kaggriculture/discussion/737801"
+ },
+ {
+  "id": 737731,
+  "title": "Crop economics per tile-day, and why an all-melon opening goes bankrupt",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-08-27",
+  "last": "2026-08-27",
+  "url": "/competitions/kaggriculture/discussion/737731"
+ },
+ {
+  "id": 737431,
+  "title": "Regarding Deadline",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-08-25",
+  "last": "2026-08-26",
+  "url": "/competitions/kaggriculture/discussion/737431"
+ },
+ {
+  "id": 737492,
+  "title": "How many days need to ensure your agents score?",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-08-25",
+  "last": "2026-08-26",
+  "url": "/competitions/kaggriculture/discussion/737492"
+ },
+ {
+  "id": 737571,
+  "title": "Which version got the final rating?",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-08-26",
+  "last": "2026-08-26",
+  "url": "/competitions/kaggriculture/discussion/737571"
+ },
+ {
+  "id": 737457,
+  "title": "Reward Calculation in Kaggriculture",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-08-25",
+  "last": "2026-08-26",
+  "url": "/competitions/kaggriculture/discussion/737457"
+ },
+ {
+  "id": 736568,
+  "title": "Does intentionally placing impossible tasks to make replays harder to copy count as unfair play?",
+  "author": "",
+  "votes": 1,
+  "comments": 2,
+  "post": "2026-08-21",
+  "last": "2026-08-25",
+  "url": "/competitions/kaggriculture/discussion/736568"
+ },
+ {
+  "id": 737027,
+  "title": "Inferring Opponent Inventory Quantity and Uncertainty from Public State — for Quantitative Trading Factor Modeling",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-08-22",
+  "last": "2026-08-22",
+  "url": "/competitions/kaggriculture/discussion/737027"
+ },
+ {
+  "id": 736299,
+  "title": "Request to invalidate all my submissions (username: heinado)",
+  "author": "",
+  "votes": 1,
+  "comments": 1,
+  "post": "2026-08-20",
+  "last": "2026-08-20",
+  "url": "/competitions/kaggriculture/discussion/736299"
+ },
+ {
+  "id": 735683,
+  "title": "Am I getting this right?",
+  "author": "",
+  "votes": 1,
+  "comments": 8,
+  "post": "2026-08-17",
+  "last": "2026-08-20",
+  "url": "/competitions/kaggriculture/discussion/735683"
+ },
+ {
+  "id": 735466,
+  "title": "Consistent 90k+ margin loss vs tier6-9 reference agents — is there headroom in a greedy scheduler, or is this an architecture ceiling?",
+  "author": "",
+  "votes": 1,
+  "comments": 0,
+  "post": "2026-08-16",
+  "last": "2026-08-16",
+  "url": "/competitions/kaggriculture/discussion/735466"
+ },
+ {
+  "id": 744364,
+  "title": "Advice needed, Directory filled with previous agents and old strats / reports",
+  "author": "",
+  "votes": 0,
+  "comments": 3,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744364"
+ },
+ {
+  "id": 744380,
+  "title": "Do you use RL to train the executors, or the agents as a whole?",
+  "author": "",
+  "votes": 0,
+  "comments": 3,
+  "post": "2026-09-29",
+  "last": "2026-09-29",
+  "url": "/competitions/kaggriculture/discussion/744380"
+ },
+ {
+  "id": 743829,
+  "title": "Eligibility of MIT-licensed public agent code under Rules 3.6(c) and 3.14(a)",
+  "author": "",
+  "votes": 0,
+  "comments": 0,
+  "post": "2026-09-27",
+  "last": "2026-09-27",
+  "url": "/competitions/kaggriculture/discussion/743829"
+ },
+ {
+  "id": 743179,
+  "title": "Scoring Formula or conditions ",
+  "author": "",
+  "votes": 0,
+  "comments": 3,
+  "post": "2026-09-25",
+  "last": "2026-09-25",
+  "url": "/competitions/kaggriculture/discussion/743179"
+ },
+ {
+  "id": 738060,
+  "title": "Download Leader plays through MCP or programtically",
+  "author": "",
+  "votes": 0,
+  "comments": 1,
+  "post": "2026-08-28",
+  "last": "2026-08-29",
+  "url": "/competitions/kaggriculture/discussion/738060"
+ },
+ {
+  "id": 735575,
+  "title": "kaggle api does not return submission id?",
+  "author": "",
+  "votes": 0,
+  "comments": 1,
+  "post": "2026-08-17",
+  "last": "2026-08-18",
+  "url": "/competitions/kaggriculture/discussion/735575"
+ },
+ {
+  "id": 735174,
+  "title": "How we can evaluate our agent correctly?",
+  "author": "",
+  "votes": 0,
+  "comments": 0,
+  "post": "2026-08-14",
+  "last": "2026-08-14",
+  "url": "/competitions/kaggriculture/discussion/735174"
+ },
+ {
+  "id": 734743,
+  "title": "Are random seeds / future random events available to agents at game start?",
+  "author": "",
+  "votes": 0,
+  "comments": 1,
+  "post": "2026-08-12",
+  "last": "2026-08-12",
+  "url": "/competitions/kaggriculture/discussion/734743"
+ },
+ {
+  "id": 734562,
+  "title": "Competition",
+  "author": "",
+  "votes": 0,
+  "comments": 4,
+  "post": "2026-08-11",
+  "last": "2026-08-12",
+  "url": "/competitions/kaggriculture/discussion/734562"
+ },
+ {
+  "id": 735469,
+  "title": "Claude API usage saving using Omnidimensional math formulas",
+  "author": "",
+  "votes": -1,
+  "comments": 0,
+  "post": "2026-08-16",
+  "last": "2026-08-16",
+  "url": "/competitions/kaggriculture/discussion/735469"
+ },
+ {
+  "id": 735332,
+  "title": "Kaggle Python environment issue with Numba?",
+  "author": "",
+  "votes": -1,
+  "comments": 4,
+  "post": "2026-08-15",
+  "last": "2026-08-15",
+  "url": "/competitions/kaggriculture/discussion/735332"
+ },
+ {
+  "id": 741317,
+  "title": "Quick math check on $fib(n)$ labor scaling vs. land amortization in Kaggriculture",
+  "author": "",
+  "votes": -2,
+  "comments": 0,
+  "post": "2026-09-14",
+  "last": "2026-09-14",
+  "url": "/competitions/kaggriculture/discussion/741317"
+ },
+ {
+  "id": 741907,
+  "title": "The farmer gets teleported back to the shed every day — and it explains most results",
+  "author": "",
+  "votes": -3,
+  "comments": 1,
+  "post": "2026-09-18",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/741907"
+ },
+ {
+  "id": 739440,
+  "title": "[Baseline & Strategy] Reactive Agent Architecture & Crop ROI Breakdown",
+  "author": "",
+  "votes": -3,
+  "comments": 0,
+  "post": "2026-09-04",
+  "last": "2026-09-04",
+  "url": "/competitions/kaggriculture/discussion/739440"
+ },
+ {
+  "id": 740817,
+  "title": "Beyond Single-File Agents: How to Submit a Modular Multi-File Python Project",
+  "author": "",
+  "votes": -4,
+  "comments": 0,
+  "post": "2026-09-11",
+  "last": "2026-09-11",
+  "url": "/competitions/kaggriculture/discussion/740817"
+ },
+ {
+  "id": 743105,
+  "title": "Qual estratégia a ser utilizada nessa reta final da competição?",
+  "author": "",
+  "votes": -6,
+  "comments": 0,
+  "post": "2026-09-24",
+  "last": "2026-09-24",
+  "url": "/competitions/kaggriculture/discussion/743105"
+ },
+ {
+  "id": 735119,
+  "title": "Kaggriculture Endgame Economics: Four Matched Tests That Changed My Agent",
+  "author": "",
+  "votes": -7,
+  "comments": 1,
+  "post": "2026-08-14",
+  "last": "2026-08-14",
+  "url": "/competitions/kaggriculture/discussion/735119"
+ },
+ {
+  "id": 734637,
+  "title": "🚜 Kaggriculture | Look-Ahead Economic Optimization & Market Dynamics",
+  "author": "",
+  "votes": -7,
+  "comments": 2,
+  "post": "2026-08-12",
+  "last": "2026-08-12",
+  "url": "/competitions/kaggriculture/discussion/734637"
+ },
+ {
+  "id": 737035,
+  "title": "🌾 Complete EDA & Modular Agent Framework for Kaggriculture (with Market Price Elasticity Curves)",
+  "author": "",
+  "votes": -8,
+  "comments": 0,
+  "post": "2026-08-22",
+  "last": "2026-08-22",
+  "url": "/competitions/kaggriculture/discussion/737035"
+ },
+ {
+  "id": 741320,
+  "title": "Hot take: RL is a variance tax—Kaggriculture is a deterministic macro-schedule problem",
+  "author": "",
+  "votes": -9,
+  "comments": 6,
+  "post": "2026-09-14",
+  "last": "2026-09-18",
+  "url": "/competitions/kaggriculture/discussion/741320"
+ },
+ {
+  "id": 737034,
+  "title": " 🌾 [Dataset Release] 500+ Competitive Match Replays & Action Trajectories for Kaggriculture (EDA / BC / Price Elasticity)",
+  "author": "",
+  "votes": -10,
+  "comments": 0,
+  "post": "2026-08-22",
+  "last": "2026-08-22",
+  "url": "/competitions/kaggriculture/discussion/737034"
+ },
+ {
+  "id": 743384,
+  "title": "Question for M & M & P & Q and Boey",
+  "author": "",
+  "votes": -17,
+  "comments": 0,
+  "post": "2026-09-25",
+  "last": "2026-09-25",
+  "url": "/competitions/kaggriculture/discussion/743384"
+ },
+ {
+  "id": 736551,
+  "title": "🔍 Stop guessing why your agent lost – Kaggriculture Ops Lab reveals all",
+  "author": "",
+  "votes": -17,
+  "comments": 1,
+  "post": "2026-08-21",
+  "last": "2026-08-22",
+  "url": "/competitions/kaggriculture/discussion/736551"
+ }
+]
