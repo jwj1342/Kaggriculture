@@ -4,9 +4,11 @@ Kaggle simulation competition on the Vulcan cluster. `README.md` orients,
 `docs/ONBOARDING.md` is the full first hour. This file is the short list of
 things that are easy to get wrong.
 
-Document status is indexed in `docs/INDEX.md`. The live RL queue is only
-`rl/TODO.md`; experiment verdicts start at the top of `docs/RUNS.md`, and
-cluster execution rules live in `docs/INFRA.md`.
+Document status is indexed in `docs/INDEX.md`. The RL line was archived on
+2026-09-29 (`data/releases/rl-line-archive-2026-09-29.tar.gz`, and in git
+history before that commit) together with its verdict log `docs/RUNS.md`, the
+ceiling measurements, the roadmap and the per-experiment harnesses. What is
+left is the line that scores: mined plans plus the adaptive wrapper.
 
 ## Environment
 
@@ -20,11 +22,7 @@ Vulcan; do not add cluster-only assumptions to anything outside `slurm/`.
 
 Dependencies are in `requirements/`, split by install semantics:
 `base.txt` (normal), `nodeps.txt` (`--no-deps`), `lock.txt` (generated audit
-snapshot, cluster-specific), `rl.txt` (the `rl/` training stack —
-`torch~=2.10.0` pinned by the wheelhouse tensordict, `torchrl==0.11.*`,
-`tensordict==0.11.*`, `matplotlib`; install inside a job via
-`sbatch slurm/rl_setup.sh`; pyyaml is already in the venv and feeds
-`rl/train.py --config`). `kaggle-environments` is `--no-deps` on purpose —
+snapshot, cluster-specific). `kaggle-environments` is `--no-deps` on purpose —
 its 19 declared dependencies include `open_spiel`, which fails to build; only
 three are actually needed. Import errors for *other* environments (`lux_ai_s3`,
 `halite`, `open_spiel_env`) print to stderr and are expected.
@@ -103,13 +101,8 @@ regenerate. Keep the axes orthogonal.
 
 Never run heavy work on the login node. One episode (~2.7 s) is fine; tournaments
 go through Slurm. Evaluation is CPU-only: the workload is single-threaded Python
-and 42% of it is `deepcopy` inside the framework. RL training can use either
-device, but the current congested-cluster default is CPU (`slurm/rl_train_cpu.sh`):
-measured throughput is 6.3--10.9k sps versus H100 10.5k, while CPU starts much
-sooner. GPU training (`slurm/rl_train.sh`) requires a measured justification.
-Submit training through `tools/submit_rl.py`; profiling and resource rules are in
-`docs/INFRA.md`. Evaluation (`tools/eval.py`, `slurm/rl_eval.sh`) always runs the
-reference engine on CPU.
+and 42% of it is `deepcopy` inside the framework. Evaluation (`tools/eval.py`,
+`slurm/eval.sh`) always runs the reference engine on CPU.
 
 Do not recreate the old one-worktree-per-hypothesis layout. Keep at most one
 development worktree and one frozen experiment worktree; remove them after the
@@ -136,14 +129,6 @@ registering a manifest concurrently corrupted it (recovered in full — see
 -> `tools/tournament.py` -> `data/arena.sqlite` -> `tools/leaderboard.py` ->
 `docs/LEADERBOARD.md` + `site/leaderboard.html`. README "How it fits together"
 has the diagram.
-
-`rl/` is the TorchRL training line — **the project's current mainline** (own
-README): byte-verified engine ports + `rl/train.py` (swappable losses,
-`--device` is the CPU/GPU switch, `--config` yaml presets in `rl/configs/`,
-`--multi-head` per-hand task heads, curriculum/league/handicap/margin knobs,
-deterministic probes + early stop). Every run auto-renders charts to
-`rl/runs/<run>/plots/`. Checkpoints flow through `rl/export_agent.py` into
-the same eval/submit pipeline as every other agent.
 
 `agents/spar/` is the same generator on the `ladder` plan: opponents
 reconstructed from real ladder replays. Keep it in every field — before it

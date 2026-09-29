@@ -11,16 +11,14 @@ Kaggle **Kaggriculture** 仿真比赛的工作仓库
   排行榜约 2026-10-15 收敛。
 - **天梯历史口径**：`docs/LADDER_STATE.md` 保存 2026-08-14 快照及 08-23 的收敛后更正，
   **不是实时榜单**；当前读数用 `python tools/ladder.py stats` 获取。
-- **本地累计** 参考引擎 **3,397,241 局**（87 个 run，`data/arena.sqlite`）；
-  张量引擎另计（每个 RL run 约 1.2–1.8 亿 lane-steps，台账在 `docs/RUNS.md`）。
-- **当前主线**：**RL 线**（`rl/`，2026-08-18 起）——张量引擎 + TorchRL 训练。
-  剧本线挂起未废弃（`docs/TODO.md` 开头讲两条线的分工）。
+- **本地累计** 参考引擎 **3,397,241 局**（87 个 run，`data/arena.sqlite`）。
+- **当前主线**：挖来的计划 + 自适应包装层（`agents/newlines/`、`tools/wrap.py`）。
+  **RL 线已于 2026-09-29 归档**（`data/releases/rl-line-archive-2026-09-29.tar.gz`，
+  以及该 commit 之前的 git 历史），连同它的台账 `docs/RUNS.md`、天花板测量与实验脚手架。
 
 ### → 新来的？读 [`docs/ONBOARDING.md`](docs/ONBOARDING.md)，一小时，读完你会跑过一次真实锦标赛。
 
-### → 想上手主线（RL）？读 [`rl/TODO.md`](rl/TODO.md) 当前路线和 [`rl/README.md`](rl/README.md) 架构说明；张量引擎见 [`rl/tensor_env/README.md`](rl/tensor_env/README.md)，已有结论先读 [`docs/RUNS.md`](docs/RUNS.md) 顶部总览。
-
-### → 离开了几天？先看 [`docs/INDEX.md`](docs/INDEX.md) 的文档状态，再读 [`rl/TODO.md`](rl/TODO.md) 当前路线、[`docs/RUNS.md`](docs/RUNS.md) 顶部总览和 [`docs/INFRA.md`](docs/INFRA.md) 执行纪律。
+### → 离开了几天？先看 [`docs/INDEX.md`](docs/INDEX.md) 的文档状态，再读 [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) 的读分与槽位纪律。
 
 ### → 只想知道历史提交是什么？读 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 它记录 08-14 快照及 08-23 更正，不代表实时活跃槽位。
 
@@ -72,7 +70,6 @@ kaggle competitions list -s kaggriculture     # 验证可用
 |---|---|---|
 | `base.txt` | 普通 `pip install -r` | numpy、pandas、kaggle、kagglehub、jupytext |
 | `nodeps.txt` | `pip install --no-deps -r` | `kaggle-environments` 声明了 19 个依赖，包括编译失败的 `open_spiel`；Kaggriculture 实际只需要其中三个 |
-| `rl.txt` | 集群上 `sbatch slurm/rl_setup.sh`（作业内 `--no-index`）；个人机 `pip install -r` | RL 训练栈：`torch~=2.10.0`（被 wheelhouse 的 tensordict 锁定）、`torchrl==0.11.*`、`tensordict==0.11.*`、`matplotlib`。agent/工具/测试在 `rl/` 之外一概不 import 它 |
 | `lock.txt` | 不安装 —— 生成物 | 一个已知可用的集群环境的审计快照 |
 
 用 `bash tools/bootstrap.sh --freeze` 重新生成 lock。
@@ -101,10 +98,8 @@ python tools/tournament.py panel --lib agents/lib --panel agents/bench3/*.py --s
 python tools/leaderboard.py --run latest                # 重新生成排行榜
 ```
 
-`slurm/` 只在集群上有意义。锦标赛脚本与 RL 评估使用 CPU；训练通过
-`tools/submit_rl.py` 提交，当前默认 `slurm/rl_train_cpu.sh`，只有写明实测理由才选择
-H100 的 `slurm/rl_train.sh`。资源选择、profiling 产物与提交纪律见
-[`docs/INFRA.md`](docs/INFRA.md)。
+`slurm/` 只在集群上有意义，全部走 CPU（`eval.sh` / `tournament.sh` /
+`tournament_array.sh`）。
 
 ---
 
@@ -201,11 +196,7 @@ smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
 前两条是实测的：镜像对局里克隆检测完美（信心值 step 192 就满 8）、闸门开了 666 次、
 **实际下单 0 次**，每次都读到空棚子。
 
-完整证据和它推翻的三个旧结论在 [`docs/ROADMAP.md`](docs/ROADMAP.md)。剧本线里
-还有前 10 天花板的路是 §7 C（**自己搜一条剧本 + 自己写市场包装**，被目标函数校准
-挡着，见 `docs/TODO.md`）；当前实际投入的是**RL 线**（`rl/README.md`）。完整复盘已从
-foothold/siege/breach 扩展到容量、词表、课程、长信用与双市场头实验；统一结论见
-`docs/RUNS.md` 顶部总览，下一步见 `rl/TODO.md`。
+完整证据和它推翻的三个旧结论在归档的 `docs/ROADMAP.md` 里（见本文开头的归档位置）。
 
 一切在接近排行榜之前都先在本地测量。`tools/tournament.py` 跑面板筛选（`O(n)`）和
 循环赛（`O(n²)`），把每一局持久化到 SQLite，并拟合 **Bradley-Terry** 强度 ——
@@ -245,18 +236,6 @@ foothold/siege/breach 扩展到容量、词表、课程、长信用与双市场�
   输出层   db.py      leaderboard.py      人工分析 -> docs/
            查询       docs/LEADERBOARD.md
                       site/leaderboard.html -> 发布的页面
-```
-
-RL 线是与之并联的第五条支路（细节见 `rl/README.md` 的结构图）：
-
-```
-  reference/engine ──逐字节验证──▶ rl/tensor_env/（批量张量引擎, CPU/CUDA）
-        │                                 │  rl/train.py（TorchRL：课程/league/probe/early-stop）
-        │                                 ▼
-        │                          rl/runs/<run>/（checkpoint + plots/，git-ignored）
-        │                                 │  rl/export_agent.py
-        ▼                                 ▼
-  tools/eval.py ◀──十对手花名册── main.py + weights.npz ──tools/package.sh──▶ 提交
 ```
 
 **为什么是这个形状。** 策略从不手写，所以两个人不可能用不同名字造出同一个策略，
@@ -368,7 +347,7 @@ site/              生成的排行榜页面
 **最右一列和左边两列没有关系** —— 全部 100 条上 `spearman -0.05`（n=100）。
 同一支队伍的不同对局，本地胜率能从 14% 跨到 93%（THUNDER THUNDER，#364，16 条线）。
 **本地胜率测的是「这段录音换个棋盘还能不能用」，不是策略强弱。**
-完整证据在 [`docs/ROADMAP.md`](docs/ROADMAP.md) §10.5。所以上表里 `cleo` 的 64 名
+完整证据在 `docs/ROADMAP.md`（已归档） §10.5。所以上表里 `cleo` 的 64 名
 **不能**读成「我们中下游」—— 它两个方向都不说明问题。
 
 `benchmarks/strongest.py` 固定指向 `d08`：本地对上表前十拿 92.4%（1,920 局，
@@ -416,12 +395,12 @@ site/              生成的排行榜页面
 面板胜率 98.5% vs 92.4%，判据在结果出来**之前**写好；早期读数 2612.3 vs 2391.6
 曾看似通过，但收敛后是 **2035.9 vs 2302.2**，方向反转 266.3 分。面板和 768 局直接
 对打都挑错，不能再把本地胜率用于外推天梯强度。完整更正见
-[`docs/RUNS.md`](docs/RUNS.md) 与 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md)。
+`docs/RUNS.md`（已归档） 与 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md)。
 
 **另外，`55442784` 和 `55458466` 是同一个文件**：一字未改，相隔一天，分别拿到
 **1363.7 和 1218.6**。合并 130 局后胜率正好 50.0%（已收敛）。
 **同一个 agent 的天梯分能差 145 点** —— 这张表里任何小于该幅度的差距
-（包括归给 liq29 的 +69）都在噪声带内。完整清单见 [`docs/RUNS.md`](docs/RUNS.md)。
+（包括归给 liq29 的 +69）都在噪声带内。完整清单见 `docs/RUNS.md`（已归档）。
 
 > **这三张表会过时。** 重新生成用：
 >
@@ -468,7 +447,7 @@ bash tools/package.sh agents/mine mine
 * **一个 agent 需要 40 局以上分数才有意义** —— 大约四小时。在这个窗口内再次提交，
   等于把你正在等的测量扔掉。
 * **永远快照**到 `submissions/<日期>-<名字>/`，并在
-  [`docs/RUNS.md`](docs/RUNS.md) 里记下本地证据。一条天梯记录必须几个月后仍可追溯。
+  `docs/RUNS.md`（已归档） 里记下本地证据。一条天梯记录必须几个月后仍可追溯。
 
 ### 2. 我怎么先在本地把策略跑通？
 
@@ -531,7 +510,7 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 ```
 
 **幽灵**就是把那样一条轨迹变成本地对手 —— 11 KB，录制的动作序列逐回合重放，
-没有任何拟合成分。[`docs/ROADMAP.md`](docs/ROADMAP.md) §11 有采样设计和它的局限。
+没有任何拟合成分。`docs/ROADMAP.md`（已归档） §11 有采样设计和它的局限。
 
 **一局的细节。** `tools/trace.py` 逐日打印农场 —— 地块、棚子、价格、现金。
 **这个引擎里非法动作是静默空操作**，所以 bug 看起来和"策略差"完全一样，而最终分数
@@ -548,17 +527,14 @@ python tools/lines.py                       # 他们实际在跑哪几条不同�
 
 | 你想知道… | 读 |
 |---|---|
-| **RL 主线怎么用、资产在哪、结论是什么** | [`rl/TODO.md`](rl/TODO.md) + [`rl/README.md`](rl/README.md) + [`docs/RUNS.md`](docs/RUNS.md) 顶部总览 |
 | **历史榜单提交是什么，我怎么在本地复现** | [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 08-14/08-23 快照，不是实时榜单 |
 | **这个比赛里到底什么决定输赢** | [`docs/ANALYSIS.md`](docs/ANALYSIS.md) —— 引擎经济学 + 312,000 局受控实验 |
 | 怎么把环境跑起来 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) —— 第一个小时 |
-| 剧本线走到哪、哪些结论被推翻了、哪些路线停了 | [`docs/ROADMAP.md`](docs/ROADMAP.md)（覆盖到 2026-08-14） |
+| 剧本线走到哪、哪些结论被推翻了、哪些路线停了 | `docs/ROADMAP.md`（已归档）（覆盖到 2026-08-14） |
 | **我的改动是真的吗** | [`docs/VALIDATING.md`](docs/VALIDATING.md) —— 出任何数字之前读 |
 | 命名约定、工具用法、集群、怎么交东西 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
-| Slurm 怎么申请、训练为什么慢、CPU/GPU 怎么选 | [`docs/INFRA.md`](docs/INFRA.md) |
 | 什么时候提交、提交什么、额度怎么算 | [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) |
-| 接下来做什么 | [`docs/TODO.md`](docs/TODO.md)（两条线的待办入口）+ [`rl/TODO.md`](rl/TODO.md) |
-| 某一个具体数字是哪次跑出来的 | [`docs/RUNS.md`](docs/RUNS.md) —— 台账，只增不改 |
+| 某一个具体数字是哪次跑出来的 | `docs/RUNS.md`（已归档） —— 台账，只增不改 |
 | 原子库的本地排名 | [`docs/LEADERBOARD.md`](docs/LEADERBOARD.md) —— **生成物**（run #2 的快照），别手改 |
 | 哪些文档只是旧交班/验收快照 | [`docs/INDEX.md`](docs/INDEX.md)《历史快照》 |
 
@@ -631,4 +607,4 @@ win 1.000，框架吞吐税只有 -5.6%，终局收益反而更高。换算法�
 
 **基础设施不是当前研究瓶颈。** 固定 probe 可早停；profiling 显示训练时间约 98% 在
 rollout，H100 并非长时间空转。当前因队列周转默认 CPU，正式作业统一走
-`tools/submit_rl.py`，资源证据见 `docs/INFRA.md`。
+

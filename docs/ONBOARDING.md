@@ -1,8 +1,7 @@
 # 上手指南 —— 你的第一个小时
 
 > 本指南维护安装与第一次本地运行。项目当前结论和文档新旧关系先看
-> [`INDEX.md`](INDEX.md)；RL 实验不要从本文拼 Slurm 命令，统一按
-> [`INFRA.md`](INFRA.md) 与 [`../rl/TODO.md`](../rl/TODO.md) 执行。
+> [`INDEX.md`](INDEX.md)。**RL 线已于 2026-09-29 归档**，本文不再涉及。
 
 写给零基础加入这个仓库的人。从上到下照做，大约一小时，读完你会跑过一次真实的锦标赛，
 并读懂一个真实的结果。
@@ -17,10 +16,9 @@ Kaggriculture 是一个 Kaggle **仿真类**比赛：你提交的是一个**程�
 所有对局做一次 Bradley-Terry 拟合。
 
 这个仓库包含一个**可组合的策略库**（七个正交原子生成的 agent）、一个已经把
-**340 万局**写进 SQLite 的**本地锦标赛系统**、一条**RL 训练主线**（与竞赛引擎
-逐字节一致的批量张量引擎 + TorchRL，`rl/README.md`——2026-08-18 起的主要工作面），
-以及由此得出的全部分析。本指南先教会你锦标赛系统（所有测量的地基）；RL 线上手
-在读完本文后转 `rl/README.md`。
+**340 万局**写进 SQLite 的**本地锦标赛系统**，以及由此得出的全部分析。
+得分最高的那条线不是策略库，而是**挖来的计划 + 自适应包装层**
+（`agents/newlines/` + `tools/wrap.py`）—— 本文第 4 节讲这两层怎么接。
 
 ---
 
@@ -201,13 +199,9 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 如果你离开超过几天，先读 `docs/INDEX.md` 判断哪些文件仍是当前合同，再看当前主线。
 
 1. `docs/INDEX.md` —— 当前合同、证据档案、历史快照和生成物怎么区分
-2. `rl/TODO.md` + `docs/RUNS.md` 顶部 —— 当前诊断、执行阶段和已有判词
-3. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。出任何数字之前读
-4. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么
-5. `docs/ROADMAP.md` §11 —— 停掉的路线：引擎改动的 A/B 记录（9 落地 / 7 被否）、
-   为什么我们自己写的场地误导了我们一周
-6. `rl/README.md` —— 张量引擎、TorchRL 训练与历代复盘
-7. `docs/INFRA.md` / `docs/SUBMISSION_POLICY.md` —— 跑集群或碰排行榜之前分别必读
+2. `docs/VALIDATING.md` —— 怎么判断你的改动是真的。出任何数字之前读
+3. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么，以及最终评分怎么算
+4. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读（额度、活跃槽位、读分纪律）
 
 根目录 `README.md` 的《文档》一节按问题索引，`docs/INDEX.md` 维护状态和时间边界。
 
@@ -242,8 +236,7 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 
 - **天梯历史**：`docs/LADDER_STATE.md`（08-14 快照与 08-23 更正）；实时读数跑
   `python tools/ladder.py stats`。
-- **主线进展**：`docs/RUNS.md` 顶部总览 + `rl/TODO.md`（下一步）。
-- **两条线的分工与待办**：`docs/TODO.md` 开头；文档状态统一看 `docs/INDEX.md`。
+- **文档状态与已归档内容**：`docs/INDEX.md`。
 
 三条不随快照过时的事实：天梯顶端是「剧本 + 市场外包装」而我们的原子库是在线调度器
 （差 40 个百分点，不是调参能补的）；价值在外包装不在剧本（裸录音对带包装的 agent
