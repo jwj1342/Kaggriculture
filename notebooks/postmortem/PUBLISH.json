@@ -1,11 +1,12 @@
 {
-  "requested_utc": "2026-10-01T08:24:32.973157+00:00",
+  "requested_utc": "2026-10-01T18:40:36.781050+00:00",
   "url": "https://www.kaggle.com/code/jwj1342/kaggriculture-final-strategy-and-lessons",
-  "version_number": "2",
+  "version_number": "3",
   "error": "",
-  "verified_utc": "2026-10-01T08:29:11.566163+00:00",
   "status": "COMPLETE",
-  "is_private": false,
+  "previous_verified_version": "2",
+  "change": "Credit repository collaborators; link GitHub README, local notebook and relocated technical/reproduction documents.",
+  "code_cells_identical_to_previous_version": true,
   "remote_output_files_verified": [
     "postmortem_artifacts/mixed-deferred/main.py",
     "postmortem_artifacts/mixed-deferred/LICENSE.txt",
@@ -16,8 +17,12 @@
     "postmortem_artifacts/wool-priority/NOTICE.txt",
     "postmortem_artifacts/wool-priority/REVIEW.md"
   ],
-  "previous_verified_version": "1",
-  "change": "Clarify that Run All exports source; original tar archives are linked from Release.",
   "remote_output_files_verified_version": "1",
-  "version_2_code_cells_identical_to_verified_version_1": true
+  "verified_utc": "2026-10-01T18:42:41.547597+00:00",
+  "is_private": false,
+  "remote_source_matches_local": true,
+  "repository_visibility": "PUBLIC",
+  "repository_public_downloads_match_local": true,
+  "reciprocal_links_verified": true,
+  "verified_current_version_number": 3
 }
