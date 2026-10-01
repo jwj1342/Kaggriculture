@@ -1,5 +1,7 @@
 # Contributing
 
+> **2026-10-01 赛后更新：** 数据归档与 Cloudflare 迁移状态以 [ARCHIVE.md](ARCHIVE.md) 为准。下文 D1 同步命令和“全量镜像”描述保留历史背景；新协作者请使用 Release 快照。
+
 > **⚠️ 2026-09-29：RL 线已归档**（`data/releases/rl-line-archive-2026-09-29.tar.gz`，
 > 或 `git show 7a5e91e^:<路径>`）。本文中所有涉及 `rl/`、`slurm/rl_*`、
 > `tools/submit_rl.py`、`requirements/rl.txt` 的段落**只描述归档内容，不可执行**。

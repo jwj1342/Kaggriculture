@@ -1,5 +1,9 @@
 #!/usr/bin/env python
-"""Mirror the episode database to Cloudflare D1.
+"""Historical tools for the project's Cloudflare D1 mirror.
+
+The 2026-10-01 postmortem moves this mirror to GitHub Release. See
+docs/ARCHIVE.md for migration status and offline restore instructions.
+The following describes the original development workflow.
 
 D1 is this project's **published mirror**: collaborators query it directly and
 never need a cluster account or a downloaded file. `data/arena.sqlite` stays the
@@ -175,10 +179,12 @@ def _cfg():
             raise SystemExit("could not list D1 databases: "
                              f"{json.dumps(body.get('errors') or body)[:300]}")
         dbs = body.get("result", [])
-        match = [d for d in dbs if d.get("name") == DB_NAME] or dbs
+        match = [d for d in dbs if d.get("name") == DB_NAME]
         if not match:
-            raise SystemExit("no D1 database on this account; create one or set "
-                             "CF_D1_DATABASE_NAME")
+            raise SystemExit("no D1 database with the exact project name; "
+                             "see docs/ARCHIVE.md for the archived snapshot")
+        if len(match) != 1:
+            raise SystemExit("multiple matching D1 databases; set CF_D1_DATABASE_ID explicitly")
         dbid = match[0]["uuid"]
     _CACHE.update(acct=acct, dbid=dbid, token=token)
     return acct, dbid, token

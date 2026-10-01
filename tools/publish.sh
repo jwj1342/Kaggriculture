@@ -45,17 +45,11 @@ fi
 
 if [ "${1:-}" = "--push" ]; then
     echo
-    echo "== syncing to D1 =="
-    if ls ./*.secret >/dev/null 2>&1 || [ -n "${CF_API_TOKEN:-}" ]; then
-        python tools/d1.py push --episodes
-    else
-        echo "  no *.secret and no CF_API_TOKEN, skipping D1"
-        echo "  (see docs/CONTRIBUTING.md 'The sync contract')"
-    fi
+    echo "Cloudflare D1 archival replaces automatic sync; see docs/ARCHIVE.md."
 
     echo
-    # The file snapshot is now a backup path, not the primary one: D1 carries
-    # every tier. Kept because it is the only offline-capable copy.
+    # Optional historical Kaggle file remote. The postmortem archive lives in
+    # GitHub Release; do not recreate or repopulate the retired D1 database.
     if [ -n "${KG_REMOTE:-}" ]; then
         echo
         echo "== pushing the file snapshot =="

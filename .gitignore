@@ -1,6 +1,6 @@
-# Git holds source and conclusions. Data and generated artefacts live elsewhere:
-# the D1 mirror, or a compressed snapshot. See docs/CONTRIBUTING.md
-# "The sync contract" and "What goes in git, and what does not".
+# Git holds source and conclusions. Large data snapshots are archived in
+# GitHub Release; the Cloudflare D1 mirror was retired on 2026-10-01.
+# See docs/ARCHIVE.md for scope, verification, and restore instructions.
 
 # --- Environment: rebuild with tools/bootstrap.sh --------------------------
 venv/
@@ -23,9 +23,7 @@ site/
 # built from an agent file by tools/build_notebook.py
 notebooks/*.ipynb
 
-# --- Data: the evidence layer, mirrored to D1 -----------------------------
-# 136 MB and growing; `python tools/sync.py export --full` makes a 4.6 MB
-# snapshot, and D1 carries every tier.
+# --- Data: local evidence; frozen snapshots are in GitHub Release ---------
 data/
 # compressed snapshots produced by tools/sync.py
 dist/

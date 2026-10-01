@@ -213,7 +213,7 @@ python tools/eval.py h2h \
 
 ## 数据归档
 
-Git 保存代码、结论、提交身份和 Notebook；大型 SQLite、原始回放及实验分片单独归档。归档入口为 [赛后 Release](https://github.com/jwj1342/Kaggriculture/releases/tag/postmortem-2026-10-01)，包含本地约 497 万局数据库、独立 D1 SQL/SQLite、RL 历史包和最终提交。具体范围、迁移状态、校验与恢复命令见 [ARCHIVE.md](docs/ARCHIVE.md)。
+Git 保存代码、结论、提交身份和 Notebook；大型 SQLite、原始回放及实验分片单独归档。归档入口为 [赛后 Release](https://github.com/jwj1342/Kaggriculture/releases/tag/postmortem-2026-10-01)，包含本地约 497 万局数据库、独立 D1 SQL/SQLite、RL 历史包和最终提交。所有归档已回下载校验，D1 两种格式均恢复成功；对应 Cloudflare D1 已删除，本地原件保留。范围、证据与恢复命令见 [ARCHIVE.md](docs/ARCHIVE.md)。
 
 ## 文档路线
 

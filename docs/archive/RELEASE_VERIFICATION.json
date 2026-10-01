@@ -1,0 +1,93 @@
+{
+  "status": "PASS",
+  "verified_utc": "2026-10-01T08:25:16.374363+00:00",
+  "slurm_job_id": "23037729",
+  "release_url": "https://github.com/jwj1342/Kaggriculture/releases/tag/postmortem-2026-10-01",
+  "all_payloads_downloaded_and_hash_verified": true,
+  "files": [
+    {
+      "name": "arena-local.sqlite.zst",
+      "sha256": "09711ddb27e71027c3cbbde46b078ecfac0d5c97d055a9560af37315c224bac3",
+      "bytes": 531294353
+    },
+    {
+      "name": "d1-kaggriculture.sql.zst",
+      "sha256": "926ba811f2f169c3b7be0166dab2f2b07853d4c9833774972e821681df3dcdf5",
+      "bytes": 5234251
+    },
+    {
+      "name": "d1-kaggriculture.sqlite.zst",
+      "sha256": "5e351c00aedbb94f69b8b58d9b0d5d481654faf0e4292941151163cbba8d5746",
+      "bytes": 6656473
+    },
+    {
+      "name": "kaggriculture-archive-evidence.tar.gz",
+      "sha256": "e71def7a3589e6beed78b34eaa64eb3a665a3926592072ceea74ad273a69cb98",
+      "bytes": 45679
+    },
+    {
+      "name": "rl-line-archive-2026-09-29.tar.gz",
+      "sha256": "1f56f348a8de8120a3202e567f297e7e636eeb290d930cecf45cce91e47c7a14",
+      "bytes": 352146901
+    },
+    {
+      "name": "REMOTE_CONTENT_RECHECK.json",
+      "sha256": "63d3a36d833a8bd06fb88b1e52b8b6dd6d56b4cedae436f9743b3e4da4a38034",
+      "bytes": 4306
+    },
+    {
+      "name": "SHA256SUMS",
+      "sha256": "daac67f6a735c1620721df64f0d1cf447ef12986ff15abe0560e3459260a8576",
+      "bytes": 572
+    },
+    {
+      "name": "RELEASE_ASSETS.json",
+      "sha256": "cb29a967be66088690ae017679c9bec0364d01a18439750d9eaa2686fcde4b00",
+      "bytes": 1445
+    },
+    {
+      "name": "RESTORE.md",
+      "sha256": "fa2dc89636ac0ee51a8929498d51131dc8482df702422106e312e26ba06b6e34",
+      "bytes": 5167
+    },
+    {
+      "name": "kaggriculture-final-artifacts.zip",
+      "sha256": "4de92f5479b29a6f037532af27a06d33d8596a50cb30f8b280cc3b2d2db0e093",
+      "bytes": 2745482
+    },
+    {
+      "name": "kaggriculture-final-evidence.tar.gz",
+      "sha256": "f8fe24f38373274a4609f64971bc3ad2bd09f9a397f95b65f2cbfaf78d9b6f53",
+      "bytes": 11222325
+    }
+  ],
+  "downloaded_d1_restores": [
+    {
+      "source": "d1.sqlite",
+      "integrity": [
+        "ok"
+      ],
+      "counts": {
+        "agents": 4247,
+        "episodes": 85064,
+        "ratings": 5290,
+        "runs": 87,
+        "matchups": 30960
+      }
+    },
+    {
+      "source": "from-sql.sqlite",
+      "integrity": [
+        "ok"
+      ],
+      "counts": {
+        "agents": 4247,
+        "episodes": 85064,
+        "ratings": 5290,
+        "runs": 87,
+        "matchups": 30960
+      }
+    }
+  ],
+  "local_arena_note": "Downloaded compressed bytes match the independently restored/integrity-checked and round-trip-verified local archive."
+}

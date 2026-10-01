@@ -1,0 +1,22 @@
+{
+  "started_utc": "2026-10-01T08:27:34.451831+00:00",
+  "database_name": "kaggriculture",
+  "database_id": "2ca54003-fb57-4eef-9dfd-83583fa3718a",
+  "release_url": "https://github.com/jwj1342/Kaggriculture/releases/tag/postmortem-2026-10-01",
+  "download_verification_job": "23037729",
+  "download_verification_sha256": "4cb02a4c2c5d05615c57b34106fedbc0f0224e4656bb7393fa58449e4da77b78",
+  "scope": "Only this project D1 database. Other Cloudflare services are not in scope.",
+  "predelete_sql_sha256": "2aed4f5d22739670976eee6867499480ab86f6e02b7acb3b62ddbb63cc68ccbe",
+  "predelete_sql_bytes": 124372397,
+  "remote_application_data_unchanged": true,
+  "status": "DELETED_AFTER_RELEASE_VERIFICATION",
+  "deletion_response": {
+    "result": null,
+    "errors": [],
+    "messages": [],
+    "success": true
+  },
+  "deleted_utc": "2026-10-01T08:27:48.232151+00:00",
+  "absent_from_official_database_list": true,
+  "verified_utc": "2026-10-01T08:27:48.399993+00:00"
+}

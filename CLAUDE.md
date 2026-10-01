@@ -147,7 +147,11 @@ Generated, never hand-edit: `agents/lib/`, `agents/spar/`, `docs/LEADERBOARD.md`
 
 ## Data
 
-`data/arena.sqlite` holds every episode ever run and is the one irreplaceable
+Postmortem state, 2026-10-01: GitHub Release holds independently verified local
+SQLite and historical D1 snapshots. The project D1 database is deleted. Use
+`docs/ARCHIVE.md` for restore instructions; do not resume automatic D1 sync.
+
+`data/arena.sqlite` holds ingested episode records and is the primary local
 file here. Never edit `episodes` rows; they are history. Digests are ~1.6 KB per
 player — full replays (~27 MB each) are deliberately not stored.
 

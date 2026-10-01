@@ -1,9 +1,9 @@
 {
-  "requested_utc": "2026-10-01T08:13:15.207566+00:00",
+  "requested_utc": "2026-10-01T08:24:32.973157+00:00",
   "url": "https://www.kaggle.com/code/jwj1342/kaggriculture-final-strategy-and-lessons",
-  "version_number": "1",
+  "version_number": "2",
   "error": "",
-  "verified_utc": "2026-10-01T08:16:42.208189+00:00",
+  "verified_utc": "2026-10-01T08:29:11.566163+00:00",
   "status": "COMPLETE",
   "is_private": false,
   "remote_output_files_verified": [
@@ -15,5 +15,9 @@
     "postmortem_artifacts/wool-priority/LICENSE.txt",
     "postmortem_artifacts/wool-priority/NOTICE.txt",
     "postmortem_artifacts/wool-priority/REVIEW.md"
-  ]
+  ],
+  "previous_verified_version": "1",
+  "change": "Clarify that Run All exports source; original tar archives are linked from Release.",
+  "remote_output_files_verified_version": "1",
+  "version_2_code_cells_identical_to_verified_version_1": true
 }
