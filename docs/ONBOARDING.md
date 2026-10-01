@@ -205,7 +205,7 @@ python tools/leaderboard.py --run latest    # 重新生成 docs/LEADERBOARD.md +
 3. `docs/ANALYSIS.md` —— 这个游戏实际奖励什么，以及最终评分怎么算
 4. `docs/SUBMISSION_POLICY.md` —— 碰排行榜之前必读（额度、活跃槽位、读分纪律）
 
-根目录 `README.md` 的《文档》一节按问题索引，`docs/INDEX.md` 维护状态和时间边界。
+根目录 [README](../README.md) 提供项目总结；[文档索引](INDEX.md) 按问题导航并维护时间边界，赛后运行步骤见 [复现与使用](REPRODUCING.md)。
 
 ## 6. 会咬你的五件事
 

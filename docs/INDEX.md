@@ -10,6 +10,8 @@
 | 文档 | 内容 |
 | :--- | :--- |
 | [赛后 Notebook](../notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb) | 思路、路线、失败、确认实验、最终包下载与复现边界 |
+| [最终方案与实验记录](FINAL_SOLUTION.md) | 最终双方案、机制、确认结果、验证边界与公开来源 |
+| [复现、使用与仓库导航](REPRODUCING.md) | Notebook、环境安装、文件校验、运行步骤和工具地图 |
 | [研究路线与教训](RESEARCH_LESSONS.md) | 手工调度、轨迹、RL、测量和工程的得失，含历史更正 |
 | [数据归档与恢复](ARCHIVE.md) | 数据库、D1、RL 历史和 Release 资产的范围与恢复方式 |
 | [冻结结果摘要](../notebooks/postmortem/evidence.json) | 最终提交身份、哈希、实验规模和统计区间 |
@@ -34,7 +36,7 @@
 | :--- | :--- |
 | [VALIDATING.md](VALIDATING.md) | 评测协议的演变；部分 RL 和旧面板章节描述历史。最终实验按冻结审查解释 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 工具、数据流与集群规范；长期计算走 Slurm，网络操作在登录节点 |
-| [ONBOARDING.md](ONBOARDING.md) | 历史完整上手流程；最短赛后复现路径见 README |
+| [ONBOARDING.md](ONBOARDING.md) | 历史完整上手流程；最短赛后复现路径见 [REPRODUCING.md](REPRODUCING.md) |
 | [SUBMISSION_POLICY.md](SUBMISSION_POLICY.md) | 历史提交、额度和读分纪律；截止后不再执行提交示例 |
 
 ## 历史研究与快照
@@ -55,7 +57,7 @@ git show 7a5e91e^:docs/RUNS.md
 
 同批归档包含 `CEILING.md`、`ROADMAP.md`、`INFRA.md`、`GAP-2000.md`、晨间战报和 `rl/`。
 当前 `docs/RUNS.md` 是截止前新增台账，和旧的 18,920 行实验台账不是同一份内容。
-归档资产与恢复方法见 README 的“数据归档”。
+归档资产与恢复方法见 [ARCHIVE.md](ARCHIVE.md)。
 
 ## 如何阅读这些证据
 

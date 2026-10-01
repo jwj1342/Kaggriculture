@@ -50,6 +50,9 @@ def main():
 
     **Team: RL is all you need · Archive date: 2026-10-01 · Final result pending**
 
+    **[🌾 GitHub 项目主页与团队致谢](https://github.com/jwj1342/Kaggriculture#readme)** ·
+    [仓库中的本 Notebook](https://github.com/jwj1342/Kaggriculture/blob/main/notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb)
+
     这是提交截止后的研究复盘。最终排名和奖牌尚未公布。我们保留结论的时间背景，
     不用局部胜率、早期天梯分或包检查通过来代替最终比赛结果。
 
@@ -340,13 +343,20 @@ def main():
 
     仓库 `tools/` 提供生成、评测、追踪和数据库工具；`slurm/` 提供作业入口；
     `submissions/` 保存按日期冻结的策略；`docs/` 保存协议、执行记录与历史修正。
-    大型数据库和远端 D1 的归档/恢复位置见 GitHub README 的“数据归档”。
+    详细机制与实验见 [最终方案文档](https://github.com/jwj1342/Kaggriculture/blob/main/docs/FINAL_SOLUTION.md)，
+    安装、复现步骤和工具导航见 [复现与使用](https://github.com/jwj1342/Kaggriculture/blob/main/docs/REPRODUCING.md)。
+    大型数据库及历史 D1 快照的归档与恢复见 [数据归档](https://github.com/jwj1342/Kaggriculture/blob/main/docs/ARCHIVE.md)。
 
     若继续研究，最有价值的工作是：扩大独立策略家族的对手覆盖；把供肥、喂养、运输和仓容
     联合起来优化；在早期先校准本地指标与线上读数；保留未来数据做最终确认。
     这些是后续假设，目前没有新的实验结果支持它们。
 
     ### 来源与致谢
+
+    感谢合作者 [@RicardoJLv](https://github.com/RicardoJLv)、
+    [@liaodid](https://github.com/liaodid)、[@BPMF57](https://github.com/BPMF57)
+    和 [@KaltistEsperanta](https://github.com/KaltistEsperanta)。感谢大家在 RL 路线、
+    其他策略探索、代码与实验、讨论和反馈中的投入，也感谢所有在比赛过程中参与和支持我们的朋友。
 
     最终控制器继承了 Thomas Tschinkel、Yusuke Hayashi、aurax7、Ahmed Berat Ozer、
     shiiin9、Dmitrii Gluzdov 等社区作者的公开代码与路线。

@@ -127,8 +127,8 @@ registering a manifest concurrently corrupted it (recovered in full — see
 
 `tools/registry.py` (atoms) + `agents/_engine.py` -> `agents/lib/` (generated)
 -> `tools/tournament.py` -> `data/arena.sqlite` -> `tools/leaderboard.py` ->
-`docs/LEADERBOARD.md` + `site/leaderboard.html`. README "How it fits together"
-has the diagram.
+`docs/LEADERBOARD.md` + `site/leaderboard.html`. `docs/REPRODUCING.md`
+contains the repository map and tool navigation.
 
 `agents/newlines/` holds the mined meta plans — `n04.py` is the one on the ladder, and it
 carries the third-party MIT adaptive market layer inside it; `tools/wrap.py` puts that same
