@@ -183,6 +183,9 @@ running a full episode.
 
 5 per day, only the latest 2 active. Snapshot the exact submitted file under
 `submissions/<date>-<name>/` and log it in `docs/RUNS.md` with the local result
-that motivated it. The RL line has never been submitted — its acceptance chain
-is `docs/VALIDATING.md`'s "怎么验收一个 RL 产物" section. `notebooks/baseline.ipynb` is **generated** by
+that motivated it. RL and hybrid agents were submitted during August and September;
+see `docs/RESEARCH_LESSONS.md` for IDs, performance gates, and later corrections.
+The historical RL acceptance chain is `docs/VALIDATING.md`'s "怎么验收一个 RL 产物" section.
+The competition submission deadline has passed; final slots are 56720412 and 56721680.
+`notebooks/baseline.ipynb` is **generated** by
 `tools/build_notebook.py` — edit the agent, not the notebook.

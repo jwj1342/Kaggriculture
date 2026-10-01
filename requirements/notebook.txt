@@ -1,0 +1,6 @@
+# Optional: execute and validate the postmortem notebook, no game engine needed.
+nbformat>=5.9
+nbclient>=0.9
+ipykernel>=6.29
+pandas>=2.0
+matplotlib>=3.7

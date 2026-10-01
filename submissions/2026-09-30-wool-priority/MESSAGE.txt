@@ -1,0 +1,1 @@
+Wool delivery priority: postpone optional fertilizer collection while carrying wool; guarded-sales parent retained.

@@ -1,0 +1,19 @@
+{
+  "requested_utc": "2026-10-01T08:13:15.207566+00:00",
+  "url": "https://www.kaggle.com/code/jwj1342/kaggriculture-final-strategy-and-lessons",
+  "version_number": "1",
+  "error": "",
+  "verified_utc": "2026-10-01T08:16:42.208189+00:00",
+  "status": "COMPLETE",
+  "is_private": false,
+  "remote_output_files_verified": [
+    "postmortem_artifacts/mixed-deferred/main.py",
+    "postmortem_artifacts/mixed-deferred/LICENSE.txt",
+    "postmortem_artifacts/mixed-deferred/NOTICE.txt",
+    "postmortem_artifacts/mixed-deferred/REVIEW.md",
+    "postmortem_artifacts/wool-priority/main.py",
+    "postmortem_artifacts/wool-priority/LICENSE.txt",
+    "postmortem_artifacts/wool-priority/NOTICE.txt",
+    "postmortem_artifacts/wool-priority/REVIEW.md"
+  ]
+}

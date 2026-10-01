@@ -1,0 +1,127 @@
+{
+  "as_of_utc": "2026-10-01T00:00:56Z",
+  "result_status": "Final ranking and medals pending",
+  "engine": "kaggle-environments 1.32.7",
+  "python": "3.11",
+  "final_active": [
+    {
+      "name": "mixed-deferred",
+      "submission_id": 56720412,
+      "uploaded_utc": "2026-09-30T22:39:43Z",
+      "entry_point": "deferred_capacity_agent",
+      "directory": "submissions/2026-09-30-mixed-deferred",
+      "files": {
+        "main.py": "4fed6bcffb090ca3ccf304ede0317ea89f3588c51deba207e29226edd511b6e7",
+        "submission.tar.gz": "bcd7aa25609cc376bf6da063ea035771a254cc29e968a060af98fba0d024e9a5",
+        "LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "NOTICE.txt": "7edddb39907fc984fb0d31d813c09d14b053de146beb2e8b492fe54148fe359b",
+        "REVIEW.md": "b26f1da03f36f1494219d7cb7dfeaba014542ef05a3ab0215f5c163ad5cfb5a1"
+      }
+    },
+    {
+      "name": "wool-priority",
+      "submission_id": 56721680,
+      "uploaded_utc": "2026-09-30T23:36:43Z",
+      "entry_point": "wool_delivery_priority_agent",
+      "directory": "submissions/2026-09-30-wool-priority",
+      "files": {
+        "main.py": "037aead27341d4c232ff0b41eac8c0139fc171c8f176008c4ddef4ae24b84ae7",
+        "submission.tar.gz": "02df2b147649e8b537b3233876251372503af86b7b6c50d5c0d4b2d8eda83952",
+        "LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "NOTICE.txt": "d841ae1266b5efa5901767aeb3928a07cc6851073940927ebc6740dc537121e8",
+        "REVIEW.md": "2fbc6269f83c069481f28eac7aee6884615bead1ad7a9ce32d3cac46c8c8d003"
+      }
+    }
+  ],
+  "confirmation": {
+    "mixed-deferred": {
+      "games": 419840,
+      "worlds": 1024,
+      "seeds": [
+        3000000,
+        3001023
+      ],
+      "hash_blocks": [
+        0,
+        4
+      ],
+      "confidence": 0.975,
+      "bootstrap_draws": 6000
+    },
+    "wool-priority": {
+      "games": 77824,
+      "worlds": 1024,
+      "seeds": [
+        2300000,
+        2301023
+      ],
+      "hash_blocks": [
+        0,
+        4
+      ],
+      "confidence": 0.95
+    }
+  },
+  "effects": [
+    {
+      "comparison": "Combination - funded mixed",
+      "group": "Seven modern implementation clusters",
+      "mean_pp": 2.65067,
+      "low_pp": 1.95304,
+      "high_pp": 3.40411,
+      "confidence": 0.975
+    },
+    {
+      "comparison": "Combination - deferred",
+      "group": "Seven modern implementation clusters",
+      "mean_pp": 0.18834,
+      "low_pp": 0.07673,
+      "high_pp": 0.3139,
+      "confidence": 0.975
+    },
+    {
+      "comparison": "Combination - wool",
+      "group": "Seven modern implementation clusters",
+      "mean_pp": 0.7394,
+      "low_pp": -0.05589,
+      "high_pp": 1.55561,
+      "confidence": 0.975
+    },
+    {
+      "comparison": "Wool - guarded sales",
+      "group": "cha22 / funding / shepherd",
+      "mean_pp": 3.092,
+      "low_pp": 2.343,
+      "high_pp": 3.939,
+      "confidence": 0.95
+    }
+  ],
+  "direct_matches": [
+    {
+      "candidate": "Combination",
+      "opponent": "Funded mixed",
+      "wins": 554,
+      "ties": 1434,
+      "losses": 60
+    },
+    {
+      "candidate": "Wool priority",
+      "opponent": "Guarded sales",
+      "wins": 212,
+      "ties": 1754,
+      "losses": 82
+    }
+  ],
+  "provenance": {
+    "data/endgame-final/FINAL_AUDIT.json": "95d9154e365cb4b5251cb005b1ff721be938ce2ba13e598c0698ba8f8254cdff",
+    "data/endgame-20260930-mixed-deferred-confirm/PREREGISTRATION.json": "19111a6b4aa12573d031225f792f2f99637ecc2c26eb47e39dd7ceecf692c305",
+    "data/endgame-20260930-wool-confirm/PREREGISTRATION.json": "e5d9bd35638e6e487ae68bdc07d6bdce9ee399854c9dc89a6c15b07de48e13cb"
+  },
+  "limitations": [
+    "Effects are local paired score changes; they do not predict final Kaggle ratings or medals.",
+    "Both seats and hash blocks reuse worlds. Independent N is 1024 worlds for each confirmation, not the number of games.",
+    "Opponent implementation clusters share upstream ancestry.",
+    "Confidence intervals are transcribed from frozen audits, not recomputed from aggregate counts.",
+    "Final second-slot selection used post-hoc descriptive evidence, not a new preregistered superiority test."
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "job": "22965672",
+  "archive": "/scratch/jwj/Kaggriculture/submissions/2026-09-30-wool-priority/submission.tar.gz",
+  "archive_sha256": "02df2b147649e8b537b3233876251372503af86b7b6c50d5c0d4b2d8eda83952",
+  "main_sha256": "037aead27341d4c232ff0b41eac8c0139fc171c8f176008c4ddef4ae24b84ae7",
+  "callable_is_exported_agent": true,
+  "callable_name": "wool_delivery_priority_agent",
+  "schema_validation": "enabled",
+  "seed": 2300200,
+  "opponent": "data/endgame-20260929-final/agents/public_rank.py",
+  "status": [
+    "DONE",
+    "DONE"
+  ],
+  "money": [
+    113578.0,
+    108482.0
+  ],
+  "steps": 720
+}

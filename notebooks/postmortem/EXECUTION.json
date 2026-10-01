@@ -1,0 +1,22 @@
+{
+  "slurm_job_id": "23036860",
+  "nbformat_valid": true,
+  "all_code_cells_executed": true,
+  "cells": 16,
+  "code_cells": 6,
+  "notebook_sha256": "daf555f5d31721c56976a7c1d042cc2d48eeec2f78920ce47ff295f6f73f7b8c",
+  "artifact_checks": [
+    {
+      "agent": "mixed-deferred",
+      "submission_id": 56720412,
+      "original_archive_sha256_reference": "bcd7aa25609cc376bf6da063ea035771a254cc29e968a060af98fba0d024e9a5",
+      "all_source_files_verified": true
+    },
+    {
+      "agent": "wool-priority",
+      "submission_id": 56721680,
+      "original_archive_sha256_reference": "02df2b147649e8b537b3233876251372503af86b7b6c50d5c0d4b2d8eda83952",
+      "all_source_files_verified": true
+    }
+  ]
+}

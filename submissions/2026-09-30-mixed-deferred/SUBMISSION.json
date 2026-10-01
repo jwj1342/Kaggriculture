@@ -1,0 +1,29 @@
+{
+  "competition": "kaggriculture",
+  "started_utc": "2026-09-30T22:39:41.794154+00:00",
+  "main_sha256": "4fed6bcffb090ca3ccf304ede0317ea89f3588c51deba207e29226edd511b6e7",
+  "archive_sha256": "bcd7aa25609cc376bf6da063ea035771a254cc29e968a060af98fba0d024e9a5",
+  "previous_latest_two": [
+    56714259,
+    56706612
+  ],
+  "retiring_submission": 56706612,
+  "retained_submission": 56714259,
+  "remaining_before": 3,
+  "submissions_today_before": 2,
+  "description": "Mixed market-order permutation followed by deferred night restocking. Frozen 1024 fresh world seeds, both seats and hash settings 0/4: seven modern implementation clusters improve 2.651 percentage points versus funded-mixed, 97.5% seed-cluster interval [1.953,3.404]; direct score versus funded-mixed 62.061%. Exact archive passed stress and active dual-layer schema checks; all 1222 selected slow games reproduced under original hashes on single CPUs. Documented market feedback can lower production and revenue in individual games. Final market order quantities may change through deferral. main SHA256 4fed6bcffb090ca3ccf304ede0317ea89f3588c51deba207e29226edd511b6e7. Apache-2.0 notices retained.",
+  "review": "REVIEW.md",
+  "review_sha256": "b26f1da03f36f1494219d7cb7dfeaba014542ef05a3ab0215f5c163ad5cfb5a1",
+  "user_authorization": "Active goal: separate adversarial review, evidence-backed improvement, conserve submissions. This is today's third upload if approved; retain funded-mixed 56714259 and replace guarded-sales 56706612.",
+  "submission_id": 56720412,
+  "api_message": "Successfully submitted to Kaggriculture",
+  "api_returned_utc": "2026-09-30T22:39:43.447415+00:00",
+  "platform_status": "COMPLETE",
+  "platform_verified_utc": "2026-09-30T22:43:14.228160+00:00",
+  "latest_two_after": [
+    56720412,
+    56714259
+  ],
+  "remaining_after": 2,
+  "platform_initial_score": "600.0"
+}

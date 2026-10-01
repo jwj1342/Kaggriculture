@@ -1,0 +1,31 @@
+{
+  "competition": "kaggriculture",
+  "started_utc": "2026-09-30T23:36:41.426688+00:00",
+  "main_sha256": "037aead27341d4c232ff0b41eac8c0139fc171c8f176008c4ddef4ae24b84ae7",
+  "archive_sha256": "02df2b147649e8b537b3233876251372503af86b7b6c50d5c0d4b2d8eda83952",
+  "previous_latest_two": [
+    56720412,
+    56714259
+  ],
+  "retiring_submission": 56714259,
+  "retained_submission": 56720412,
+  "remaining_before": 2,
+  "submissions_today_before": 3,
+  "description": "Wool delivery priority: postpone optional fertilizer collection while carrying wool, using the unchanged independently reviewed archive. Both 1024-world original hash blocks passed registered gates; actual archive stress, schema, resource-tail and isolated-runtime checks passed. Accepted costs include fertilizer shortages and local production losses. Selected as a distinct second entrant alongside mixed-deferred under the official better-of-two final BT team rule. Later panel comparisons support a possible hedge, not a new confirmed BT improvement or an opponent-dependent switch. Main SHA256 037aead27341d4c232ff0b41eac8c0139fc171c8f176008c4ddef4ae24b84ae7. Apache-2.0 notices retained.",
+  "review": "REVIEW.md",
+  "review_sha256": "2fbc6269f83c069481f28eac7aee6884615bead1ad7a9ce32d3cac46c8c8d003",
+  "slot_review": "/scratch/jwj/Kaggriculture/data/endgame-20260930-final-slot-audit/INDEPENDENT_SECOND.json",
+  "slot_review_sha256": "1793c38b148053daaad82b7af3cd8a4fdcc102096049f0cb0f9fe4ba425eee51",
+  "user_authorization": "Active goal authorizes evidence-backed submissions after separate adversarial review while conserving attempts. Fourth upload retains mixed-deferred and replaces funded-mixed.",
+  "submission_id": 56721680,
+  "api_message": "Successfully submitted to Kaggriculture",
+  "api_returned_utc": "2026-09-30T23:36:43.348430+00:00",
+  "platform_status": "COMPLETE",
+  "platform_verified_utc": "2026-09-30T23:43:16.443742+00:00",
+  "platform_initial_score": "600.0",
+  "latest_two_after": [
+    56721680,
+    56720412
+  ],
+  "remaining_after": 1
+}

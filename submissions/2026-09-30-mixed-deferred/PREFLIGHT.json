@@ -1,0 +1,20 @@
+{
+  "job": "22980904",
+  "archive": "/scratch/jwj/Kaggriculture/submissions/2026-09-30-mixed-deferred/submission.tar.gz",
+  "archive_sha256": "bcd7aa25609cc376bf6da063ea035771a254cc29e968a060af98fba0d024e9a5",
+  "main_sha256": "4fed6bcffb090ca3ccf304ede0317ea89f3588c51deba207e29226edd511b6e7",
+  "callable_is_exported_agent": true,
+  "callable_name": "deferred_capacity_agent",
+  "schema_validation": "enabled",
+  "seed": 2050001,
+  "opponent": "submissions/2026-09-30-funded-mixed/main.py",
+  "status": [
+    "DONE",
+    "DONE"
+  ],
+  "money": [
+    83736.0,
+    83094.0
+  ],
+  "steps": 720
+}

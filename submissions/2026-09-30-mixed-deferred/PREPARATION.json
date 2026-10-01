@@ -1,0 +1,33 @@
+{
+  "created_utc": "2026-09-30T18:49:01.593090+00:00",
+  "status": "UPLOADED; PLATFORM COMPLETE; INITIAL LIVE HEALTH PASS",
+  "source": "/scratch/jwj/Kaggriculture/data/endgame-20260930-mixed-deferred/mixed_deferred.py",
+  "main_sha256": "4fed6bcffb090ca3ccf304ede0317ea89f3588c51deba207e29226edd511b6e7",
+  "archive_sha256": "bcd7aa25609cc376bf6da063ea035771a254cc29e968a060af98fba0d024e9a5",
+  "base_submission": 56714259,
+  "change": "Append unchanged deferred restock to complete funded mixed prefix; no reverse order or retuning",
+  "independent_final_review": "PASS",
+  "confirmed_approval_scope": "Independent final PASS for the exact submitted source and archive; frozen REVIEW.md and REVIEW_SHA256SUMS bind the approval evidence",
+  "package_check_job": "22980904",
+  "independent_package_job": "22982036",
+  "independent_package_sha256": "4c9d20368f9bca821e43c25ca0458cfbc5ec78f9de4b8ab30b45e902359b388f",
+  "confirmation_runs": [
+    138,
+    139
+  ],
+  "confirmation_games": 419840,
+  "runtime_replayed_games": 1222,
+  "submission_id": 56720412,
+  "uploaded_utc": "2026-09-30T22:39:43.447415+00:00",
+  "review_sha256": "b26f1da03f36f1494219d7cb7dfeaba014542ef05a3ab0215f5c163ad5cfb5a1",
+  "platform_validation_health": "data/endgame-20260930-combo-platform-validation/HEALTH.json",
+  "initial_public_health": "data/endgame-20260930-combo-live-health/HEALTH.json",
+  "health_jobs": [
+    "22994950",
+    "22995151"
+  ],
+  "health_scope": "One platform validation self-play and the first two completed public games; exact recorded-action replays, not a strength estimate",
+  "final_active_verified_after_cutoff": true,
+  "final_verification_utc": "2026-10-01T00:00:56.395606+00:00",
+  "final_audit": "data/endgame-final/FINAL_AUDIT.json"
+}

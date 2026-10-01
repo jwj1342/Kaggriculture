@@ -1,585 +1,242 @@
-# Kaggriculture
+<div align="center">
 
-Kaggle **Kaggriculture** 仿真比赛的工作仓库
-（<https://www.kaggle.com/competitions/kaggriculture>）。
+# 🌾 Kaggriculture
 
-你提交的是一个**程序**，不是预测结果。它在实时天梯上和别人的程序一对一打 720 回合的
-农场季。排名只看胜负 —— 金额差距完全不计入。
+**从农场调度、市场博弈到最终双方案：一份可追溯的比赛研究记录**
 
-- **奖金** $50,000 分成十个等额的 $5,000 名额，所以目标是**前 10**。
-- **时间线** 2026-07-29 开赛 · 2026-09-23 报名与组队截止 · 2026-09-30 最终提交 ·
-  排行榜约 2026-10-15 收敛。
-- **天梯历史口径**：`docs/LADDER_STATE.md` 保存 2026-08-14 快照及 08-23 的收敛后更正，
-  **不是实时榜单**；当前读数用 `python tools/ladder.py stats` 获取。
-- **本地累计** 参考引擎 **3,624,881 局**（98 个 run，`data/arena.sqlite`）。
-- **当前主线**：挖来的计划 + 自适应包装层（`agents/newlines/`、`tools/wrap.py`）。
-  **RL 线已于 2026-09-29 归档**（`data/releases/rl-line-archive-2026-09-29.tar.gz`，
-  以及该 commit 之前的 git 历史），连同它的台账 `docs/RUNS.md`、天花板测量与实验脚手架。
+[![Competition](https://img.shields.io/badge/Kaggle-Kaggriculture-20BEFF?logo=kaggle&logoColor=white)](https://www.kaggle.com/competitions/kaggriculture)
+[![Engine](https://img.shields.io/badge/Final_engine-1.32.7-40513B)](notebooks/postmortem/evidence.json)
+[![Status](https://img.shields.io/badge/Final_result-Pending-DDA15E)](#比赛状态)
 
-### → 新来的？读 [`docs/ONBOARDING.md`](docs/ONBOARDING.md)，一小时，读完你会跑过一次真实锦标赛。
+[最终方案](#最终提交方案) · [实验与教训](#实验告诉了我们什么) · [仓库地图](#仓库地图) · [复现入口](#复现与使用) · [文档索引](docs/INDEX.md)
 
-### → 离开了几天？先看 [`docs/INDEX.md`](docs/INDEX.md) 的文档状态，再读 [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) 的读分与槽位纪律。
-
-### → 只想知道历史提交是什么？读 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 它记录 08-14 快照及 08-23 更正，不代表实时活跃槽位。
+</div>
 
 ---
 
-## 环境搭建
+## 项目是什么
 
-**一台普通笔记本就够了** —— 唯一的硬性要求是 Python 3.9+。
+Kaggriculture 是双人农场经营模拟赛。Agent 在一季 **720 个回合**中安排农民与工人，种植、养殖、补货、运输，并与对手在同一个市场交易。终局现金决定单局胜负；比赛再根据对局结果评定策略强度。
 
-```bash
-bash tools/bootstrap.sh          # 建立 venv/，用一局真实对局验证
-source setup_env.sh              # 每次会话，任意目录下都能用
+这个仓库保留了我们的策略开发、对手重建、配对评测、Slurm 作业、逐局诊断和最终提交。研究先后经过手工调度、公开轨迹重放、RL 探索，最后落在**公开响应式策略基础上的市场排序、仓容管理和交仓时机改进**。
+
+### 比赛状态
+
+> **文档整理于 2026-10-01；最终排名和奖牌仍待主办方公布。**
+> 最终提交截止：**2026-09-30 23:59 UTC**。截止后官方回读确认两个活跃方案均为 `COMPLETE`。本仓库记录已完成的参赛工作，不宣称已经保银或获金。
+
+官方规则是在截止后继续进行约两周对局，再拟合 Bradley–Terry 评分；队伍取两个最终 Agent **整体评分中较高的一个**。具体见 [时间线](https://www.kaggle.com/competitions/kaggriculture/overview/timeline)、[评分规则](https://www.kaggle.com/competitions/kaggriculture/overview/evaluation)及[官方双提交说明](https://www.kaggle.com/competitions/kaggriculture/discussion/739410)。
+
+## 赛后 Notebook
+
+**[在 Kaggle 阅读与运行 →](https://www.kaggle.com/code/jwj1342/kaggriculture-final-strategy-and-lessons)** · [本地 Notebook](notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb)
+
+Notebook 包含中文复盘、英文摘要、确认实验图表，以及两份**与实际上传字节一致**的最终源码。运行全部单元格会生成可下载源码、许可证、原审查记录和校验清单；原始提交包另附 Release 下载链接。无需 API 密钥、GPU 或联网，也不会发起比赛提交。
+
+| 阅读方式 | 内容 |
+| :--- | :--- |
+| 本页 | 项目全貌、最终方案和最短复现路径 |
+| [Notebook](notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb) | 为什么这样设计、哪些证据支持它、哪些结论不能成立 |
+| [冻结结果摘要](notebooks/postmortem/evidence.json) | 提交身份、确认规模、区间和来源 SHA-256 |
+| [执行记录](docs/ENDGAME_EXECUTION.md) / [提交台账](docs/RUNS.md) | 截止前每次选择、审查与实际上传经过 |
+
+## 最终提交方案
+
+| | **Mixed deferred** · 主要方案 | **Wool priority** · 第二方案 |
+| :--- | :--- | :--- |
+| Kaggle 提交号 | **56720412** | **56721680** |
+| 上传时间，UTC | 09-30 22:39:43 | 09-30 23:36:43 |
+| 官方入口 | `deferred_capacity_agent` | `wool_delivery_priority_agent` |
+| 思路 | 调整完全融资的混合买卖顺序，并延后部分夜间补货 | 让携带羊毛的目标工人优先完成交仓 |
+| 冻结源码 | [main.py](submissions/2026-09-30-mixed-deferred/main.py) | [main.py](submissions/2026-09-30-wool-priority/main.py) |
+| 原始提交包 | [submission.tar.gz](submissions/2026-09-30-mixed-deferred/submission.tar.gz) | [submission.tar.gz](submissions/2026-09-30-wool-priority/submission.tar.gz) |
+| 独立审查 | [REVIEW.md](submissions/2026-09-30-mixed-deferred/REVIEW.md) | [REVIEW.md](submissions/2026-09-30-wool-priority/REVIEW.md) |
+
+### 主要方案如何工作
+
+```text
+继承的响应式路线与生产策略
+          │
+          ▼
+纯 SELL 排序保护层
+          │
+          ├── 完全融资的混合订单排序 ── 延期补货 / 观察确认后恢复 ── Mixed deferred
+          │
+          └── 携带羊毛时跳过部分可选采肥，让交仓优先 ─────────── Wool priority
 ```
 
-### 你需要自己的 Kaggle API 密钥
+- **销售排序**：同一回合的订单顺序会影响共享市场中的成交收益。纯卖单层在保守条件下重排订单，保持数量与物理动作。
+- **混合订单排序**：对 2–6 条完全融资、完全成交的买卖订单做有界排列；最多检查 720 种顺序。该层保持订单数量与预测终仓。
+- **延期补货**：外层可能减少符合条件的夜间采购，腾出仓容，并用后续观察确认的恢复额度补回。它会改变最终数量，不能把内层的数量保持性质套到整个组合上。
+- **羊毛优先**：另一分支让三个目标工人在携带羊毛时少做可选采肥，优先交仓。它不包含混合排序和延期补货层。
 
-**仓库里没有、也不会有任何人的密钥。** 每个人用自己的，从
-<https://www.kaggle.com/settings/api> 点 "Create New Token" 拿到：
+这些层会影响后续市场价格、生产和继承策略的选择；收益与代价都经过单独检查。
+
+### 为什么保留这两份
+
+组合方案在新种子确认中优于它的 mixed 父版本。最后一个槽位改用 wool，是因为它保留了一种不同响应方式，而最终规则取两份整体评分的较高者。
+
+这次槽位选择使用了**事后描述性比较**：确认面板中 mixed 没有比组合得分更好的配对格；wool 有 284 格，来自 61 个世界，但它在七组现代对手上的平均表现仍低于组合。我们不能逐局选择赢家，这 284 格也不能当成最终比赛的额外胜场。选择依据和反方意见保存在 [提交台账](docs/RUNS.md)。
+
+## 实验告诉了我们什么
+
+**得分率 = (胜场 + 0.5 × 平局) / 总局数。** 以下是同场地、同种子、同座位的配对变化，单位为百分点（pp）。
+
+| 比较 | 对手范围 | 得分率变化 | 区间 |
+| :--- | :--- | ---: | :--- |
+| 组合 − mixed | 七组现代实现簇 | **+2.65067 pp** | 97.5% CI `[+1.95304, +3.40411]` |
+| 组合 − deferred | 同上 | +0.18834 pp | 97.5% CI `[+0.07673, +0.31390]` |
+| 组合 − wool | 同上 | +0.73940 pp | 97.5% CI `[−0.05589, +1.55561]` |
+| wool − guarded | cha22 / funding / shepherd | +3.092 pp | 95% CI `[+2.343, +3.939]` |
+
+![最终确认实验的配对得分率变化](docs/assets/confirmation-effects.svg)
+
+组合确认共 **419,840 局**，羊毛确认共 **77,824 局**。每个实验各有 **1,024 个独立世界种子**；双座位及 `PYTHONHASHSEED=0/4` 复用这些世界，两个 hash 块分别验收，不能把它们当作独立样本叠加。七组结果先在簇内平均，再按簇等权平均；对手实现簇也存在共同祖先。
+
+区间支持组合相对 mixed 的本地改进；**尚未证明组合优于 wool，也无法由这些数字推算奖牌概率**。两组实验的对手范围和置信水平不同，不能直接按表中增益大小排候选强弱。
+
+### 稳健性与实际代价
+
+| 检查 | 组合方案 | 羊毛方案 |
+| :--- | :--- | :--- |
+| 实际提交包压力测试 | 28 / 28 | 28 / 28 |
+| 单 CPU 慢局复验 | 1,222 局；候选最慢 0.416425 秒 | 214 局；候选最慢 0.300854 秒 |
+| 资源诊断范围 | 20,224 个不同探索局；另查 252 个正式尾部局 | 9,216 个资源观察局；另查 20 个确认回归格 |
+| 保留的反例 | 部分减产、溢出与现金回退 | 少采肥引发部分供肥失败、减产和现金回退 |
+
+原并行运行的慢回合峰值仍保留；隔离复验不构成 Kaggle 硬件延迟保证。新层诊断通过，也不意味着继承代码没有回退行为。两份提交的验证局、首两场公开局及首败均完成记录复验；这只覆盖已检查样本。
+
+### 尝试过的路线
+
+| 路线 | 做过什么 | 后来怎样选择 |
+| :--- | :--- | :--- |
+| 手工引擎与调度 | 原子策略组合、11 种工人调度、作物与动物经济 | 修复了规则缺陷；自建场收益不足以代表真实竞争 |
+| 轨迹与混合接管 | 强队回放、开局重放、市场包装、接回自有引擎 | 修复错一帧重放；保留计划骨架，增加观测响应 |
+| 市场博弈 | 倾销、囤积、抢跑、切片、按商店选择计划 | 多条干扰路线无效；后续窄排序改动重新独立确认 |
+| 完整 RL | PPO、BC、课程、自博弈、张量引擎、逐工人动作头 | 工程与吞吐提升，已试流程仍未达到强对手目标；09-29 归档 |
+| 奖励与市场残差 | 长期信用、资产估值、多订单残差、实际 RL/混合体提交 | 发现奖励投机、采购路径缺失、导出与训练身份不一致等问题 |
+| 截止前机制改进 | 牧场修复、储肥、购牛、仓容、排序、羊毛交仓 | 停止未达门槛的候选；最终采用组合与羊毛两份 |
+
+完整的**假设 → 实验 → 结果 / 停止原因 → 坑与修正**见 [研究路线与踩坑复盘](docs/RESEARCH_LESSONS.md)，含 12 个主题和具体历史提交引用；相同内容也收录于 Notebook。
+
+### 最值得保留的教训
+
+1. **评测结论需要接受后续更正。** 早期尺子曾被判成功、反转，随后因线上读数未稳定又撤回“已知答案”资格。固定轨迹适合回归，响应式对手才能检验市场反馈。
+2. **赚钱更多不一定更强。** 钱用于判断单局胜负；跨不同棋盘比较平均现金，容易把世界难度当成策略收益。
+3. **种子相同也不保证世界完全相同。** 策略动作改变随机数消耗，进而改变杂草和商店。配对仍有用，但不是完全固定的外部环境。
+4. **单层有效不等于组合有效。** 最终组合重新做独立确认，并检查真实包、缓存、资源恢复、生产尾部和运行时间。
+5. **最晚的决定也要留下反方证据。** 独立 subagent 复核原始结果并追查反例；最终槽位选择的事后性质没有被包装成预先验证的结论。
+
+## 仓库地图
+
+```text
+Kaggriculture/
+├── README.md                 项目总览与最终交付入口
+├── notebooks/postmortem/     赛后 Notebook、冻结摘要、Kaggle 发布配置
+├── submissions/              按日期冻结的源码、原始包、许可证与审查
+├── agents/                   手工引擎、规则表、早期模块化策略和历史探针
+├── benchmarks/               固定历史回归对手
+├── tools/                    生成、测量、诊断、打包、数据与发布工具
+├── slurm/                    集群作业入口；长任务在计算节点运行
+├── docs/                     协议、机制分析、执行记录及历史快照
+├── reference/                引擎、官方说明与公开参考 Notebook
+├── requirements/             基础依赖、引擎安装策略和旧环境快照
+├── tests/                    统计工具测试
+├── dist/                     可重建产物；保留轨迹库等已跟踪快照
+└── data/                     本地数据库、评测分片、回放和归档（通常忽略）
+```
+
+生成的 `agents/lib/`、`agents/wrapped/`、`agents/newlines/` 等目录通常不在 Git 中。最终可交付策略以 `submissions/2026-09-30-*/` 的冻结文件为准。RL 线于 09-29 归档，可从归档包及历史提交恢复。
+
+<details>
+<summary><strong>工具导航：按要完成的事情查找</strong></summary>
+
+| 任务 | 入口 |
+| :--- | :--- |
+| 安装环境 / 生成 Notebook | `bootstrap.sh`、`build_notebook.py`、`build_postmortem.py` |
+| 策略与对手生成 | `registry.py`、`wrap.py`、`hybrid.py`、`ghost.py`、`lines.py`、`make_probes.py`、`fetch_fields.sh` |
+| 对战评测与统计 | `eval.py`、`tournament.py`、`stats.py`、`ruler_calib.py`、`opening_value.py` |
+| 看一局发生了什么 | `trace.py`、`board.py`、`tracelib.py`、`stress.py` |
+| 截止前专项工作流 | `endgame_eval.py`、`endgame_diagnostics.py`、`endgame_preflight.py`、`endgame_ingest.py`、`endgame_watch.py` |
+| 数据库与同步 | `db.py`、`datalake.py`、`sync.py`、`d1.py` |
+| 线上记录与报告 | `ladder.py`、`topeps.py`、`leaderboard.py`、`fieldtable.py` |
+| 历史打包与发布 | `package.sh`、`kaggle_cli.py`、`publish.sh` |
+
+所有入口位于 [tools/](tools/)。部分历史脚本需要本地数据或项目专属配置；使用前查看 `--help` 和 [协作说明](docs/CONTRIBUTING.md)。
+
+</details>
+
+## 复现与使用
+
+### 1 · 先阅读，再决定复现范围
+
+Notebook 的 **Run All** 只需要常规 Python、pandas、matplotlib 和 IPython：它校验并导出最终源码、展示冻结统计摘要和图表。**它不会重新计算原始逐世界 bootstrap，也不重跑几十万局锦标赛。** 完整实验还需要对应对手源码、manifest、原始分片及指定引擎。
+
+### 2 · 建立游戏运行环境
 
 ```bash
-mkdir -p .kaggle && chmod 700 .kaggle
-printf '{"username":"你的用户名","key":"你的key"}' > .kaggle/kaggle.json
-chmod 600 .kaggle/*
+git clone https://github.com/jwj1342/Kaggriculture.git
+cd Kaggriculture
+
+# 仅新环境执行：此脚本会重建现有 venv
+bash tools/bootstrap.sh
 source setup_env.sh
-kaggle competitions list -s kaggriculture     # 验证可用
+
+# 冻结赛后复现使用的引擎；普通安装脚本默认跟随更新
+python -m pip install --no-deps kaggle-environments==1.32.7
 ```
 
-`setup_env.sh` 把 `KAGGLE_CONFIG_DIR` 指向**项目自己的 `.kaggle/`**，所以这里不碰
-`~/.kaggle`，一台机器上可以放多个账号，而且 `.kaggle/` 是 git-ignored 的。
+最终确认使用 Python 3.11。`requirements/lock.txt` 是历史集群环境快照，含平台专属依赖；不要把它当成跨平台的一键安装清单。联网下载与 Kaggle 操作放在登录节点；评测、训练和大规模诊断放到 Slurm。
 
-**三件事需要它**，缺了任何一件都会卡住：
-
-| 你要做 | 用到的命令 | 没有密钥的后果 |
-|---|---|---|
-| 拿到对手场地 | `bash tools/fetch_fields.sh` | 一个对手都没有 —— 新克隆的 `agents/` 是空的 |
-| 拉对局数据分析 | `tools/ladder.py pull`、`tools/topeps.py pull`、`tools/ghost.py make` | 拉不到任何回放 |
-| 提交到排行榜 | `kaggle competitions submit` | 交不上去 |
-
-**只跑本地锦标赛不需要密钥** —— 前提是有人已经把 `agents/` 下的场地给了你。
-
-`setup_env.sh` 还把**所有**缓存路径重定向到这个目录，所以这里的任何操作都不会碰
-你的主目录。
-
-依赖放在 `requirements/`，按**安装语义**而不是按用途拆分，因为一个扁平文件表达不了：
-
-| 文件 | 安装方式 | 为什么 |
-|---|---|---|
-| `base.txt` | 普通 `pip install -r` | numpy、pandas、kaggle、kagglehub、jupytext |
-| `nodeps.txt` | `pip install --no-deps -r` | `kaggle-environments` 声明了 19 个依赖，包括编译失败的 `open_spiel`；Kaggriculture 实际只需要其中三个 |
-| `lock.txt` | 不安装 —— 生成物 | 一个已知可用的集群环境的审计快照 |
-
-用 `bash tools/bootstrap.sh --freeze` 重新生成 lock。
-
-> `data/arena.sqlite` 是唯一不可替代的文件，而且是 git-ignored 的 —— 用
-> `tools/sync.py` 分享，不要重跑。
->
-> 有 Vulcan 集群账号的人另见 [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)「在 Vulcan 集群上跑」；**其余文档都不
-> 假设你有集群**。
-
-## 日常命令
+### 3 · 校验最终文件
 
 ```bash
-python tools/trace.py agents/barnyard.py starter        # 逐日追踪一局
-python tools/stress.py agents/barnyard.py -j 8          # 28 个病态配置
-python tools/registry.py list                           # 原子空间
-python tools/registry.py gen --plan all --out agents/lib
-python tools/db.py stats                                # 有史以来跑过什么
-python tools/sync.py export --full                      # 可分享的压缩快照
-
-# 锦标赛：-j 给多少核就用多少（集群上走 Slurm，见 docs/CONTRIBUTING.md《在 Vulcan 集群上跑》）
-export KG_FAST_ENV=1                                    # 结果相同，快 17%
-python tools/tournament.py roundrobin --agents a.py b.py --seeds 96 -j 8
-python tools/tournament.py panel --lib agents/lib --panel agents/bench3/*.py --seeds 8 -j 8
-
-python tools/leaderboard.py --run latest                # 重新生成排行榜
+(cd submissions/2026-09-30-mixed-deferred && sha256sum -c SHA256SUMS)
+(cd submissions/2026-09-30-wool-priority && sha256sum -c SHA256SUMS)
 ```
 
-`slurm/` 只在集群上有意义，全部走 CPU（`eval.sh` / `tournament.sh` /
-`tournament_array.sh`）。
+### 4 · 做一次本地比较
+
+```bash
+# 集群：先检查 slurm/eval.sh 内的账户、项目路径和资源设置
+sbatch slurm/eval.sh h2h \
+  submissions/2026-09-30-mixed-deferred/main.py \
+  submissions/2026-09-30-wool-priority/main.py --seeds 32
+
+# 普通工作站：相同入口可直接运行，小样本仅用于复现流程
+python tools/eval.py h2h \
+  submissions/2026-09-30-mixed-deferred/main.py \
+  submissions/2026-09-30-wool-priority/main.py --seeds 4 -j 2
+```
+
+两份最终版本的直接对打不能替代原多对手确认实验。旧 `eval.py` 输出中的 `win rate` 实际含平局半分，其区间按对局计算，没有保留世界簇；上述命令只用于跑通比较流程，不复现本页正式区间或验收门。统计协议及历史变化见 [VALIDATING.md](docs/VALIDATING.md)；最终审查记录中的协议优先用于解释本页数字。
+
+## 数据归档
+
+Git 保存代码、结论、提交身份和 Notebook；大型 SQLite、原始回放及实验分片单独归档。归档入口为 [赛后 Release](https://github.com/jwj1342/Kaggriculture/releases/tag/postmortem-2026-10-01)，包含本地约 497 万局数据库、独立 D1 SQL/SQLite、RL 历史包和最终提交。具体范围、迁移状态、校验与恢复命令见 [ARCHIVE.md](docs/ARCHIVE.md)。
+
+## 文档路线
+
+| 想了解什么 | 从这里开始 |
+| :--- | :--- |
+| 最终为什么这样提交 | [ENDGAME_EXECUTION.md](docs/ENDGAME_EXECUTION.md)、[RUNS.md](docs/RUNS.md) |
+| 尝试过哪些路、为什么转向 | [RESEARCH_LESSONS.md](docs/RESEARCH_LESSONS.md) |
+| 哪些文件是当前结论、哪些是历史记录 | [INDEX.md](docs/INDEX.md) |
+| 测量与复现方法 | [VALIDATING.md](docs/VALIDATING.md)、[CONTRIBUTING.md](docs/CONTRIBUTING.md) |
+| 早期机制分析与失败经验 | [ANALYSIS.md](docs/ANALYSIS.md)、[LADDER_STATE.md](docs/LADDER_STATE.md) |
+| 公开来源与赛前判断 | [ENDGAME_PUBLIC.md](docs/ENDGAME_PUBLIC.md)、[DISCUSSIONS.md](docs/DISCUSSIONS.md)、[ENDGAME.md](docs/ENDGAME.md) |
+| 历史安装与提交流程 | [ONBOARDING.md](docs/ONBOARDING.md)、[SUBMISSION_POLICY.md](docs/SUBMISSION_POLICY.md) |
+
+历史文档保留当时的判断和约束，部分命令引用已归档路径；其中的天梯分、活跃提交和“当前面板”均有时间背景。
+
+## 致谢与来源
+
+最终策略建立在 Kaggriculture 社区公开控制器之上，包含 **Thomas Tschinkel、Yusuke Hayashi、aurax7、Ahmed Berat Ozer、shiiin9、Dmitrii Gluzdov** 等作者的贡献与继承代码。我们的截止前工作主要是局部控制层、组合验证、资源与运行审计，以及最终槽位选择。
+
+两份最终包均保留 Apache-2.0 许可证、源码内注释和完整 NOTICE：[组合来源声明](submissions/2026-09-30-mixed-deferred/NOTICE.txt) · [羊毛来源声明](submissions/2026-09-30-wool-priority/NOTICE.txt)。历史文件的许可应按各自来源判断；上游路线数据仍有 NOTICE 已说明的溯源限制。游戏引擎来自 [Kaggle/kaggle-environments](https://github.com/Kaggle/kaggle-environments)。
 
 ---
 
-## 核心思路
-
-每个策略是**七个正交原子**各取一个选项的组合，所以它的名字**就是**它的定义，
-而策略库是一个笛卡尔积，不是一堆文件：
-
-```
-land - labour - produce - market - intel - muck - adapt
-
-smallhold-crew-mgtightgrain-flood-blind-compost-shopwise
-```
-
-第七条轴 `adapt` 是唯一关于**城镇**而不是农场或对手的：商店是**有放回**抽样的，
-所以单个产品的需求在不同对局间会摆动 **49 倍**。
-
-**这个仓库里没有任何版本号。**
-
-### 但这套库不是分数最高的那个结构
-
-**必须先知道这件事，否则你会往一条已经量到头的路上投入时间。**
-
-这个原子库是一个**在线调度器**：每回合扫描棋盘、生成任务清单、把任务派给最近的空闲
-单位。十一个落地的引擎改动把它从 623 推到 **857**，然后停住了。
-
-天梯顶端跑的是另一套结构 —— **剧本 + 软包装**：
-
-```
-   剧本 (trace)        一条离线算好的 720 回合动作序列，按回合号查表，不看棋盘
-        │
-        ▼
-   软包装 (wrapper)     一层薄的自适应逻辑，只重写市场动作：
-                        供给表、对克隆对手抢先卖出、终局收割清仓
-```
-
-三个场地一致的实测：
-
-| | 对 `bench3`+参考 | 对 156 条真实榜首轨迹 | 五方对打 |
-|---|---|---|---|
-| 剧本 + 软包装 | **99.2%** | **99.4%** | **92.7%** |
-| 只有剧本（原始录音） | 66.6% | 70.5% | **0.0%** |
-| 我们的在线调度器 | 60.9% | 57.7% | — |
-
-两个反直觉的地方，都是量出来的：
-
-- **原始录音换个种子就塌**（最好的那簇只剩 11.8%，另一簇 0.9%）—— 开环动作遇到不同的
-  杂草会大量变成静默空操作。跑的人最多的那条线是**最耐操**的，不是最强的。
-- **值钱的是软包装，不是剧本。** 原始录音对每一个带软包装的 agent 都是 **0/3072**。
-  而那层包装**只重写 `action["market"]`** —— 农场动作原封不动来自剧本。
-
-### 这两层是怎么接的
-
-**接口只有一个：`action` 这个 dict。** 剧本产出它，包装原地改写它，然后返回给框架。
-
-```
-每回合 agent(obs) 被调用一次
-        │
-        ├─ step >= 714 ?  ──是──▶  _terminal_action(obs)          ← 完全接管，读盘面
-        │                          收割 / 搬运 / 抛售调度器
-        │                          （最后 6 回合，其余层全部跳过）
-        否
-        ▼
-   action = deepcopy(_TRACE[step])        ← 剧本：按回合号查表，不看棋盘
-        │                                    产出 {farmer, hands, market}
-        ▼
-   ┌────────────────────────────────────────────────────────┐
-   │  软包装：三层，全部只改 action["market"]                 │
-   │  farmer 和 hands 原封不动 —— 农场动作 100% 来自剧本      │
-   ├────────────────────────────────────────────────────────┤
-   │ ① _front_run       检测到克隆 → 抢在它抛售前一回合卖出   │
-   │                    条件 _CLONE_CONFIDENCE >= 2          │
-   │ ② _terminal_liquidation  step >= 680 → 把棚内存货挂单    │
-   │ ③ 市场控制器 _plan_sells  按储备价决定卖多少             │
-   │                    储备价 = 基价 × 系数 × 供需比          │
-   │                    只接管 _RESERVE 里列出的品类           │
-   └────────────────────────────────────────────────────────┘
-        │
-        ▼
-   return action
-```
-
-**两层之间唯一共享的状态**是 `_TRACE` 本身 —— 包装会**读未来几回合的剧本**，
-知道自己接下来要卖什么，这就是"抢跑"的信息来源。除此之外包装不改变剧本的任何意图。
-
-**两层各自的失效模式完全不同**，这是分层的代价：
-
-| 层 | 怎么失效 | 现状 |
-|---|---|---|
-| 剧本 | 换个种子杂草不同 → 动作变成静默空操作 | 无法修，只能重搜 |
-| ① 抢跑 | 要求棚里有货，而策略是进棚就卖 → **永远读到空棚子** | 实测 0/714 回合触发 |
-| ③ 市场控制器 | `_RESERVE` 为空 → **一个品类都不接管** | 整套机制在空转 |
-
-前两条是实测的：镜像对局里克隆检测完美（信心值 step 192 就满 8）、闸门开了 666 次、
-**实际下单 0 次**，每次都读到空棚子。
-
-完整证据和它推翻的三个旧结论在归档的 `docs/ROADMAP.md` 里（见本文开头的归档位置）。
-
-一切在接近排行榜之前都先在本地测量。`tools/tournament.py` 跑面板筛选（`O(n)`）和
-循环赛（`O(n²)`），把每一局持久化到 SQLite，并拟合 **Bradley-Terry** 强度 ——
-和 Kaggle 用于最终排行榜的是同一个估计量。
-
-每一局都落进 `data/arena.sqlite`，并镜像到 **Cloudflare D1**，所以协作者不需要
-下载文件就能查询全部证据。同步是单向的，本地到远端；见 `docs/CONTRIBUTING.md`
-的 "The sync contract"。
-
----
-
-## 各部分怎么组合
-
-四层。每层只依赖它上面那层，`tools/` 以下的一切都是重新生成而不是手编辑的。
-
-```
-  定义层        tools/registry.py          七张原子表 + 组合方案
-                agents/_engine.py          唯一的执行路径，CONFIG 块由生成器写入
-                        │
-                        │  registry.py gen --plan all
-                        ▼
-  策略层        agents/lib/*.py            独立的、可直接提交的 agent
-                agents/spar/*.py           从真实天梯回放重建的对手 —— 每个场地都要带上
-                agents/lib/manifest.json   名字、原子、源码哈希
-                        │
-                        │  tools/tournament.py  (集群上分片跑)
-                        ▼
-  证据层        data/arena.sqlite          有史以来的每一局
-                  agents    名字、原子、源码哈希
-                  runs      每场锦标赛一行
-                  episodes  结果、商店抽样、终局价格、约 1.6 KB 摘要 x2
-                  ratings   每次跑数的 Bradley-Terry 快照
-                        │
-            ┌───────────┼────────────────────┐
-            │           │                    │
-            ▼           ▼                    ▼
-  输出层   db.py      leaderboard.py      人工分析 -> docs/
-           查询       docs/LEADERBOARD.md
-                      site/leaderboard.html -> 发布的页面
-```
-
-**为什么是这个形状。** 策略从不手写，所以两个人不可能用不同名字造出同一个策略，
-而名字永远描述这个 agent 在做什么。每一个被引用过的数字都能追回到同一个数据库里的
-行，所以一条主张可以用一次查询复核，而不用重跑。发布页面是那个数据库的纯函数，
-刷新它是一条命令，而且 URL 永远不变。
-
-从这条主线旁伸出去的，是回答更窄问题的工具：`tools/trace.py`（这局为什么这样走）、
-`tools/stress.py`（扛不扛得住折腾）、`tools/eval.py`（A 是否优于 B，带置信区间）、
-`tools/hybrid.py`（开局值多少钱）、`tools/lines.py`（天梯实际在跑哪几条线）。
-
-## 目录结构
-
-2026-09-29「冲刺前的精简」之后：131 个已跟踪文件 / 15M。留下的都是**得分线**用得到的。
-
-```
-agents/
-  _engine.py       策略：唯一的执行路径；它的 CONFIG 块是生成的
-  kg_rules.py      规则：作物表、价格模型、商店图 —— 无策略，引擎再平衡时只改这里
-  newlines/        ★ 从公开回放重建的 meta 计划（n04.py = 在榜那条，自带 cleo 卖出层）
-  lib/ spar/ ref/ ghosts/ lines/ bench3/   生成或快照的对手场地  (git-ignored)
-  barnyard.py      手工调优的最初版本
-  legacy/          被取代的临时 agent，因为文档引用而保留
-
-tools/             28 个，按用途分四组
-  ── 提交与打包 ──
-  package.sh       打成 Kaggle 要的 tar.gz（.py/.npz 平铺在归档根）
-  kaggle_cli.py    提交与拉分
-  stress.py        28 个病态环境配置，提交前必跑
-  wrap.py        ★ 把同一个自适应层套到任意挖来的计划上（得分线的另一半）
-  hybrid.py        把录制的开局拼接到我们的引擎上，测量开局的价值
-  ── 测量 ──
-  eval.py          带 Wilson 区间和配对 bootstrap 的 A/B（h2h / pool 两种模式）
-  tournament.py    面板 / 循环赛，持久化到 SQLite
-  stats.py         Bradley-Terry 和 Wilson —— 仓库里唯一的纯模块，有单元测试
-  ruler_calib.py   把本地尺子对着天梯分校准
-  variance.py factorial.py   方差分解 / 析因设计
-  trace.py tracelib.py board.py   一局的逐日追踪、轨迹库、棋盘打印
-  ── 数据 ──
-  ladder.py        拉取我们自己的天梯对局，19 MB 回放压成 1.4 KB 摘要
-  db.py            所有对局的 schema 和查询
-  datalake.py      数据卫生：数据库 vs 分片 vs dist/ 一屏对账（status / sync --prune）
-  topeps.py        消化 Kaggle 每日的榜首对局数据集
-  sync.py          在机器之间同步 arena.sqlite
-  leaderboard.py   从数据库渲染 docs/LEADERBOARD.md
-  ── 生成与环境 ──
-  registry.py      原子定义、组合方案、代码生成
-  ghost.py lines.py fieldtable.py   榜首轨迹 → 本地对手 / 聚类成"线" / 场地表
-  make_probes.py   定点评估用的探针局面
-  bootstrap.sh     从零建立 venv/
-  fetch_fields.sh  重建新克隆没有的全部对手场地
-  publish.sh       发布 release 资产
-  build_notebook.py  生成 notebooks/baseline.ipynb
-  d1.py            Kaggle 数据集/凭据的小工具
-
-slurm/             3 个，全部 CPU
-  eval.sh tournament.sh tournament_array.sh
-
-docs/              8 份 —— 见下方表格
-data/arena.sqlite  证据层，3,624,881 局  (git-ignored；用 tools/sync.py 分享)
-data/releases/     对手场快照 + rl-line-archive-2026-09-29.tar.gz  (git-ignored)
-reference/
-  engine/          kaggriculture.py 的副本 —— **实际运行的规则，比览页可信**
-  docs/            比赛数据集里的官方 README.md 和 AGENTS.md
-```
-
-## 对手一览
-
-`bash tools/fetch_fields.sh` 建起全部场地。**除 `benchmarks/` 外都是 git-ignored 的生成物** ——
-它们由脚本重建，不进版本库。
-
-> **怎么判断一条线或一个 agent 好不好：只看「面板胜率」。**
-> 固定十个对手（`w39 w48 w16 w68 w56 w25 w12 w28 w05 w02`）× 96 个种子 × 双方座位
-> = **1,920 局**，赢的比例就是它。固定，是为了让不同候选用同一把尺子量。
-> 比赛只看输赢不看钱，所以胜率就是比赛真正评的那个量；任何以「钱」为单位的指标
-> 都只是代理，而代理指标背叛过我们一次。
-> 定义、跑法、以及它自己还没解决的两个问题，写在
-> [`docs/VALIDATING.md`](docs/VALIDATING.md) 开头。
-
-| 路径 | 数量 | 是什么 | 怎么来 |
-|---|---|---|---|
-| **`agents/wrapped/`** | **100** | **真正的对手** —— 从天梯挖出的剧本，全部套同一层适配层 | `tools/wrap.py --top 100` |
-| `benchmarks/strongest.py` | 1 | 要打过的那条（= `d08`，源队伍天梯 **#1**），**已提交进 git**，`agents/CHAMPION` 指向它 | `wrap.py` |
-| `agents/darkhorse/` | 40 | 未进 `wrapped` 的 247 条里另选的 40 条，**18 条越过旧场地第十名** | `tools/wrap.py` |
-| `agents/champ/` | 17 | **天梯 #1 那支队伍的全部录音**，同一层适配层 | `wrap.py --team` |
-| `agents/lines/` | 35 | 每条不同剧本的一个代表，**裸录音**（无适配层，会塌） | `tracelib emit` |
-| `agents/bench3/` | 28 | 引擎级场地：我们自己的形状 + 参考 agent | `registry.py gen --plan bench` |
-| `agents/ref/` | 10 | 第三方教学梯队 tier 0–9（MIT，见其 NOTICE） | Kaggle 数据集 |
-| `agents/ghosts/` | 156 | 早期拉的开环轨迹（**08-04～08-07，跨在再平衡线上**） | `ghost.py make` |
-| `agents/spar/` | 30 | 从天梯回放重建的对手形状 | `registry.py gen --plan ladder` |
-| `agents/lib/` | 1,728 | 全量策略库（`--plan all` 的去重并集；七轴全叉积是 241,920，复核跑 `registry.py list`） | `registry.py gen --plan all` |
-
-### `agents/wrapped/` 里的名次（477,225 局实测）—— 以及它为什么不能当强弱看
-
-| 对手 | 本地名次 | 本地胜率 | 跑它的队伍 | **源队伍天梯名次** |
-|---|---|---|---|---|
-| `w39` | **1** | 95.4% | 1 | #358 |
-| `w48` | 2 | 95.1% | 1 | #711 |
-| `w16` | 3 | 93.9% | 2 | #596 |
-| `w05` | 9 | 86.3% | 11 | **#13** |
-| `w02` | 10 | 84.5% | 39 | **#34** |
-| `w03` | 11 | 84.0% | 38 | **#3** |
-| `w01` | 45 | 47.4% | **96** ← 最流行 | **#6** |
-| `cleo` = 我们提交过的那个 | 64 | 36.5% | — | — |
-
-**最右一列和左边两列没有关系** —— 全部 100 条上 `spearman -0.05`（n=100）。
-同一支队伍的不同对局，本地胜率能从 14% 跨到 93%（THUNDER THUNDER，#364，16 条线）。
-**本地胜率测的是「这段录音换个棋盘还能不能用」，不是策略强弱。**
-完整证据在 `docs/ROADMAP.md`（已归档） §10.5。所以上表里 `cleo` 的 64 名
-**不能**读成「我们中下游」—— 它两个方向都不说明问题。
-
-`benchmarks/strongest.py` 固定指向 `d08`：本地对上表前十拿 92.4%（1,920 局，
-上表最强的 `w48` 同一面板只有 79.9%），且录自 2026-08-13 当时的天梯 #1。它现在是
-历史回归锚点，不是“当前最强”或天梯强度代理；k06/topline 的收敛结果已经证明本地面板
-会排反。
-
-### 提交过的 agent 与天梯分数
-
-> **历史表，非实时活跃槽位。** 08-13 两条的早期读数曾被过早判定；下表已采用
-> 2026-08-23 复读到的收敛值。后续 RL 提交与完整读数见 `docs/RUNS.md`，实时状态用
-> `python tools/ladder.py stats`。
-
-| 日期 | 提交号 | agent | 天梯分 | 快照 |
-|---|---|---|---|---|
-| 08-13 | `55489160` | `kawashigi-k06` —— 同一支队的另一局录音，**按面板胜率选出** | **2035.9**（收敛后）² | `submissions/2026-08-13-kawashigi-k06/` |
-| 08-13 | `55484175` | `topline` —— 榜首 カワシギ 的剧本 + MIT 市场层 | **2302.2**（收敛后）¹ | `submissions/2026-08-13-topline/` |
-| 08-12 | `55458466` | `closer_cleo` + terminal@714（重发） | 1218.6 | `submissions/2026-08-11-closercleo-term714/` |
-| 08-11 | `55442784` | 同上，首次 | **1363.7** | 同上 |
-| 08-11 | `55439740` | `closer_cleo` 原样 | 1287.2 | `submissions/2026-08-11-closercleo/` |
-| 08-11 | `55404837` | `mgtight` + liq29 | 836.8 | `submissions/2026-08-10-mgtight-liq29/` |
-| 08-11 | `55431972` | `mgtight` + here-pass | 818.4 | `submissions/2026-08-11-mgtight-here/` |
-| 08-11 | `55418588` | `mgtightgrain` | 767.4 | `submissions/2026-08-11-mgtightgrain/` |
-| 08-10 | `55400803` | `bigberry` + compost | 763.3 | — |
-| 08-10 | `55402695` | `mgtight` | 759.9 | — |
-| 08-08 | `55358912` | `enhanced`（多文件） | 623.6 | `submissions/2026-08-08-enhanced/` |
-| 08-07 | `55332339` | `barnyard`（最初版本） | 621.4 | `submissions/2026-08-07-barnyard/` |
-
-这张历史表中的最高收敛值是 topline **2302.2**。榜首与第 10 名口径来自
-2026-08-14 快照（约 3,240 / 3,089，4,356 支队伍），不能当今天读数。
-
-¹ **输掉三分之一之前，天梯分不算数。** 新提交从低分起步、靠打赢弱对手往上爬，
-爬完之前那个数是地板而且一直在动。`55484175` 第 11 局读 1695.2（11 战全胜），
-四十分钟后第 22 局读 2144.1，54 局一度到 **2359.5** —— 同一个文件，三小时涨 664 点。
-判据是**滑动窗口的败率，不是局数**（累计口径会永远滞后）：最近 18 局输 <1/3 还在爬，
-≈1/2 才收敛。08-23 复读的最终值是 **2302.2**。见
-[`SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) 规则 7。
-
-**08-14 当时的估计**：カワシギ 本人 3,236.5，我们重放录音一度读到 2,359.5，因而估算
-开环重放税 630.8 点。收敛后 topline 是 2302.2、k06 是 2035.9，所以精确税额随读分时点
-变化，但方向不变：照抄录音明显低于当时第 10 名 3,089.0，不能直接到奖金区。
-
-² **这一次是对「面板胜率」这把尺子本身的前瞻性检验 —— 已 resolved，失败。**
-和 `55484175` 相比，源队伍、市场层、打包方式**全部相同，只换了录自哪一局**：
-面板胜率 98.5% vs 92.4%，判据在结果出来**之前**写好；早期读数 2612.3 vs 2391.6
-曾看似通过，但收敛后是 **2035.9 vs 2302.2**，方向反转 266.3 分。面板和 768 局直接
-对打都挑错，不能再把本地胜率用于外推天梯强度。完整更正见
-`docs/RUNS.md`（已归档） 与 [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md)。
-
-**另外，`55442784` 和 `55458466` 是同一个文件**：一字未改，相隔一天，分别拿到
-**1363.7 和 1218.6**。合并 130 局后胜率正好 50.0%（已收敛）。
-**同一个 agent 的天梯分能差 145 点** —— 这张表里任何小于该幅度的差距
-（包括归给 liq29 的 +69）都在噪声带内。完整清单见 `docs/RUNS.md`（已归档）。
-
-> **这三张表会过时。** 重新生成用：
->
-> ```bash
-> python tools/fieldtable.py          # 打印当前的三张表，可直接粘回这里
-> ```
->
-> 提交一个新 agent 后，把它加进最后一张表并在 `docs/RUNS.md` 记一行 ——
-> 一条天梯记录必须几个月后仍能追溯到产生它的代码。
-
----
-
-## 常见问题
-
-三个每个人第一周都会问的问题。更长的答案在链接后面；这里的内容够你动起来。
-
-### 1. 我该怎么提交到 Kaggle？
-
-**先配好你自己的密钥**（见上面「你需要自己的 Kaggle API 密钥」），然后确认额度：
-
-```bash
-kaggle competitions submission-limits kaggriculture
-```
-
-**然后提交。** 单文件 agent 直接作为 `main.py` 上传；多文件的必须打成 tar.gz，
-且每个模块都在**归档根目录**，因为 Kaggle 解包到 `/kaggle_simulations/agent/`，
-嵌套目录会让 import 失败。
-
-```bash
-python tools/stress.py agents/mine/main.py -j 14        # 必须 28/28
-mkdir -p submissions/$(date +%F)-mine && cp agents/mine/main.py submissions/$(date +%F)-mine/
-kaggle competitions submit -c kaggriculture \
-    -f submissions/$(date +%F)-mine/main.py -m "一句话 + 本地证据"
-
-# 多文件：打包、解包、检查 get_last_callable、跑一整局
-bash tools/package.sh agents/mine mine
-```
-
-**三条已经各自让我们损失过槽位的规则** —— 完整清单在
-[`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md)：
-
-* **每天 5 次，只有最新两个活跃，而失活是按*时间顺序*不是按分数。** 第三次提交会
-  挤掉较早的那个活跃者，即使它是你最好的。
-* **一个 agent 需要 40 局以上分数才有意义** —— 大约四小时。在这个窗口内再次提交，
-  等于把你正在等的测量扔掉。
-* **永远快照**到 `submissions/<日期>-<名字>/`，并在
-  `docs/RUNS.md`（已归档） 里记下本地证据。一条天梯记录必须几个月后仍可追溯。
-
-### 2. 我怎么先在本地把策略跑通？
-
-```bash
-source setup_env.sh                  # 任意目录，任意机器
-bash tools/bootstrap.sh              # 只在 venv/ 缺失时需要
-bash tools/fetch_fields.sh           # 对手 —— 新克隆一个都没有，这一步要 Kaggle 密钥
-```
-
-**每次开工前都跑一遍 `fetch_fields.sh`。** 它会建起三个场地，其中
-`agents/wrapped/` 是**真正该打的那个** —— 100 条从天梯挖出的真实剧本，全部套同一层
-适配层，所以胜负只反映剧本本身。
-
-**我们放上天梯的那个 agent 在这里排 64/101、胜率 36.5%**（477,225 局），而 `bench3`
-给它的读数是 90%+。**在 `bench3` 上赢 95%，完全可能在真实前沿排倒数。**
-
-它还会把 `agents/CHAMPION` 指向的那条拷成 `champion.py`。**你的对手里必须有它。**
-
-不需要 Kaggle key —— 371 条剧本的快照（`dist/tracelib.json.xz`，12.4 MB）已提交进 git。
-
-然后，从便宜到贵：
-
-| 你想知道 | 命令 |
-|---|---|
-| 会不会崩 | `python tools/stress.py <agent>.py -j 8` |
-| 一局，逐日 | `python tools/trace.py <agent>.py starter` |
-| A 是否优于 B | `python tools/eval.py h2h a.py b.py --seeds 96 -j 32` |
-| 对整个场地 | `python tools/tournament.py panel --agents <agent>.py --panel agents/bench3/*.py --seeds 96 -j 8 --label mine` |
-
-八核笔记本上，最后一行约 15 分钟。更大的跑数见 [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)「在 Vulcan 集群上跑」，
-或者直接拿别人跑好的数据库。
-
-**不要手写策略文件。** 在 `tools/registry.py` 里加一个原子选项然后重新生成 ——
-名字就是定义，而且所有生成的策略共用一条执行路径，比较才公平。
-
-**然后在相信那个数字之前读 [`docs/VALIDATING.md`](docs/VALIDATING.md)。**
-它很短，它的存在是因为这个项目在量表两端都产出过自信的胡话：一个什么都打得过的
-参考场地，和一个什么都以同样幅度打得过的参考场地。四个种子分辨不出任何东西 ——
-三个改动在四种子下读数为正，在每臂 2,304 局下落后 21 到 44 分。
-
-### 3. 我该怎么分析一局对战？
-
-下面每一条都要**你自己的 Kaggle 密钥**（见上面那一节）—— 它们都在向 Kaggle 拉数据。
-
-**你自己的天梯对局。** Kaggle 保存回放；`ladder.py` 拉下来，留一份约 1.4 KB 的
-摘要，删掉 19 MB 的原件：
-
-```bash
-python tools/ladder.py pull --limit 40      # 你最近的天梯对局
-python tools/ladder.py stats                # 胜率、对手形状、卖了什么
-```
-
-**天梯顶端**，你永远不会被匹配到的那些：
-
-```bash
-python tools/topeps.py index                # 列出 Kaggle 每日的榜首对局数据集
-python tools/topeps.py pull                 # 消化进数据库
-python tools/ghost.py make --limit 60 --per-team 2 --bands
-python tools/lines.py                       # 他们实际在跑哪几条不同的剧本
-```
-
-**幽灵**就是把那样一条轨迹变成本地对手 —— 11 KB，录制的动作序列逐回合重放，
-没有任何拟合成分。`docs/ROADMAP.md`（已归档） §11 有采样设计和它的局限。
-
-**一局的细节。** `tools/trace.py` 逐日打印农场 —— 地块、棚子、价格、现金。
-**这个引擎里非法动作是静默空操作**，所以 bug 看起来和"策略差"完全一样，而最终分数
-永远不会告诉你是哪一种。这个仓库里每一个五位数级别的缺陷都是靠读 trace 找到的，
-不是靠盯分数。
-
----
-
-## 文档
-
-这个项目知道的一切都在 [`docs/`](docs/) 的 8 份文档里（RL 线的文档已随 `rl/` 归档）。先看
-[`docs/INDEX.md`](docs/INDEX.md) 判断一份文件是当前合同、证据档案、历史快照还是生成物，
-再按问题查：
-
-| 你想知道… | 读 |
-|---|---|
-| **历史榜单提交是什么，我怎么在本地复现** | [`docs/LADDER_STATE.md`](docs/LADDER_STATE.md) —— 08-14/08-23 快照，不是实时榜单 |
-| **这个比赛里到底什么决定输赢** | [`docs/ANALYSIS.md`](docs/ANALYSIS.md) —— 引擎经济学 + 312,000 局受控实验 |
-| 怎么把环境跑起来 | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) —— 第一个小时 |
-| **我的改动是真的吗** | [`docs/VALIDATING.md`](docs/VALIDATING.md) —— 出任何数字之前读 |
-| 命名约定、工具用法、集群、怎么交东西 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
-| 什么时候提交、提交什么、额度怎么算 | [`docs/SUBMISSION_POLICY.md`](docs/SUBMISSION_POLICY.md) |
-| 某一个具体数字是哪次跑出来的 | `docs/RUNS.md`、`docs/ROADMAP.md`、`docs/CEILING.md` —— **已随 RL 线归档**，见 `data/releases/rl-line-archive-2026-09-29.tar.gz` 或 `git show 7a5e91e^:<路径>` |
-| 原子库的本地排名 | [`docs/LEADERBOARD.md`](docs/LEADERBOARD.md) —— **生成物**（run #2 的快照），别手改 |
-| 哪些文档只是旧交班/验收快照 | [`docs/INDEX.md`](docs/INDEX.md)《历史快照》 |
-
-`CLAUDE.md` 是给 AI 工具自动加载的短规则表（英文），不是给人读的入门文档。
-`reference/docs/` 是比赛官方 README 和 AGENTS，原样保存，不是我们写的。
-
-> **文档数量本身是个约束。** `docs/INDEX.md` 是唯一目录页；新结论优先并入
-> `RUNS.md`、当前合同或对应历史档案，不再新增平行的“最新版”说明。
-
----
-
-## 目前知道的事
-
-简版；证据在 `docs/ROADMAP.md`，任何关于真实场地的事在 `docs/ROADMAP.md §11`。
-
-**最重要的一条在上面「核心思路」里**：天梯顶端是「剧本 + 软包装」，而我们这套原子库是
-在线调度器，两者差 40 个百分点，而且不是调参能补的。
-
-**差距不在开局，在全程。** 把一条录制的开局拼接到我们的引擎前面并扫描交接日，
-胜率从 54.0%（纯我们）单调升到 98.6%（纯剧本），**曲线不见顶**。不存在一个"我们的
-引擎开始产生价值"的转折点，所以"前半剧本 + 后半自适应"这条路没有可拼的东西。
-
-**榜首跑的不是我们一直对标的那条线。** 156 条真实榜首轨迹里，只有 8 条与
-`agents/ref/closer_cleo.py` 内嵌的剧本重合超过 30%。它们彼此中位重合 75.4%，聚成
-25 条线，最大一条 97 份、跨 38 个队伍。之前没发现，是因为**同一套剧本错开一个回合，
-逐格比对就是 0% 重合** —— 要先做 ±8 回合对齐。
-
-**价值在外包装，不在剧本。** 原始录音换个种子就塌（原始分最高的那簇只剩 11.8%，
-另一簇 0.9%），因为开环动作遇到不同的杂草会大量变成静默空操作。而在 3,072 局的循环赛里，
-原始录音对四个带外包装的 agent 是 **0.0%**。那层外包装**只重写市场动作** ——
-农场动作原封不动来自剧本。
-
-**引擎里正确的行为常常没有注释。** 一个探针显示农场十天买不了种子、现金只有
-$109–$435，看起来像死锁。"修好"它在 137,664 局下损失 8–14 分：现金流向了牲畜，
-而牲畜更值钱。**判定引擎坏掉之前，先查它把资源花到哪去了。**
-
-**最值钱的单次测量来自动作直方图。** 榜首每个有效动作只花 1.09 步移动，我们是 1.85，
-因为他们 50% 的工作不需要移动 —— 一头牲畜在同一格上支撑 FEED、CARE、
-COLLECT_FERTILIZER、HARVEST 四个动作。从同一份回放读出的三个**形状**想法则全部测负。
-
-**雇工这条轴支配其他所有轴，而且失败模式是反的。** `crew`（11 个雇工、≤6% 现金）
-赢 55%；`swarm`（30 个雇工、无工资上限）赢 **10%** —— 比完全不雇人还差。
-第 n 个雇工的成本是 `fib(n)`。
-
-**引擎在 2026-08-06/07 被重新平衡过**（`kaggle-environments` 1.32.6）：城镇需求减半，
-商店改为**有放回**抽样。所有日期在 08-06 或更早的公开 meta 分析，描述的是一个已经
-不存在的游戏。
-
-**策略空间是非传递的。** flood > metered > spite > flood，全部实测。任何排名都是
-相对于它的场地的排名。
-
-**两个参考场地都已经在顶端饱和。** 八个 `closer_cleo` 量级的变体在幽灵场地上并列
-99.4%，分不出高下。在这个层级唯一还有分辨率的，是**带外包装的 agent 互相打** ——
-92.7 / 73.8 / 54.1 / 29.3，间距干净。
+<div align="center">
+<sub>保留可核查的收益，也保留失败、成本与尚未确定的结果。</sub>
+</div>

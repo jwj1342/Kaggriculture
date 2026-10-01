@@ -1,49 +1,65 @@
-# 文档状态索引
+# 文档索引
 
-**最后清点：2026-09-29（冲刺前的精简）。** 本页是文档入口，不承载实验结论。
+**整理时间：2026-10-01。提交阶段已结束，最终排名与奖牌待公布。**
 
-> **当前站位（一句话）**：**RL 线已归档**（`data/releases/rl-line-archive-2026-09-29.tar.gz`
-> 与该 commit 之前的 git 历史），连同 `RUNS.md`、`CEILING.md`、`ROADMAP.md`、`INFRA.md`、
-> `GAP-2000.md`、两份晨间战报与全部实验脚手架。留下的是会得分的那条线：
-> **挖来的计划 + 自适应包装层**（`agents/newlines/`、`tools/wrap.py`）。
-> **不要用「每局多赚 X → 翻转 Y 场败局 → 胜率 Z → 分数」这条推理** —— 10 条已定型提交上
-> margin 对分数的 Spearman 是 **−0.285**、败率 **+0.273**，都不过临界；我方钱中位 +0.891
-> 也不是因果尺子（`56081484` 我方钱 91,316 高于 `56013382` 的 83,691，分数却 662 对 1695）。
+先读 [README](../README.md)，再按问题进入下面的文档。最终两个活跃提交是
+**56720412 mixed-deferred** 与 **56721680 wool-priority**，截止后官方读回均为 COMPLETE。
 
-## 当前执行文档
+## 赛后交付
 
-> **⚠️ 2026-09-29：截止前 28 小时。先读 [`ENDGAME.md`](ENDGAME.md)** —— 冲刺计划、
-> 决策表、以及会让计划报废的操作陷阱。它是这段时间唯一的执行入口。
+| 文档 | 内容 |
+| :--- | :--- |
+| [赛后 Notebook](../notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb) | 思路、路线、失败、确认实验、最终包下载与复现边界 |
+| [研究路线与教训](RESEARCH_LESSONS.md) | 手工调度、轨迹、RL、测量和工程的得失，含历史更正 |
+| [数据归档与恢复](ARCHIVE.md) | 数据库、D1、RL 历史和 Release 资产的范围与恢复方式 |
+| [冻结结果摘要](../notebooks/postmortem/evidence.json) | 最终提交身份、哈希、实验规模和统计区间 |
+| [组合原审查](../submissions/2026-09-30-mixed-deferred/REVIEW.md) | 组合正式确认、资源成本、真实包与慢局复验 |
+| [羊毛原审查](../submissions/2026-09-30-wool-priority/REVIEW.md) | 羊毛正式确认、供肥失败、回归格与运行复验 |
 
+原审查文件冻结在各自审批时点，可能仍写“待上传”或当时的旧槽位建议；
+实际提交和最终槽位以 [RUNS.md](RUNS.md) 的最终截止核对为准。
 
-| 文档 | 作用 | 更新规则 |
-|---|---|---|
-| [`VALIDATING.md`](VALIDATING.md) | 本地评估、统计判词与 RL 产物验收 | 测量协议变化时更新 |
-| [`SUBMISSION_POLICY.md`](SUBMISSION_POLICY.md) | Kaggle 提交额度、活跃槽位与读分纪律 | 竞赛规则或提交流程变化时更新 |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 工具、数据流、集群操作与交付规范 | 工具接口变化时更新 |
-| [`ONBOARDING.md`](ONBOARDING.md) | 新协作者从零跑通项目 | 安装或主入口变化时更新 |
+## 截止前执行与来源
 
-最短阅读顺序：`ONBOARDING.md` -> `SUBMISSION_POLICY.md` -> `VALIDATING.md`。
+| 文档 | 用途与时间背景 |
+| :--- | :--- |
+| [ENDGAME_EXECUTION.md](ENDGAME_EXECUTION.md) | 09-29 至截止后的执行、证据、审查与决策过程 |
+| [RUNS.md](RUNS.md) | 本轮提交台账、Kaggle ID、真实上传时间与健康检查 |
+| [ENDGAME_PUBLIC.md](ENDGAME_PUBLIC.md) | 公开代码来源、候选与许可检查 |
+| [ENDGAME.md](ENDGAME.md) | 09-29 冲刺前计划；其中历史资产推断随后被实际复评修正 |
 
+## 方法与协作
 
-## 证据与架构
+| 文档 | 用途与限制 |
+| :--- | :--- |
+| [VALIDATING.md](VALIDATING.md) | 评测协议的演变；部分 RL 和旧面板章节描述历史。最终实验按冻结审查解释 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 工具、数据流与集群规范；长期计算走 Slurm，网络操作在登录节点 |
+| [ONBOARDING.md](ONBOARDING.md) | 历史完整上手流程；最短赛后复现路径见 README |
+| [SUBMISSION_POLICY.md](SUBMISSION_POLICY.md) | 历史提交、额度和读分纪律；截止后不再执行提交示例 |
 
-| 文档 | 状态 |
-|---|---|
-| [`ANALYSIS.md`](ANALYSIS.md) | 2026-08-13 市场/胜负机制研究；**含最终评分规则**（截止时锁定 active 两个 → 再跑约两周 → 一次 Bradley-Terry 整体拟合，host 确认） |
-| [`LADDER_STATE.md`](LADDER_STATE.md) | 08-14 快照及 08-23 复读更正；**不是实时榜单**，实时用 `python tools/ladder.py stats` |
-| [`DISCUSSIONS.md`](DISCUSSIONS.md) | **2026-09-29 拉取的竞赛讨论区情报**（166 帖 / 446 条发言）：评分机制与路径依赖、别人成功与失败的路径、两条指向动物经济的外部证据。**全部是他人自述，未经我们复现** |
+## 历史研究与快照
 
-## 历史快照
+| 文档 | 时间背景 |
+| :--- | :--- |
+| [ANALYSIS.md](ANALYSIS.md) | 08-13 市场与胜负机制，含官方最终评分讨论 |
+| [LADDER_STATE.md](LADDER_STATE.md) | 08-14 快照及 08-23 复读；不能用作当前榜单 |
+| [DISCUSSIONS.md](DISCUSSIONS.md) | 09-29 抓取的 166 帖、446 条发言；外部自述不等于我们已复现 |
+| [LEADERBOARD.md](LEADERBOARD.md) | `tools/leaderboard.py` 生成的历史本地 run 快照 |
 
-已归档的文档（`data/releases/rl-line-archive-2026-09-29.tar.gz`，或 `git show 7a5e91e^:<路径>`）：
-`RUNS.md`（18,920 行实验台账）、`CEILING.md`、`ROADMAP.md`、`INFRA.md`、`GAP-2000.md`、
-`ACCEPTANCE-2026-08-21.md`、`MORNING-2026-08-21/22.md`、`TODO.md`，以及 `rl/` 全部内容。
+RL 线和较长实验台账于 09-29 归档。本地包为
+`data/releases/rl-line-archive-2026-09-29.tar.gz`；历史 Git 可按路径恢复：
 
-## 自动生成
+```bash
+git show 7a5e91e^:docs/RUNS.md
+```
 
-[`LEADERBOARD.md`](LEADERBOARD.md) 是 `tools/leaderboard.py` 生成的历史 run 快照，
-不要手改，也不要把它当 Kaggle 实时榜单。要刷新就重跑生成器并连同来源 run 一起记录。
+同批归档包含 `CEILING.md`、`ROADMAP.md`、`INFRA.md`、`GAP-2000.md`、晨间战报和 `rl/`。
+当前 `docs/RUNS.md` 是截止前新增台账，和旧的 18,920 行实验台账不是同一份内容。
+归档资产与恢复方法见 README 的“数据归档”。
 
-实时外部状态不应硬编码进“当前”文档。天梯用 `python tools/ladder.py stats` 刷新，集群用
-`squeue -u "$USER"` / `sacct` 查看；形成可引用结论后写进提交说明或 `LADDER_STATE.md`。
+## 如何阅读这些证据
+
+- 先看日期、引擎版本、对手范围和独立种子数，再解释一个数字。
+- 本地提升、线上早期分数、最终 BT 和奖牌是不同层面的结论。
+- 保留历史错误与后续更正；不把事后观察改写成预先验证。
+- 原始分片、数据库和回放通常不随 Git 克隆；摘要不能代替它们重算完整统计。

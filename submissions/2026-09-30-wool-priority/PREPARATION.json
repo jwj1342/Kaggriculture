@@ -1,0 +1,37 @@
+{
+  "created_utc": "2026-09-30T13:05:56.766448+00:00",
+  "state": "UPLOADED; PLATFORM COMPLETE; INITIAL LIVE HEALTH PASS",
+  "source": "/scratch/jwj/Kaggriculture/data/endgame-20260930-wool-confirm/hash0/agents/wool_priority.py",
+  "parent_submission": 56706612,
+  "sha256": {
+    "main.py": "037aead27341d4c232ff0b41eac8c0139fc171c8f176008c4ddef4ae24b84ae7",
+    "LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "NOTICE.txt": "d841ae1266b5efa5901767aeb3928a07cc6851073940927ebc6740dc537121e8",
+    "submission.tar.gz": "02df2b147649e8b537b3233876251372503af86b7b6c50d5c0d4b2d8eda83952"
+  },
+  "confirmation": "/scratch/jwj/Kaggriculture/data/endgame-20260930-wool-confirm",
+  "independent_review_pending": false,
+  "review_sha256": "2fbc6269f83c069481f28eac7aee6884615bead1ad7a9ce32d3cac46c8c8d003",
+  "review_accepted_utc": "2026-09-30T13:54:16.074405+00:00",
+  "replacement_if_uploaded": 56714259,
+  "retain_submission": 56720412,
+  "decision": "Fourth upload of unchanged approved wool archive; retain combination and replace funded mixed under the official maximum-of-two final BT rule. Independent new slot review INDEPENDENT_SECOND.json; no new efficacy claim.",
+  "submission_id": 56721680,
+  "uploaded_utc": "2026-09-30T23:36:43.348430+00:00",
+  "historical_replacement_if_uploaded": 56686939,
+  "historical_retain_submission": 56706612,
+  "slot_review": "data/endgame-20260930-final-slot-audit/INDEPENDENT_SECOND.json",
+  "slot_review_sha256": "1793c38b148053daaad82b7af3cd8a4fdcc102096049f0cb0f9fe4ba425eee51",
+  "platform_validation_health": "data/endgame-20260930-wool-platform-validation/HEALTH.json",
+  "platform_validation_health_job": "22998746",
+  "platform_validation_health_status": "PASS",
+  "initial_public_health": "data/endgame-20260930-wool-live-health/HEALTH.json",
+  "initial_public_health_jobs": [
+    "22999770",
+    "22999825"
+  ],
+  "health_scope": "Platform validation and the first two completed public games, both seats; recorded-action reproduction, not a strength estimate.",
+  "final_active_verified_after_cutoff": true,
+  "final_verification_utc": "2026-10-01T00:00:56.395606+00:00",
+  "final_audit": "data/endgame-final/FINAL_AUDIT.json"
+}
