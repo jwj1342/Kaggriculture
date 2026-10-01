@@ -10,6 +10,7 @@
 | 文档 | 内容 |
 | :--- | :--- |
 | [赛后 Notebook](../notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb) | 思路、路线、失败、确认实验、最终包下载与复现边界 |
+| [英文讨论帖文案](../notebooks/postmortem/discussion-post.md) | 比赛讨论区的英文介绍；尚未发布，比赛关联与发帖状态见 [发布记录](../notebooks/postmortem/DISCOVERY.json) |
 | [最终方案与实验记录](FINAL_SOLUTION.md) | 最终双方案、机制、确认结果、验证边界与公开来源 |
 | [复现、使用与仓库导航](REPRODUCING.md) | Notebook、环境安装、文件校验、运行步骤和工具地图 |
 | [研究路线与教训](RESEARCH_LESSONS.md) | 手工调度、轨迹、RL、测量和工程的得失，含历史更正 |

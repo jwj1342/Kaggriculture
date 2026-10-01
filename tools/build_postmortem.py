@@ -378,6 +378,7 @@ def main():
     }, 'nbformat': 4, 'nbformat_minor': 5}
     target = OUT / f'{NAME}.ipynb'
     target.write_text(json.dumps(notebook, ensure_ascii=False, indent=1) + '\n')
+    # Kaggle rejected public competition linkage on Oct 1; see DISCOVERY.json.
     metadata = {'id': f'jwj1342/{NAME}', 'title': 'Kaggriculture Final Strategy and Lessons',
                 'code_file': target.name, 'language': 'python', 'kernel_type': 'notebook',
                 'is_private': False, 'enable_gpu': False, 'enable_tpu': False,
