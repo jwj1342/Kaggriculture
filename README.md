@@ -7,7 +7,7 @@
 [![Competition](https://img.shields.io/badge/Kaggle-Kaggriculture-20BEFF?logo=kaggle&logoColor=white)](https://www.kaggle.com/competitions/kaggriculture)
 [![Notebook](https://img.shields.io/badge/赛后复盘-Notebook-2D6A4F)](https://www.kaggle.com/code/jwj1342/kaggriculture-final-strategy-and-lessons)
 
-**[📓 阅读赛后 Notebook](https://www.kaggle.com/code/jwj1342/kaggriculture-final-strategy-and-lessons)** · [仓库中的 .ipynb](notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb) · [项目档案](docs/INDEX.md)
+**[📓 阅读赛后 Notebook](https://www.kaggle.com/code/jwj1342/kaggriculture-final-strategy-and-lessons)** · [比赛讨论帖](https://www.kaggle.com/competitions/kaggriculture/discussion/744999) · [仓库中的 .ipynb](notebooks/postmortem/kaggriculture-final-strategy-and-lessons.ipynb) · [项目档案](docs/INDEX.md)
 
 </div>
 

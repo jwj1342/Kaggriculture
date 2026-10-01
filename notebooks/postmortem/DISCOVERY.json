@@ -16,13 +16,12 @@
     "official_final_games_window": "October 1, 2026 to approximately October 15, 2026, or until leaderboard convergence; this does not guarantee the linkage unlock time."
   },
   "discussion": {
-    "status": "DRAFT_READY_NOT_POSTED",
+    "status": "PUBLISHED_VERIFIED",
     "title": "Our Kaggriculture Journey: RL Experiments, Final Agents & Lessons Learned",
     "body_file": "notebooks/postmortem/discussion-post.md",
     "file_sha256": "c6d3cdd93d790c6459948147005feabe62453c750e003e45ad1db2c1ed0a7a39",
     "destination": "https://www.kaggle.com/competitions/kaggriculture/discussion",
-    "topic_url": null,
-    "reason": "Available Kaggle CLI/SDK discussion methods are read-only; no authenticated browser connection is available.",
+    "topic_url": "https://www.kaggle.com/competitions/kaggriculture/discussion/744999",
     "review": {
       "status": "PASSED",
       "method": "Independent adversarial read-only review against final solution, research lessons, README and original attribution.",
@@ -37,6 +36,19 @@
         "repository link targets"
       ]
     },
-    "browser_connection": "TinyFish suggested; connection not confirmed."
+    "topic_id": 744999,
+    "publication_method": "Published manually by the user.",
+    "verified_utc": "2026-10-01T19:08:27.554211+00:00",
+    "post_date": "2026-10-01T19:04:59.735Z",
+    "author": "jwj1342",
+    "forum": "Kaggriculture",
+    "title_matches_draft": true,
+    "rendered_text_matches_draft": true,
+    "links_match_draft": true,
+    "link_count": 8,
+    "listed_in_competition_discussions": true,
+    "notebook_link_target_public": true,
+    "tags_verification": "Not verified: topic tags are not exposed by the available public API.",
+    "published_html_sha256": "d8c5f2c2ef223d1a93e57174610962a76e8ba72aedc0ce44e95f090457657cdf"
   }
 }
